@@ -1,39 +1,31 @@
 /****************************************************************************
 **
-** Copyright (C) 2013 Digia Plc and/or its subsidiary(-ies).
-** Contact: http://www.qt-project.org/legal
+** Copyright (C) 2015 The Qt Company Ltd.
+** Contact: http://www.qt.io/licensing/
 **
 ** This file is part of the QtCore module of the Qt Toolkit.
 **
-** $QT_BEGIN_LICENSE:LGPL$
+** $QT_BEGIN_LICENSE:LGPL21$
 ** Commercial License Usage
 ** Licensees holding valid commercial Qt licenses may use this file in
 ** accordance with the commercial license agreement provided with the
 ** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and Digia.  For licensing terms and
-** conditions see http://qt.digia.com/licensing.  For further information
-** use the contact form at http://qt.digia.com/contact-us.
+** a written agreement between you and The Qt Company. For licensing terms
+** and conditions see http://www.qt.io/terms-conditions. For further
+** information use the contact form at http://www.qt.io/contact-us.
 **
 ** GNU Lesser General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 2.1 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU Lesser General Public License version 2.1 requirements
-** will be met: http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
+** General Public License version 2.1 or version 3 as published by the Free
+** Software Foundation and appearing in the file LICENSE.LGPLv21 and
+** LICENSE.LGPLv3 included in the packaging of this file. Please review the
+** following information to ensure the GNU Lesser General Public License
+** requirements will be met: https://www.gnu.org/licenses/lgpl.html and
+** http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
 **
-** In addition, as a special exception, Digia gives you certain additional
-** rights.  These rights are described in the Digia Qt LGPL Exception
+** As a special exception, The Qt Company gives you certain additional
+** rights. These rights are described in The Qt Company LGPL Exception
 ** version 1.1, included in the file LGPL_EXCEPTION.txt in this package.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3.0 as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU General Public License version 3.0 requirements will be
-** met: http://www.gnu.org/copyleft/gpl.html.
-**
 **
 ** $QT_END_LICENSE$
 **
@@ -43,7 +35,7 @@
 #define _POSIX_C_SOURCE 200809L
 
 #include "qelapsedtimer.h"
-#ifdef Q_OS_VXWORKS
+#if defined(Q_OS_VXWORKS)
 #include "qfunctions_vxworks.h"
 #else
 #include <sys/time.h>
@@ -92,7 +84,7 @@ QT_BEGIN_NAMESPACE
  *  see http://pubs.opengroup.org/onlinepubs/9699919799/functions/clock_getres.html
  */
 
-#ifndef CLOCK_REALTIME
+#if !defined(CLOCK_REALTIME)
 #  define CLOCK_REALTIME 0
 static inline void qt_clock_gettime(int, struct timespec *ts)
 {
@@ -148,11 +140,6 @@ static int unixCheckClockType()
 #endif
 }
 
-static inline qint64 fractionAdjustment()
-{
-    return 1000*1000ull;
-}
-
 bool QElapsedTimer::isMonotonic() Q_DECL_NOTHROW
 {
     return clockType() == MonotonicClock;
@@ -204,7 +191,7 @@ static qint64 elapsedAndRestart(qint64 sec, qint64 frac,
     do_gettime(nowsec, nowfrac);
     sec = *nowsec - sec;
     frac = *nowfrac - frac;
-    return sec * Q_INT64_C(1000) + frac / fractionAdjustment();
+    return (sec * Q_INT64_C(1000000000) + frac) / Q_INT64_C(1000000);
 }
 
 void QElapsedTimer::start() Q_DECL_NOTHROW
@@ -228,20 +215,19 @@ qint64 QElapsedTimer::nsecsElapsed() const Q_DECL_NOTHROW
 
 qint64 QElapsedTimer::elapsed() const Q_DECL_NOTHROW
 {
-    qint64 sec, frac;
-    return elapsedAndRestart(t1, t2, &sec, &frac);
+    return nsecsElapsed() / Q_INT64_C(1000000);
 }
 
 qint64 QElapsedTimer::msecsSinceReference() const Q_DECL_NOTHROW
 {
-    return t1 * Q_INT64_C(1000) + t2 / fractionAdjustment();
+    return t1 * Q_INT64_C(1000) + t2 / Q_INT64_C(1000000);
 }
 
 qint64 QElapsedTimer::msecsTo(const QElapsedTimer &other) const Q_DECL_NOTHROW
 {
     qint64 secs = other.t1 - t1;
     qint64 fraction = other.t2 - t2;
-    return secs * Q_INT64_C(1000) + fraction / fractionAdjustment();
+    return (secs * Q_INT64_C(1000000000) + fraction) / Q_INT64_C(1000000);
 }
 
 qint64 QElapsedTimer::secsTo(const QElapsedTimer &other) const Q_DECL_NOTHROW

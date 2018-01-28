@@ -1,7 +1,7 @@
 /****************************************************************************
 **
-** Copyright (C) 2013 Digia Plc and/or its subsidiary(-ies).
-** Contact: http://www.qt-project.org/legal
+** Copyright (C) 2015 The Qt Company Ltd.
+** Contact: http://www.qt.io/licensing/
 **
 ** This file is part of the examples of the Qt Toolkit.
 **
@@ -17,8 +17,8 @@
 **     notice, this list of conditions and the following disclaimer in
 **     the documentation and/or other materials provided with the
 **     distribution.
-**   * Neither the name of Digia Plc and its Subsidiary(-ies) nor the names
-**     of its contributors may be used to endorse or promote products derived
+**   * Neither the name of The Qt Company Ltd nor the names of its
+**     contributors may be used to endorse or promote products derived
 **     from this software without specific prior written permission.
 **
 **
@@ -55,12 +55,12 @@ public:
     XbelHandler(QTreeWidget *treeWidget);
 
     bool startElement(const QString &namespaceURI, const QString &localName,
-                      const QString &qName, const QXmlAttributes &attributes);
+                      const QString &qName, const QXmlAttributes &attributes) Q_DECL_OVERRIDE;
     bool endElement(const QString &namespaceURI, const QString &localName,
-                    const QString &qName);
-    bool characters(const QString &str);
-    bool fatalError(const QXmlParseException &exception);
-    QString errorString() const;
+                    const QString &qName) Q_DECL_OVERRIDE;
+    bool characters(const QString &str) Q_DECL_OVERRIDE;
+    bool fatalError(const QXmlParseException &exception) Q_DECL_OVERRIDE;
+    QString errorString() const Q_DECL_OVERRIDE;
 
 private:
     QTreeWidgetItem *createChildItem(const QString &tagName);

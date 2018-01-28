@@ -1,52 +1,47 @@
 /****************************************************************************
 **
-** Copyright (C) 2013 Digia Plc and/or its subsidiary(-ies).
-** Contact: http://www.qt-project.org/legal
+** Copyright (C) 2015 The Qt Company Ltd.
+** Contact: http://www.qt.io/licensing/
 **
 ** This file is part of the plugins of the Qt Toolkit.
 **
-** $QT_BEGIN_LICENSE:LGPL$
+** $QT_BEGIN_LICENSE:LGPL21$
 ** Commercial License Usage
 ** Licensees holding valid commercial Qt licenses may use this file in
 ** accordance with the commercial license agreement provided with the
 ** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and Digia.  For licensing terms and
-** conditions see http://qt.digia.com/licensing.  For further information
-** use the contact form at http://qt.digia.com/contact-us.
+** a written agreement between you and The Qt Company. For licensing terms
+** and conditions see http://www.qt.io/terms-conditions. For further
+** information use the contact form at http://www.qt.io/contact-us.
 **
 ** GNU Lesser General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 2.1 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU Lesser General Public License version 2.1 requirements
-** will be met: http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
+** General Public License version 2.1 or version 3 as published by the Free
+** Software Foundation and appearing in the file LICENSE.LGPLv21 and
+** LICENSE.LGPLv3 included in the packaging of this file. Please review the
+** following information to ensure the GNU Lesser General Public License
+** requirements will be met: https://www.gnu.org/licenses/lgpl.html and
+** http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
 **
-** In addition, as a special exception, Digia gives you certain additional
-** rights.  These rights are described in the Digia Qt LGPL Exception
+** As a special exception, The Qt Company gives you certain additional
+** rights. These rights are described in The Qt Company LGPL Exception
 ** version 1.1, included in the file LGPL_EXCEPTION.txt in this package.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3.0 as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU General Public License version 3.0 requirements will be
-** met: http://www.gnu.org/copyleft/gpl.html.
-**
 **
 ** $QT_END_LICENSE$
 **
 ****************************************************************************/
 
-#include "qeglfswindow.h"
-#include "qeglfshooks.h"
+#include <QtCore/qtextstream.h>
 #include <qpa/qwindowsysteminterface.h>
 #include <qpa/qplatformintegration.h>
 #include <private/qguiapplication_p.h>
+#include <QtGui/private/qopenglcontext_p.h>
 #include <QtGui/QOpenGLContext>
 #include <QtPlatformSupport/private/qeglplatformcursor_p.h>
 #include <QtPlatformSupport/private/qeglconvenience_p.h>
+
+#include "qeglfswindow.h"
+#include "qeglfshooks.h"
 
 #include <QtDebug>
 
@@ -81,9 +76,12 @@ void QEglFSWindow::create()
     // raster windows will not have their own native window, surface and context. Instead,
     // they will be composited onto the root window's surface.
     QEglFSScreen *screen = this->screen();
+    QOpenGLCompositor *compositor = QOpenGLCompositor::instance();
     if (screen->primarySurface() != EGL_NO_SURFACE) {
-        if (isRaster() && screen->compositingWindow())
+        if (isRaster() && compositor->targetWindow()) {
+            m_format = compositor->targetWindow()->format();
             return;
+        }
 
 #if !defined(Q_OS_ANDROID) || defined(Q_OS_ANDROID_NO_SDK)
         // We can have either a single OpenGL window or multiple raster windows.
@@ -96,10 +94,10 @@ void QEglFSWindow::create()
 
     m_flags |= HasNativeWindow;
     setGeometry(QRect()); // will become fullscreen
-    QWindowSystemInterface::handleExposeEvent(window(), geometry());
+    QWindowSystemInterface::handleExposeEvent(window(), QRect(QPoint(0, 0), geometry().size()));
 
     EGLDisplay display = static_cast<QEglFSScreen *>(screen)->display();
-    QSurfaceFormat platformFormat = QEglFSHooks::hooks()->surfaceFormatFor(window()->requestedFormat());
+    QSurfaceFormat platformFormat = qt_egl_device_integration()->surfaceFormatFor(window()->requestedFormat());
     m_config = QEglFSIntegration::chooseConfig(display, platformFormat);
     m_format = q_glFormatFromConfig(display, m_config, platformFormat);
 
@@ -109,12 +107,12 @@ void QEglFSWindow::create()
 
     if (isRaster()) {
         QOpenGLContext *context = new QOpenGLContext(QGuiApplication::instance());
-        context->setFormat(window()->requestedFormat());
+        context->setShareContext(qt_gl_global_share_context());
+        context->setFormat(m_format);
         context->setScreen(window()->screen());
         if (!context->create())
             qFatal("EGLFS: Failed to create compositing context");
-        screen->setRootContext(context);
-        screen->setRootWindow(this);
+        compositor->setTarget(context, window());
     }
 }
 
@@ -122,7 +120,7 @@ void QEglFSWindow::destroy()
 {
     QEglFSScreen *screen = this->screen();
     if (m_flags.testFlag(HasNativeWindow)) {
-        QEGLPlatformCursor *cursor = static_cast<QEGLPlatformCursor *>(screen->cursor());
+        QEGLPlatformCursor *cursor = qobject_cast<QEGLPlatformCursor *>(screen->cursor());
         if (cursor)
             cursor->resetResources();
 
@@ -133,7 +131,7 @@ void QEglFSWindow::destroy()
     }
 
     m_flags = 0;
-    screen->removeWindow(this);
+    QOpenGLCompositor::instance()->removeWindow(this);
 }
 
 // The virtual functions resetSurface and invalidateSurface may get overridden
@@ -147,14 +145,15 @@ void QEglFSWindow::invalidateSurface()
         eglDestroySurface(display, m_surface);
         m_surface = EGL_NO_SURFACE;
     }
-    QEglFSHooks::hooks()->destroyNativeWindow(m_window);
+    qt_egl_device_integration()->destroyNativeWindow(m_window);
     m_window = 0;
 }
 
 void QEglFSWindow::resetSurface()
 {
-    EGLDisplay display = static_cast<QEglFSScreen *>(screen())->display();
-    m_window = QEglFSHooks::hooks()->createNativeWindow(this, QEglFSHooks::hooks()->screenSize(), m_format);
+    QEglFSScreen *nativeScreen = static_cast<QEglFSScreen *>(screen());
+    EGLDisplay display = nativeScreen->display();
+    m_window = qt_egl_device_integration()->createNativeWindow(this, nativeScreen->geometry().size(), m_format);
     m_surface = eglCreateWindowSurface(display, m_config, m_window, NULL);
     if (m_surface == EGL_NO_SURFACE) {
         EGLint error = eglGetError();
@@ -165,20 +164,22 @@ void QEglFSWindow::resetSurface()
 
 void QEglFSWindow::setVisible(bool visible)
 {
-    QList<QEGLPlatformWindow *> windows = screen()->windows();
+    QOpenGLCompositor *compositor = QOpenGLCompositor::instance();
+    QList<QOpenGLCompositorWindow *> windows = compositor->windows();
+    QWindow *wnd = window();
 
-    if (window()->type() != Qt::Desktop) {
+    if (wnd->type() != Qt::Desktop) {
         if (visible) {
-            screen()->addWindow(this);
+            compositor->addWindow(this);
         } else {
-            screen()->removeWindow(this);
-            windows = screen()->windows();
+            compositor->removeWindow(this);
+            windows = compositor->windows();
             if (windows.size())
-                windows.last()->requestActivateWindow();
+                windows.last()->sourceWindow()->requestActivate();
         }
     }
 
-    QWindowSystemInterface::handleExposeEvent(window(), window()->geometry());
+    QWindowSystemInterface::handleExposeEvent(wnd, QRect(QPoint(0, 0), wnd->geometry().size()));
 
     if (visible)
         QWindowSystemInterface::flushWindowSystemEvents();
@@ -214,28 +215,32 @@ QRect QEglFSWindow::geometry() const
 void QEglFSWindow::requestActivateWindow()
 {
     if (window()->type() != Qt::Desktop)
-        screen()->moveToTop(this);
+        QOpenGLCompositor::instance()->moveToTop(this);
 
-    QWindowSystemInterface::handleWindowActivated(window());
-    QWindowSystemInterface::handleExposeEvent(window(), window()->geometry());
+    QWindow *wnd = window();
+    QWindowSystemInterface::handleWindowActivated(wnd);
+    QWindowSystemInterface::handleExposeEvent(wnd, QRect(QPoint(0, 0), wnd->geometry().size()));
 }
 
 void QEglFSWindow::raise()
 {
-    if (window()->type() != Qt::Desktop) {
-        screen()->moveToTop(this);
-        QWindowSystemInterface::handleExposeEvent(window(), window()->geometry());
+    QWindow *wnd = window();
+    if (wnd->type() != Qt::Desktop) {
+        QOpenGLCompositor::instance()->moveToTop(this);
+        QWindowSystemInterface::handleExposeEvent(wnd, QRect(QPoint(0, 0), wnd->geometry().size()));
     }
 }
 
 void QEglFSWindow::lower()
 {
-    QList<QEGLPlatformWindow *> windows = screen()->windows();
+    QOpenGLCompositor *compositor = QOpenGLCompositor::instance();
+    QList<QOpenGLCompositorWindow *> windows = compositor->windows();
     if (window()->type() != Qt::Desktop && windows.count() > 1) {
         int idx = windows.indexOf(this);
         if (idx > 0) {
-            screen()->changeWindowIndex(this, idx - 1);
-            QWindowSystemInterface::handleExposeEvent(windows.last()->window(), windows.last()->geometry());
+            compositor->changeWindowIndex(this, idx - 1);
+            QWindowSystemInterface::handleExposeEvent(windows.last()->sourceWindow(),
+                                                      QRect(QPoint(0, 0), windows.last()->sourceWindow()->geometry().size()));
         }
     }
 }

@@ -1,39 +1,31 @@
 /****************************************************************************
 **
-** Copyright (C) 2013 Digia Plc and/or its subsidiary(-ies).
-** Contact: http://www.qt-project.org/legal
+** Copyright (C) 2015 The Qt Company Ltd.
+** Contact: http://www.qt.io/licensing/
 **
 ** This file is part of the QtCore module of the Qt Toolkit.
 **
-** $QT_BEGIN_LICENSE:LGPL$
+** $QT_BEGIN_LICENSE:LGPL21$
 ** Commercial License Usage
 ** Licensees holding valid commercial Qt licenses may use this file in
 ** accordance with the commercial license agreement provided with the
 ** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and Digia.  For licensing terms and
-** conditions see http://qt.digia.com/licensing.  For further information
-** use the contact form at http://qt.digia.com/contact-us.
+** a written agreement between you and The Qt Company. For licensing terms
+** and conditions see http://www.qt.io/terms-conditions. For further
+** information use the contact form at http://www.qt.io/contact-us.
 **
 ** GNU Lesser General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 2.1 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU Lesser General Public License version 2.1 requirements
-** will be met: http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
+** General Public License version 2.1 or version 3 as published by the Free
+** Software Foundation and appearing in the file LICENSE.LGPLv21 and
+** LICENSE.LGPLv3 included in the packaging of this file. Please review the
+** following information to ensure the GNU Lesser General Public License
+** requirements will be met: https://www.gnu.org/licenses/lgpl.html and
+** http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
 **
-** In addition, as a special exception, Digia gives you certain additional
-** rights.  These rights are described in the Digia Qt LGPL Exception
+** As a special exception, The Qt Company gives you certain additional
+** rights. These rights are described in The Qt Company LGPL Exception
 ** version 1.1, included in the file LGPL_EXCEPTION.txt in this package.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3.0 as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU General Public License version 3.0 requirements will be
-** met: http://www.gnu.org/copyleft/gpl.html.
-**
 **
 ** $QT_END_LICENSE$
 **
@@ -61,6 +53,8 @@
 #include <qstring.h>
 #include <qendian.h>
 #include <qnumeric.h>
+
+#include "private/qsimd_p.h"
 
 #include <limits.h>
 #include <limits>
@@ -311,7 +305,7 @@ public:
     {
         d->length = str.length();
 #if Q_BYTE_ORDER == Q_BIG_ENDIAN
-        const qle_ushort *uc = (const qle_ushort *)str.unicode();
+        const ushort *uc = (const ushort *)str.unicode();
         for (int i = 0; i < str.length(); ++i)
             d->utf16[i] = uc[i];
 #else
@@ -352,7 +346,7 @@ public:
         return !memcmp(d->utf16, str.d->utf16, d->length*sizeof(ushort));
     }
     inline bool operator<(const String &other) const;
-    inline bool operator >=(const String &other) const { return other < *this; }
+    inline bool operator >=(const String &other) const { return !(*this < other); }
 
     inline QString toString() const {
 #if Q_BYTE_ORDER == Q_LITTLE_ENDIAN
@@ -382,13 +376,34 @@ public:
 
     inline Latin1String &operator=(const QString &str)
     {
-        d->length = str.length();
+        int len = d->length = str.length();
         uchar *l = (uchar *)d->latin1;
         const ushort *uc = (const ushort *)str.unicode();
-        for (int i = 0; i < str.length(); ++i)
-            *l++ = uc[i];
-        while ((quintptr)l & 0x3)
-            *l++ = 0;
+        int i = 0;
+#ifdef __SSE2__
+        for ( ; i + 16 < len; i += 16) {
+            __m128i chunk1 = _mm_loadu_si128((__m128i*)&uc[i]); // load
+            __m128i chunk2 = _mm_loadu_si128((__m128i*)&uc[i + 8]); // load
+            // pack the two vector to 16 x 8bits elements
+            const __m128i result = _mm_packus_epi16(chunk1, chunk2);
+            _mm_storeu_si128((__m128i*)&l[i], result); // store
+        }
+#  ifdef Q_PROCESSOR_X86_64
+        // we can do one more round, of 8 characters
+        if (i + 8 < len) {
+            __m128i chunk = _mm_loadu_si128((__m128i*)&uc[i]); // load
+            // pack with itself, we'll discard the high part anyway
+            chunk = _mm_packus_epi16(chunk, chunk);
+            // unaligned 64-bit store
+            *(quint64*)&l[i] = _mm_cvtsi128_si64(chunk);
+            i += 8;
+        }
+#  endif
+#endif
+        for ( ; i < len; ++i)
+            l[i] = uc[i];
+        for ( ; (quintptr)(l+i) & 0x3; ++i)
+            l[i] = 0;
         return *this;
     }
 
@@ -412,12 +427,29 @@ public:
             val = d->length - str.d->length;
         return val >= 0;
     }
+    inline bool operator<(const String &str) const
+    {
+        const qle_ushort *uc = (qle_ushort *) str.d->utf16;
+        if (!uc || *uc == 0)
+            return false;
 
+        const uchar *c = (uchar *)d->latin1;
+        const uchar *e = c + qMin((int)d->length, (int)str.d->length);
+
+        while (c < e) {
+            if (*c != *uc)
+                break;
+            ++c;
+            ++uc;
+        }
+        return (c == e ? (int)d->length < (int)str.d->length : *c < *uc);
+
+    }
     inline bool operator ==(const String &str) const {
         return (str == *this);
     }
     inline bool operator >=(const String &str) const {
-        return (str < *this);
+        return !(*this < str);
     }
 
     inline QString toString() const {
@@ -454,7 +486,7 @@ inline bool String::operator <(const String &other) const
         a++,b++;
     if (l==-1)
         return (alen < blen);
-    return (ushort)*a - (ushort)*b;
+    return (ushort)*a < (ushort)*b;
 }
 
 inline bool String::operator<(const Latin1String &str) const
@@ -597,7 +629,7 @@ public:
         if (value.latinKey)
             s += sizeof(ushort) + qFromLittleEndian(*(ushort *) ((const char *)this + sizeof(Entry)));
         else
-            s += sizeof(uint) + qFromLittleEndian(*(int *) ((const char *)this + sizeof(Entry)));
+            s += sizeof(uint) + sizeof(ushort)*qFromLittleEndian(*(int *) ((const char *)this + sizeof(Entry)));
         return alignedSize(s);
     }
 

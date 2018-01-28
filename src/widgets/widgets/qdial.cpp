@@ -1,39 +1,31 @@
 /****************************************************************************
 **
-** Copyright (C) 2013 Digia Plc and/or its subsidiary(-ies).
-** Contact: http://www.qt-project.org/legal
+** Copyright (C) 2015 The Qt Company Ltd.
+** Contact: http://www.qt.io/licensing/
 **
 ** This file is part of the QtWidgets module of the Qt Toolkit.
 **
-** $QT_BEGIN_LICENSE:LGPL$
+** $QT_BEGIN_LICENSE:LGPL21$
 ** Commercial License Usage
 ** Licensees holding valid commercial Qt licenses may use this file in
 ** accordance with the commercial license agreement provided with the
 ** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and Digia.  For licensing terms and
-** conditions see http://qt.digia.com/licensing.  For further information
-** use the contact form at http://qt.digia.com/contact-us.
+** a written agreement between you and The Qt Company. For licensing terms
+** and conditions see http://www.qt.io/terms-conditions. For further
+** information use the contact form at http://www.qt.io/contact-us.
 **
 ** GNU Lesser General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 2.1 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU Lesser General Public License version 2.1 requirements
-** will be met: http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
+** General Public License version 2.1 or version 3 as published by the Free
+** Software Foundation and appearing in the file LICENSE.LGPLv21 and
+** LICENSE.LGPLv3 included in the packaging of this file. Please review the
+** following information to ensure the GNU Lesser General Public License
+** requirements will be met: https://www.gnu.org/licenses/lgpl.html and
+** http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
 **
-** In addition, as a special exception, Digia gives you certain additional
-** rights.  These rights are described in the Digia Qt LGPL Exception
+** As a special exception, The Qt Company gives you certain additional
+** rights. These rights are described in The Qt Company LGPL Exception
 ** version 1.1, included in the file LGPL_EXCEPTION.txt in this package.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3.0 as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU General Public License version 3.0 requirements will be
-** met: http://www.gnu.org/copyleft/gpl.html.
-**
 **
 ** $QT_END_LICENSE$
 **
@@ -83,7 +75,7 @@ public:
     int valueFromPoint(const QPoint &) const;
     double angle(const QPoint &, const QPoint &) const;
     void init();
-    virtual int bound(int val) const;
+    virtual int bound(int val) const Q_DECL_OVERRIDE;
 };
 
 void QDialPrivate::init()
@@ -144,9 +136,9 @@ void QDial::initStyleOption(QStyleOptionSlider *option) const
 int QDialPrivate::valueFromPoint(const QPoint &p) const
 {
     Q_Q(const QDial);
-    double yy = (double)q->height()/2.0 - p.y();
-    double xx = (double)p.x() - q->width()/2.0;
-    double a = (xx || yy) ? qAtan2(yy, xx) : 0;
+    double yy = q->height()/2.0 - p.y();
+    double xx = p.x() - q->width()/2.0;
+    double a = (xx || yy) ? std::atan2(yy, xx) : 0;
 
     if (a < Q_PI / -2)
         a = a + Q_PI * 2;
@@ -210,9 +202,8 @@ int QDialPrivate::valueFromPoint(const QPoint &p) const
     to draw every one, QDial will skip notches to try and draw a uniform
     set (e.g. by drawing every second or third notch).
 
-    Like the slider, the dial makes the QAbstractSlider functions
-    setValue(), addLine(), subtractLine(), addPage() and
-    subtractPage() available as slots.
+    Like the slider, the dial makes the QAbstractSlider function setValue()
+    available as a slot.
 
     The dial's keyboard interface is fairly simple: The
     \uicontrol{left}/\uicontrol{up} and \uicontrol{right}/\uicontrol{down} arrow keys adjust

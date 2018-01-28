@@ -1,39 +1,31 @@
 /****************************************************************************
 **
-** Copyright (C) 2013 Digia Plc and/or its subsidiary(-ies).
-** Contact: http://www.qt-project.org/legal
+** Copyright (C) 2015 The Qt Company Ltd.
+** Contact: http://www.qt.io/licensing/
 **
 ** This file is part of the test suite of the Qt Toolkit.
 **
-** $QT_BEGIN_LICENSE:LGPL$
+** $QT_BEGIN_LICENSE:LGPL21$
 ** Commercial License Usage
 ** Licensees holding valid commercial Qt licenses may use this file in
 ** accordance with the commercial license agreement provided with the
 ** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and Digia.  For licensing terms and
-** conditions see http://qt.digia.com/licensing.  For further information
-** use the contact form at http://qt.digia.com/contact-us.
+** a written agreement between you and The Qt Company. For licensing terms
+** and conditions see http://www.qt.io/terms-conditions. For further
+** information use the contact form at http://www.qt.io/contact-us.
 **
 ** GNU Lesser General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 2.1 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU Lesser General Public License version 2.1 requirements
-** will be met: http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
+** General Public License version 2.1 or version 3 as published by the Free
+** Software Foundation and appearing in the file LICENSE.LGPLv21 and
+** LICENSE.LGPLv3 included in the packaging of this file. Please review the
+** following information to ensure the GNU Lesser General Public License
+** requirements will be met: https://www.gnu.org/licenses/lgpl.html and
+** http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
 **
-** In addition, as a special exception, Digia gives you certain additional
-** rights.  These rights are described in the Digia Qt LGPL Exception
+** As a special exception, The Qt Company gives you certain additional
+** rights. These rights are described in The Qt Company LGPL Exception
 ** version 1.1, included in the file LGPL_EXCEPTION.txt in this package.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3.0 as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU General Public License version 3.0 requirements will be
-** met: http://www.gnu.org/copyleft/gpl.html.
-**
 **
 ** $QT_END_LICENSE$
 **
@@ -67,30 +59,31 @@ private slots:
     void complexacquire();
     void release();
 
-#ifndef QT_NO_PROCESS
     void basicProcesses();
 
     void processes_data();
     void processes();
 
-#ifndef Q_OS_WIN
+#if !defined(Q_OS_WIN) && !defined(QT_POSIX_IPC)
     void undo();
 #endif
     void initialValue();
-#endif // QT_NO_PROCESS
 
 private:
-    QString helperBinary();
+    static QString helperBinary();
     QSystemSemaphore *existingLock;
+
+    const QString m_helperBinary;
 };
 
 tst_QSystemSemaphore::tst_QSystemSemaphore()
+    : m_helperBinary(helperBinary())
 {
 }
 
 void tst_QSystemSemaphore::initTestCase()
 {
-  QVERIFY2(!helperBinary().isEmpty(), "Could not find helper binary");
+  QVERIFY2(!m_helperBinary.isEmpty(), "Could not find helper binary");
 }
 
 void tst_QSystemSemaphore::init()
@@ -182,9 +175,11 @@ void tst_QSystemSemaphore::release()
     QCOMPARE(sem.errorString(), QString());
 }
 
-#ifndef QT_NO_PROCESS
 void tst_QSystemSemaphore::basicProcesses()
 {
+#ifdef QT_NO_PROCESS
+    QSKIP("No qprocess support", SkipAll);
+#else
     QSystemSemaphore sem("store", 0, QSystemSemaphore::Create);
 
     QProcess acquire;
@@ -193,16 +188,17 @@ void tst_QSystemSemaphore::basicProcesses()
     QProcess release;
     release.setProcessChannelMode(QProcess::ForwardedChannels);
 
-    acquire.start(helperBinary(), QStringList("acquire"));
+    acquire.start(m_helperBinary, QStringList("acquire"));
     QVERIFY2(acquire.waitForStarted(), "Could not start helper binary");
     acquire.waitForFinished(HELPERWAITTIME);
     QVERIFY(acquire.state() == QProcess::Running);
     acquire.kill();
-    release.start(helperBinary(), QStringList("release"));
+    release.start(m_helperBinary, QStringList("release"));
     QVERIFY2(release.waitForStarted(), "Could not start helper binary");
     acquire.waitForFinished(HELPERWAITTIME);
     release.waitForFinished(HELPERWAITTIME);
     QVERIFY(acquire.state() == QProcess::NotRunning);
+#endif
 }
 
 void tst_QSystemSemaphore::processes_data()
@@ -217,6 +213,9 @@ void tst_QSystemSemaphore::processes_data()
 
 void tst_QSystemSemaphore::processes()
 {
+#ifdef QT_NO_PROCESS
+    QSKIP("No qprocess support", SkipAll);
+#else
     QSystemSemaphore sem("store", 1, QSystemSemaphore::Create);
 
     QFETCH(int, processes);
@@ -227,7 +226,7 @@ void tst_QSystemSemaphore::processes()
         QProcess *p = new QProcess;
         p->setProcessChannelMode(QProcess::ForwardedChannels);
         consumers.append(p);
-        p->start(helperBinary(), QStringList(scripts.at(i)));
+        p->start(m_helperBinary, QStringList(scripts.at(i)));
     }
 
     while (!consumers.isEmpty()) {
@@ -236,33 +235,41 @@ void tst_QSystemSemaphore::processes()
         QCOMPARE(consumers.first()->exitCode(), 0);
         delete consumers.takeFirst();
     }
+#endif
 }
 
-// This test only checks a unix behavior.
-#ifndef Q_OS_WIN
+// This test only checks a system v unix behavior.
+#if !defined(Q_OS_WIN) && !defined(QT_POSIX_IPC)
 void tst_QSystemSemaphore::undo()
 {
+#ifdef QT_NO_PROCESS
+    QSKIP("No qprocess support", SkipAll);
+#else
     QSystemSemaphore sem("store", 1, QSystemSemaphore::Create);
 
     QStringList acquireArguments = QStringList("acquire");
     QProcess acquire;
     acquire.setProcessChannelMode(QProcess::ForwardedChannels);
-    acquire.start(helperBinary(), acquireArguments);
+    acquire.start(m_helperBinary, acquireArguments);
     QVERIFY2(acquire.waitForStarted(), "Could not start helper binary");
     acquire.waitForFinished(HELPERWAITTIME);
     QVERIFY(acquire.state()== QProcess::NotRunning);
 
     // At process exit the kernel should auto undo
 
-    acquire.start(helperBinary(), acquireArguments);
+    acquire.start(m_helperBinary, acquireArguments);
     QVERIFY2(acquire.waitForStarted(), "Could not start helper binary");
     acquire.waitForFinished(HELPERWAITTIME);
     QVERIFY(acquire.state()== QProcess::NotRunning);
+#endif
 }
 #endif
 
 void tst_QSystemSemaphore::initialValue()
 {
+#ifdef QT_NO_PROCESS
+    QSKIP("No qprocess support", SkipAll);
+#else
     QSystemSemaphore sem("store", 1, QSystemSemaphore::Create);
 
     QStringList acquireArguments = QStringList("acquire");
@@ -273,24 +280,24 @@ void tst_QSystemSemaphore::initialValue()
     QProcess release;
     release.setProcessChannelMode(QProcess::ForwardedChannels);
 
-    acquire.start(helperBinary(), acquireArguments);
+    acquire.start(m_helperBinary, acquireArguments);
     QVERIFY2(acquire.waitForStarted(), "Could not start helper binary");
     acquire.waitForFinished(HELPERWAITTIME);
     QVERIFY(acquire.state()== QProcess::NotRunning);
 
-    acquire.start(helperBinary(), acquireArguments << QLatin1String("2"));
+    acquire.start(m_helperBinary, acquireArguments << QLatin1String("2"));
     QVERIFY2(acquire.waitForStarted(), "Could not start helper binary");
     acquire.waitForFinished(HELPERWAITTIME);
     QVERIFY(acquire.state()== QProcess::Running);
     acquire.kill();
 
-    release.start(helperBinary(), releaseArguments);
+    release.start(m_helperBinary, releaseArguments);
     QVERIFY2(release.waitForStarted(), "Could not start helper binary");
     acquire.waitForFinished(HELPERWAITTIME);
     release.waitForFinished(HELPERWAITTIME);
     QVERIFY(acquire.state()== QProcess::NotRunning);
-}
 #endif
+}
 
 QString tst_QSystemSemaphore::helperBinary()
 {

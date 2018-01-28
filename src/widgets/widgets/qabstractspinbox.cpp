@@ -1,39 +1,31 @@
 /****************************************************************************
 **
-** Copyright (C) 2013 Digia Plc and/or its subsidiary(-ies).
-** Contact: http://www.qt-project.org/legal
+** Copyright (C) 2015 The Qt Company Ltd.
+** Contact: http://www.qt.io/licensing/
 **
 ** This file is part of the QtWidgets module of the Qt Toolkit.
 **
-** $QT_BEGIN_LICENSE:LGPL$
+** $QT_BEGIN_LICENSE:LGPL21$
 ** Commercial License Usage
 ** Licensees holding valid commercial Qt licenses may use this file in
 ** accordance with the commercial license agreement provided with the
 ** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and Digia.  For licensing terms and
-** conditions see http://qt.digia.com/licensing.  For further information
-** use the contact form at http://qt.digia.com/contact-us.
+** a written agreement between you and The Qt Company. For licensing terms
+** and conditions see http://www.qt.io/terms-conditions. For further
+** information use the contact form at http://www.qt.io/contact-us.
 **
 ** GNU Lesser General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 2.1 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU Lesser General Public License version 2.1 requirements
-** will be met: http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
+** General Public License version 2.1 or version 3 as published by the Free
+** Software Foundation and appearing in the file LICENSE.LGPLv21 and
+** LICENSE.LGPLv3 included in the packaging of this file. Please review the
+** following information to ensure the GNU Lesser General Public License
+** requirements will be met: https://www.gnu.org/licenses/lgpl.html and
+** http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
 **
-** In addition, as a special exception, Digia gives you certain additional
-** rights.  These rights are described in the Digia Qt LGPL Exception
+** As a special exception, The Qt Company gives you certain additional
+** rights. These rights are described in The Qt Company LGPL Exception
 ** version 1.1, included in the file LGPL_EXCEPTION.txt in this package.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3.0 as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU General Public License version 3.0 requirements will be
-** met: http://www.gnu.org/copyleft/gpl.html.
-**
 **
 ** $QT_END_LICENSE$
 **
@@ -315,6 +307,8 @@ void QAbstractSpinBox::setReadOnly(bool enable)
     Q_D(QAbstractSpinBox);
     d->readOnly = enable;
     d->edit->setReadOnly(enable);
+    QEvent event(QEvent::ReadOnlyChange);
+    QApplication::sendEvent(this, &event);
     update();
 }
 
@@ -697,6 +691,7 @@ void QAbstractSpinBox::setLineEdit(QLineEdit *lineEdit)
     }
     d->updateEditFieldGeometry();
     d->edit->setContextMenuPolicy(Qt::NoContextMenu);
+    d->edit->d_func()->control->setAccessibleObject(this);
 
     if (isVisible())
         d->edit->show();
@@ -853,10 +848,15 @@ QSize QAbstractSpinBox::sizeHint() const
         int w = 0;
         QString s;
         QString fixedContent =  d->prefix + d->suffix + QLatin1Char(' ');
-        s = d->textFromValue(d->minimum) + fixedContent;
+        s = d->textFromValue(d->minimum);
+        s.truncate(18);
+        s += fixedContent;
         w = qMax(w, fm.width(s));
-        s = d->textFromValue(d->maximum) + fixedContent;
+        s = d->textFromValue(d->maximum);
+        s.truncate(18);
+        s += fixedContent;
         w = qMax(w, fm.width(s));
+
         if (d->specialValueText.size()) {
             s = d->specialValueText;
             w = qMax(w, fm.width(s));
@@ -889,9 +889,13 @@ QSize QAbstractSpinBox::minimumSizeHint() const
 
         QString s;
         QString fixedContent =  d->prefix + QLatin1Char(' ');
-        s = d->textFromValue(d->minimum) + fixedContent;
+        s = d->textFromValue(d->minimum);
+        s.truncate(18);
+        s += fixedContent;
         w = qMax(w, fm.width(s));
-        s = d->textFromValue(d->maximum) + fixedContent;
+        s = d->textFromValue(d->maximum);
+        s.truncate(18);
+        s += fixedContent;
         w = qMax(w, fm.width(s));
 
         if (d->specialValueText.size()) {
@@ -1097,7 +1101,10 @@ void QAbstractSpinBox::keyReleaseEvent(QKeyEvent *event)
 #ifndef QT_NO_WHEELEVENT
 void QAbstractSpinBox::wheelEvent(QWheelEvent *event)
 {
-    const int steps = (event->delta() > 0 ? 1 : -1);
+    Q_D(QAbstractSpinBox);
+    d->wheelDeltaRemainder += event->angleDelta().y();
+    const int steps = d->wheelDeltaRemainder / 120;
+    d->wheelDeltaRemainder -= steps * 120;
     if (stepEnabled() & (steps > 0 ? StepUpEnabled : StepDownEnabled))
         stepBy(event->modifiers() & Qt::ControlModifier ? steps * 10 : steps);
     event->accept();
@@ -1183,7 +1190,7 @@ void QAbstractSpinBox::timerEvent(QTimerEvent *event)
         killTimer(d->spinClickThresholdTimerId);
         d->spinClickThresholdTimerId = -1;
         d->effectiveSpinRepeatRate = d->buttonState & Keyboard
-                                     ? qApp->styleHints()->keyboardAutoRepeatRate()
+                                     ? QGuiApplication::styleHints()->keyboardAutoRepeatRate()
                                      : d->spinClickTimerInterval;
         d->spinClickTimerId = startTimer(d->effectiveSpinRepeatRate);
         doStep = true;
@@ -1341,7 +1348,7 @@ QAbstractSpinBoxPrivate::QAbstractSpinBoxPrivate()
       ignoreCursorPositionChanged(false), frame(true), accelerate(false), keyboardTracking(true),
       cleared(false), ignoreUpdateEdit(false), correctionMode(QAbstractSpinBox::CorrectToPreviousValue),
       acceleration(0), hoverControl(QStyle::SC_None), buttonSymbols(QAbstractSpinBox::UpDownArrows), validator(0),
-      showGroupSeparator(0)
+      showGroupSeparator(0), wheelDeltaRemainder(0)
 {
 }
 

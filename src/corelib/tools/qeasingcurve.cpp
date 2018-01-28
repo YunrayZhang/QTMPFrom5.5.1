@@ -1,39 +1,31 @@
 /****************************************************************************
 **
-** Copyright (C) 2013 Digia Plc and/or its subsidiary(-ies).
-** Contact: http://www.qt-project.org/legal
+** Copyright (C) 2015 The Qt Company Ltd.
+** Contact: http://www.qt.io/licensing/
 **
 ** This file is part of the QtCore module of the Qt Toolkit.
 **
-** $QT_BEGIN_LICENSE:LGPL$
+** $QT_BEGIN_LICENSE:LGPL21$
 ** Commercial License Usage
 ** Licensees holding valid commercial Qt licenses may use this file in
 ** accordance with the commercial license agreement provided with the
 ** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and Digia.  For licensing terms and
-** conditions see http://qt.digia.com/licensing.  For further information
-** use the contact form at http://qt.digia.com/contact-us.
+** a written agreement between you and The Qt Company. For licensing terms
+** and conditions see http://www.qt.io/terms-conditions. For further
+** information use the contact form at http://www.qt.io/contact-us.
 **
 ** GNU Lesser General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 2.1 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU Lesser General Public License version 2.1 requirements
-** will be met: http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
+** General Public License version 2.1 or version 3 as published by the Free
+** Software Foundation and appearing in the file LICENSE.LGPLv21 and
+** LICENSE.LGPLv3 included in the packaging of this file. Please review the
+** following information to ensure the GNU Lesser General Public License
+** requirements will be met: https://www.gnu.org/licenses/lgpl.html and
+** http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
 **
-** In addition, as a special exception, Digia gives you certain additional
-** rights.  These rights are described in the Digia Qt LGPL Exception
+** As a special exception, The Qt Company gives you certain additional
+** rights. These rights are described in The Qt Company LGPL Exception
 ** version 1.1, included in the file LGPL_EXCEPTION.txt in this package.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3.0 as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU General Public License version 3.0 requirements will be
-** met: http://www.gnu.org/copyleft/gpl.html.
-**
 **
 ** $QT_END_LICENSE$
 **
@@ -355,9 +347,7 @@ typedef QVector<TCBPoint> TCBPoints;
 class QEasingCurveFunction
 {
 public:
-    enum Type { In, Out, InOut, OutIn };
-
-    QEasingCurveFunction(QEasingCurveFunction::Type type = In, qreal period = 0.3, qreal amplitude = 1.0,
+    QEasingCurveFunction(QEasingCurve::Type type, qreal period = 0.3, qreal amplitude = 1.0,
         qreal overshoot = 1.70158)
         : _t(type), _p(period), _a(amplitude), _o(overshoot)
     { }
@@ -366,7 +356,7 @@ public:
     virtual QEasingCurveFunction *copy() const;
     bool operator==(const QEasingCurveFunction &other) const;
 
-    Type _t;
+    QEasingCurve::Type _t;
     qreal _p;
     qreal _a;
     qreal _o;
@@ -375,9 +365,12 @@ public:
 
 };
 
+static QEasingCurve::EasingFunction curveToFunc(QEasingCurve::Type curve);
+
 qreal QEasingCurveFunction::value(qreal t)
 {
-    return t;
+    QEasingCurve::EasingFunction func = curveToFunc(_t);
+    return func(t);
 }
 
 QEasingCurveFunction *QEasingCurveFunction::copy() const
@@ -438,8 +431,8 @@ struct BezierEase : public QEasingCurveFunction
     bool _init;
     bool _valid;
 
-    BezierEase()
-        : QEasingCurveFunction(InOut), _curves(10), _intervals(10), _init(false), _valid(false)
+    BezierEase(QEasingCurve::Type type = QEasingCurve::BezierSpline)
+        : QEasingCurveFunction(type), _curves(10), _intervals(10), _init(false), _valid(false)
     { }
 
     void init()
@@ -496,7 +489,7 @@ struct BezierEase : public QEasingCurveFunction
         }
     }
 
-    QEasingCurveFunction *copy() const
+    QEasingCurveFunction *copy() const Q_DECL_OVERRIDE
     {
         BezierEase *rv = new BezierEase();
         rv->_t = _t;
@@ -532,7 +525,7 @@ struct BezierEase : public QEasingCurveFunction
         return newT;
     }
 
-    qreal value(qreal x)
+    qreal value(qreal x) Q_DECL_OVERRIDE
     {
         Q_ASSERT(_bezierCurves.count() % 3 == 0);
 
@@ -664,7 +657,7 @@ struct BezierEase : public QEasingCurveFunction
 
     qreal static inline _acos(qreal x)
     {
-        return sqrt(1-x)*(1.5707963267948966192313216916398f + x*(-0.213300989f + x*(0.077980478f + x*-0.02164095f)));
+        return std::sqrt(1-x)*(1.5707963267948966192313216916398f + x*(-0.213300989f + x*(0.077980478f + x*-0.02164095f)));
     }
 
     qreal static inline _cos(qreal x) //super fast _cos
@@ -711,8 +704,8 @@ struct BezierEase : public QEasingCurveFunction
         //We use approximations instead
 
         const qreal x_squared = x * x;
-        const qreal x_plus_one_sqrt = sqrt(1.0 + x);
-        const qreal one_minus_x_sqrt = sqrt(1.0 - x);
+        const qreal x_plus_one_sqrt = qSqrt(1.0 + x);
+        const qreal one_minus_x_sqrt = qSqrt(1.0 - x);
 
         //cos(acos(x) / 3)
         //s1 = _cos(_acos(x) / 3);
@@ -750,7 +743,7 @@ struct BezierEase : public QEasingCurveFunction
         const qreal D = 0.25 * q_squared + p_cubic / 27.0;
 
         if (D >= 0) {
-            const qreal D_sqrt = sqrt(D);
+            const qreal D_sqrt = qSqrt(D);
             qreal u = _cbrt( -q * 0.5 + D_sqrt);
             qreal v = _cbrt( -q * 0.5 - D_sqrt);
             qreal z1 = u + v;
@@ -765,13 +758,13 @@ struct BezierEase : public QEasingCurveFunction
         }
 
         //casus irreducibilis
-        const qreal p_minus_sqrt = sqrt(-p);
+        const qreal p_minus_sqrt = qSqrt(-p);
 
         //const qreal f = sqrt(4.0 / 3.0 * -p);
-        const qreal f = sqrt(4.0 / 3.0) * p_minus_sqrt;
+        const qreal f = qSqrt(4.0 / 3.0) * p_minus_sqrt;
 
         //const qreal sqrtP = sqrt(27.0 / -p_cubic);
-        const qreal sqrtP = -3.0*sqrt(3.0) / (p_minus_sqrt * p);
+        const qreal sqrtP = -3.0*qSqrt(3.0) / (p_minus_sqrt * p);
 
 
         const qreal g = -q * 0.5 * sqrtP;
@@ -822,7 +815,11 @@ struct BezierEase : public QEasingCurveFunction
 
 struct TCBEase : public BezierEase
 {
-    qreal value(qreal x)
+    TCBEase()
+        : BezierEase(QEasingCurve::TCBSpline)
+    { }
+
+    qreal value(qreal x) Q_DECL_OVERRIDE
     {
         Q_ASSERT(_bezierCurves.count() % 3 == 0);
 
@@ -838,11 +835,11 @@ struct TCBEase : public BezierEase
 
 struct ElasticEase : public QEasingCurveFunction
 {
-    ElasticEase(Type type)
+    ElasticEase(QEasingCurve::Type type)
         : QEasingCurveFunction(type, qreal(0.3), qreal(1.0))
     { }
 
-    QEasingCurveFunction *copy() const
+    QEasingCurveFunction *copy() const Q_DECL_OVERRIDE
     {
         ElasticEase *rv = new ElasticEase(_t);
         rv->_p = _p;
@@ -852,18 +849,18 @@ struct ElasticEase : public QEasingCurveFunction
         return rv;
     }
 
-    qreal value(qreal t)
+    qreal value(qreal t) Q_DECL_OVERRIDE
     {
         qreal p = (_p < 0) ? qreal(0.3) : _p;
         qreal a = (_a < 0) ? qreal(1.0) : _a;
         switch(_t) {
-        case In:
+        case QEasingCurve::InElastic:
             return easeInElastic(t, a, p);
-        case Out:
+        case QEasingCurve::OutElastic:
             return easeOutElastic(t, a, p);
-        case InOut:
+        case QEasingCurve::InOutElastic:
             return easeInOutElastic(t, a, p);
-        case OutIn:
+        case QEasingCurve::OutInElastic:
             return easeOutInElastic(t, a, p);
         default:
             return t;
@@ -873,11 +870,11 @@ struct ElasticEase : public QEasingCurveFunction
 
 struct BounceEase : public QEasingCurveFunction
 {
-    BounceEase(Type type)
+    BounceEase(QEasingCurve::Type type)
         : QEasingCurveFunction(type, qreal(0.3), qreal(1.0))
     { }
 
-    QEasingCurveFunction *copy() const
+    QEasingCurveFunction *copy() const Q_DECL_OVERRIDE
     {
         BounceEase *rv = new BounceEase(_t);
         rv->_a = _a;
@@ -886,17 +883,17 @@ struct BounceEase : public QEasingCurveFunction
         return rv;
     }
 
-    qreal value(qreal t)
+    qreal value(qreal t) Q_DECL_OVERRIDE
     {
         qreal a = (_a < 0) ? qreal(1.0) : _a;
         switch(_t) {
-        case In:
+        case QEasingCurve::InBounce:
             return easeInBounce(t, a);
-        case Out:
+        case QEasingCurve::OutBounce:
             return easeOutBounce(t, a);
-        case InOut:
+        case QEasingCurve::InOutBounce:
             return easeInOutBounce(t, a);
-        case OutIn:
+        case QEasingCurve::OutInBounce:
             return easeOutInBounce(t, a);
         default:
             return t;
@@ -906,11 +903,11 @@ struct BounceEase : public QEasingCurveFunction
 
 struct BackEase : public QEasingCurveFunction
 {
-    BackEase(Type type)
+    BackEase(QEasingCurve::Type type)
         : QEasingCurveFunction(type, qreal(0.3), qreal(1.0), qreal(1.70158))
     { }
 
-    QEasingCurveFunction *copy() const
+    QEasingCurveFunction *copy() const Q_DECL_OVERRIDE
     {
         BackEase *rv = new BackEase(_t);
         rv->_o = _o;
@@ -919,17 +916,17 @@ struct BackEase : public QEasingCurveFunction
         return rv;
     }
 
-    qreal value(qreal t)
+    qreal value(qreal t) Q_DECL_OVERRIDE
     {
         qreal o = (_o < 0) ? qreal(1.70158) : _o;
         switch(_t) {
-        case In:
+        case QEasingCurve::InBack:
             return easeInBack(t, o);
-        case Out:
+        case QEasingCurve::OutBack:
             return easeOutBack(t, o);
-        case InOut:
+        case QEasingCurve::InOutBack:
             return easeInOutBack(t, o);
-        case OutIn:
+        case QEasingCurve::OutInBack:
             return easeOutInBack(t, o);
         default:
             return t;
@@ -1014,55 +1011,31 @@ static QEasingCurve::EasingFunction curveToFunc(QEasingCurve::Type curve)
 
 static QEasingCurveFunction *curveToFunctionObject(QEasingCurve::Type type)
 {
-    QEasingCurveFunction *curveFunc = 0;
     switch(type) {
     case QEasingCurve::InElastic:
-        curveFunc = new ElasticEase(ElasticEase::In);
-        break;
     case QEasingCurve::OutElastic:
-        curveFunc = new ElasticEase(ElasticEase::Out);
-        break;
     case QEasingCurve::InOutElastic:
-        curveFunc = new ElasticEase(ElasticEase::InOut);
-        break;
     case QEasingCurve::OutInElastic:
-        curveFunc = new ElasticEase(ElasticEase::OutIn);
-        break;
+        return new ElasticEase(type);
     case QEasingCurve::OutBounce:
-        curveFunc = new BounceEase(BounceEase::Out);
-        break;
     case QEasingCurve::InBounce:
-        curveFunc = new BounceEase(BounceEase::In);
-        break;
     case QEasingCurve::OutInBounce:
-        curveFunc = new BounceEase(BounceEase::OutIn);
-        break;
     case QEasingCurve::InOutBounce:
-        curveFunc = new BounceEase(BounceEase::InOut);
-        break;
+        return new BounceEase(type);
     case QEasingCurve::InBack:
-        curveFunc = new BackEase(BackEase::In);
-        break;
     case QEasingCurve::OutBack:
-        curveFunc = new BackEase(BackEase::Out);
-        break;
     case QEasingCurve::InOutBack:
-        curveFunc = new BackEase(BackEase::InOut);
-        break;
     case QEasingCurve::OutInBack:
-        curveFunc = new BackEase(BackEase::OutIn);
-        break;
+        return new BackEase(type);
     case QEasingCurve::BezierSpline:
-        curveFunc = new BezierEase();
-        break;
+        return new BezierEase;
     case QEasingCurve::TCBSpline:
-        curveFunc = new TCBEase();
-        break;
+        return new TCBEase;
     default:
-        curveFunc = new QEasingCurveFunction(QEasingCurveFunction::In, qreal(0.3), qreal(1.0), qreal(1.70158));
+        return new QEasingCurveFunction(type, qreal(0.3), qreal(1.0), qreal(1.70158));
     }
 
-    return curveFunc;
+    return 0;
 }
 
 /*!
@@ -1444,6 +1417,7 @@ qreal QEasingCurve::valueForProgress(qreal progress) const
 #ifndef QT_NO_DEBUG_STREAM
 QDebug operator<<(QDebug debug, const QEasingCurve &item)
 {
+    QDebugStateSaver saver(debug);
     debug << "type:" << item.d_ptr->type
           << "func:" << item.d_ptr->func;
     if (item.d_ptr->config) {
@@ -1505,6 +1479,8 @@ QDataStream &operator>>(QDataStream &stream, QEasingCurve &easing)
 
     bool hasConfig;
     stream >> hasConfig;
+    delete easing.d_ptr->config;
+    easing.d_ptr->config = Q_NULLPTR;
     if (hasConfig) {
         QEasingCurveFunction *config = curveToFunctionObject(type);
         stream >> config->_p;

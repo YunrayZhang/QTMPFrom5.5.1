@@ -4,8 +4,8 @@
 // found in the LICENSE file.
 //
 
-#ifndef COMPILER_PREPROCESSOR_DIAGNOSTICS_H_
-#define COMPILER_PREPROCESSOR_DIAGNOSTICS_H_
+#ifndef COMPILER_PREPROCESSOR_DIAGNOSTICSBASE_H_
+#define COMPILER_PREPROCESSOR_DIAGNOSTICSBASE_H_
 
 #include <string>
 
@@ -72,16 +72,17 @@ class Diagnostics
 
     virtual ~Diagnostics();
 
-    void report(ID id, const SourceLocation& loc, const std::string& text);
+    void report(ID id, const SourceLocation &loc, const std::string &text);
 
   protected:
     Severity severity(ID id);
     std::string message(ID id);
 
     virtual void print(ID id,
-                       const SourceLocation& loc,
-                       const std::string& text) = 0;
+                       const SourceLocation &loc,
+                       const std::string &text) = 0;
 };
 
 }  // namespace pp
-#endif  // COMPILER_PREPROCESSOR_DIAGNOSTICS_H_
+
+#endif  // COMPILER_PREPROCESSOR_DIAGNOSTICSBASE_H_

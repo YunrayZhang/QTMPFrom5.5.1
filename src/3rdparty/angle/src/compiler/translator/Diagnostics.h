@@ -1,17 +1,18 @@
 //
-// Copyright (c) 2012 The ANGLE Project Authors. All rights reserved.
+// Copyright (c) 2012-2013 The ANGLE Project Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 //
 
-#ifndef COMPILER_DIAGNOSTICS_H_
-#define COMPILER_DIAGNOSTICS_H_
+#ifndef COMPILER_TRANSLATOR_DIAGNOSTICS_H_
+#define COMPILER_TRANSLATOR_DIAGNOSTICS_H_
 
+#include "common/angleutils.h"
 #include "compiler/preprocessor/DiagnosticsBase.h"
 
 class TInfoSink;
 
-class TDiagnostics : public pp::Diagnostics
+class TDiagnostics : public pp::Diagnostics, angle::NonCopyable
 {
   public:
     TDiagnostics(TInfoSink& infoSink);
@@ -41,4 +42,4 @@ class TDiagnostics : public pp::Diagnostics
     int mNumWarnings;
 };
 
-#endif  // COMPILER_DIAGNOSTICS_H_
+#endif  // COMPILER_TRANSLATOR_DIAGNOSTICS_H_

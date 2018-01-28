@@ -1,7 +1,7 @@
 /****************************************************************************
 **
-** Copyright (C) 2013 Digia Plc and/or its subsidiary(-ies).
-** Contact: http://www.qt-project.org/legal
+** Copyright (C) 2015 The Qt Company Ltd.
+** Contact: http://www.qt.io/licensing/
 **
 ** This file is part of the examples of the Qt Toolkit.
 **
@@ -17,8 +17,8 @@
 **     notice, this list of conditions and the following disclaimer in
 **     the documentation and/or other materials provided with the
 **     distribution.
-**   * Neither the name of Digia Plc and its Subsidiary(-ies) nor the names
-**     of its contributors may be used to endorse or promote products derived
+**   * Neither the name of The Qt Company Ltd nor the names of its
+**     contributors may be used to endorse or promote products derived
 **     from this software without specific prior written permission.
 **
 **
@@ -59,7 +59,7 @@ public:
     {
     }
 
-    virtual void resizeEvent(QResizeEvent *event)
+    virtual void resizeEvent(QResizeEvent *event) Q_DECL_OVERRIDE
     {
         w->setGeometry(0, 0, event->size().width(), event->size().height());
     }
@@ -91,7 +91,7 @@ public:
         original->setZValue(z);
     }
 
-    void setGeometry (const QRectF &rect)
+    void setGeometry (const QRectF &rect) Q_DECL_OVERRIDE
     {
         original->setTransform(QTransform::fromScale(rect.width() / r.width(),
                                                      rect.height() / r.height()), true);
@@ -100,7 +100,7 @@ public:
     }
 
 protected:
-    QSizeF sizeHint(Qt::SizeHint which, const QSizeF &constraint = QSizeF()) const
+    QSizeF sizeHint(Qt::SizeHint which, const QSizeF &constraint = QSizeF()) const Q_DECL_OVERRIDE
     {
         Q_UNUSED(constraint);
         QSizeF sh;
@@ -138,7 +138,7 @@ public:
     {
     }
 
-    void paint(QPainter *painter, const QStyleOptionGraphicsItem*, QWidget*)
+    void paint(QPainter *painter, const QStyleOptionGraphicsItem*, QWidget*) Q_DECL_OVERRIDE
     {
         QPointF reflection = QPointF();
         reflection.setY(scaled.height() + 2);
@@ -170,14 +170,14 @@ public:
         painter->drawPixmap(reflection, tmp);
     }
 
-    void resizeEvent(QGraphicsSceneResizeEvent *event)
+    void resizeEvent(QGraphicsSceneResizeEvent *event) Q_DECL_OVERRIDE
     {
         QSize newSize = event->newSize().toSize();
         newSize.setHeight(newSize.height() / 2);
         scaled = original.scaled(newSize);
     }
 
-    QRectF boundingRect() const
+    QRectF boundingRect() const Q_DECL_OVERRIDE
     {
         QSize size(scaled.width(), scaled.height() * 2 + 2);
         return QRectF(QPointF(0, 0), size);

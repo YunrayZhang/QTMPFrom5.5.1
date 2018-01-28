@@ -42,15 +42,16 @@ manifestmeta.highlighted.names      =   "QtQuick/Qt Quick Demo - Same Game" \
                                         "QtQuick/Qt Quick Demo - StocQt" \
                                         "QtQuick/Qt Quick Demo - Clocks" \
                                         "QtQuick/Qt Quick Examples - Shader Effects" \
-                                        "QtQuick/Qt Quick Examples - Text" \
-                                        "QtQuick/Qt Quick Examples - Window and Screen" \
+                                        "QtQuickExtras/Qt Quick Extras - Dashboard" \
+                                        "QtQuickExtras/Qt Quick Extras - Gallery" \
                                         "QtQuickControls/Qt Quick Controls - Gallery" \
                                         "QtQuickControls/Qt Quick Controls - Text Editor Example" \
                                         "QtQuickControls/Qt Quick Controls - Table View Example" \
                                         "QtQuickControls/Qt Quick Controls - Calendar Example" \
                                         "QtQuickDialogs/Qt Quick System Dialog Examples" \
-                                        "QtWidgets/Application Example" \
-                                        "QtWinExtras/Quick Player"
+                                        "QtWinExtras/Quick Player" \
+                                        "QtMultimedia/QML Video Shader Effects Example" \
+                                        "QtCanvas3D/Planets Example"
 
 manifestmeta.highlighted.attributes =   isHighlighted:true
 
@@ -255,7 +256,12 @@ manifestmeta.ios.tags                  = ios
 # add a generic thumbnail image to examples that do not have any images in their documentation
 manifestmeta.thumbnail.attributes  = "imageUrl:qthelp\://org.qt-project.qtdoc.$QT_VERSION_TAG/qtdoc/images/qt-codesample.png"
 
-manifestmeta.thumbnail.names    =      "QtConcurrent/Map Example" \
+manifestmeta.thumbnail.names    =      "QtCore/Contiguous Cache Example" \
+                                       "QtCore/Custom Type Example" \
+                                       "QtCore/JSON Save Game Example" \
+                                       "QtCore/Semaphores Example" \
+                                       "QtCore/Wait Conditions Example" \
+                                       "QtConcurrent/Map Example" \
                                        "QtConcurrent/QtConcurrent Word Count Example" \
                                        "QtConcurrent/Run Function Example" \
                                        "QtGui/Raster Window Example" \
@@ -264,12 +270,9 @@ manifestmeta.thumbnail.names    =      "QtConcurrent/Map Example" \
                                        "QtWidgets/Event Transitions Example" \
                                        "QtWidgets/Two-way Button Example" \
                                        "QtWidgets/Validators Example" \
-                                       "ActiveQt/*"  \
                                        "QtDbus/*" \
                                        "QtHelp/*" \
                                        "QtMultimedia/AudioEngine Example" \
-                                       "QtMultimedia/Declarative Radio Example" \
-                                       "QtMultimediaWidgets/Media Player Example" \
                                        "QtQml/Extending QML*" \
                                        "QtQuick/Qt Quick Examples - Accessibility" \
                                        "QtSensors/Qt Sensors - SensorGesture QML Type example" \

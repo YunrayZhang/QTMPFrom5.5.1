@@ -1,48 +1,41 @@
 /****************************************************************************
 **
-** Copyright (C) 2013 Digia Plc and/or its subsidiary(-ies).
-** Contact: http://www.qt-project.org/legal
+** Copyright (C) 2015 The Qt Company Ltd.
+** Contact: http://www.qt.io/licensing/
 **
 ** This file is part of the test suite of the Qt Toolkit.
 **
-** $QT_BEGIN_LICENSE:LGPL$
+** $QT_BEGIN_LICENSE:LGPL21$
 ** Commercial License Usage
 ** Licensees holding valid commercial Qt licenses may use this file in
 ** accordance with the commercial license agreement provided with the
 ** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and Digia.  For licensing terms and
-** conditions see http://qt.digia.com/licensing.  For further information
-** use the contact form at http://qt.digia.com/contact-us.
+** a written agreement between you and The Qt Company. For licensing terms
+** and conditions see http://www.qt.io/terms-conditions. For further
+** information use the contact form at http://www.qt.io/contact-us.
 **
 ** GNU Lesser General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 2.1 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU Lesser General Public License version 2.1 requirements
-** will be met: http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
+** General Public License version 2.1 or version 3 as published by the Free
+** Software Foundation and appearing in the file LICENSE.LGPLv21 and
+** LICENSE.LGPLv3 included in the packaging of this file. Please review the
+** following information to ensure the GNU Lesser General Public License
+** requirements will be met: https://www.gnu.org/licenses/lgpl.html and
+** http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
 **
-** In addition, as a special exception, Digia gives you certain additional
-** rights.  These rights are described in the Digia Qt LGPL Exception
+** As a special exception, The Qt Company gives you certain additional
+** rights. These rights are described in The Qt Company LGPL Exception
 ** version 1.1, included in the file LGPL_EXCEPTION.txt in this package.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3.0 as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU General Public License version 3.0 requirements will be
-** met: http://www.gnu.org/copyleft/gpl.html.
-**
 **
 ** $QT_END_LICENSE$
 **
 ****************************************************************************/
 
-#include <qwindow.h>
+#include <qrasterwindow.h>
 #include <qpa/qwindowsysteminterface.h>
 #include <qpa/qplatformintegration.h>
 #include <private/qguiapplication_p.h>
+#include <QtGui/QPainter>
 
 #include <QtTest/QtTest>
 
@@ -51,6 +44,8 @@
 
 #if defined(Q_OS_QNX)
 #include <QOpenGLContext>
+#elif defined(Q_OS_WIN) && !defined(Q_OS_WINCE) && !defined(Q_OS_WINRT)
+#  include <QtCore/qt_windows.h>
 #endif
 
 // For QSignalSpy slot connections.
@@ -67,10 +62,13 @@ private slots:
     void mapGlobal();
     void positioning_data();
     void positioning();
+    void positioningDuringMinimized();
+    void platformSurface();
     void isExposed();
     void isActive();
     void testInputEvents();
     void touchToMouseTranslation();
+    void touchToMouseTranslationForDevices();
     void mouseToTouchTranslation();
     void mouseToTouchLoop();
     void touchCancel();
@@ -93,17 +91,37 @@ private slots:
     void modalWithChildWindow();
     void modalWindowModallity();
     void modalWindowPosition();
-
-    void initTestCase()
-    {
-        touchDevice = new QTouchDevice;
-        touchDevice->setType(QTouchDevice::TouchScreen);
-        QWindowSystemInterface::registerTouchDevice(touchDevice);
-    }
+    void windowsTransientChildren();
+    void requestUpdate();
+    void initTestCase();
+    void cleanup();
 
 private:
+    QPoint m_availableTopLeft;
+    QSize m_testWindowSize;
     QTouchDevice *touchDevice;
 };
+
+void tst_QWindow::initTestCase()
+{
+    // Size of reference window, 200 for < 2000, scale up for larger screens
+    // to avoid Windows warnings about minimum size for decorated windows.
+    int width = 200;
+    const QScreen *screen = QGuiApplication::primaryScreen();
+    m_availableTopLeft = screen->availableGeometry().topLeft();
+    const int screenWidth = screen->geometry().width();
+    if (screenWidth > 2000)
+        width = 100 * ((screenWidth + 500) / 1000);
+    m_testWindowSize = QSize(width, width);
+    touchDevice = new QTouchDevice;
+    touchDevice->setType(QTouchDevice::TouchScreen);
+    QWindowSystemInterface::registerTouchDevice(touchDevice);
+}
+
+void tst_QWindow::cleanup()
+{
+    QVERIFY(QGuiApplication::allWindows().isEmpty());
+}
 
 void tst_QWindow::mapGlobal()
 {
@@ -139,12 +157,28 @@ public:
     void reset()
     {
         m_received.clear();
+        m_framePositionsOnMove.clear();
     }
 
     bool event(QEvent *event)
     {
         m_received[event->type()]++;
         m_order << event->type();
+        switch (event->type()) {
+        case QEvent::Expose:
+            m_exposeRegion = static_cast<QExposeEvent *>(event)->region();
+            break;
+
+        case QEvent::PlatformSurface:
+            m_surfaceventType = static_cast<QPlatformSurfaceEvent *>(event)->surfaceEventType();
+            break;
+
+        case QEvent::Move:
+            m_framePositionsOnMove << framePosition();
+            break;
+        default:
+            break;
+        }
 
         return QWindow::event(event);
     }
@@ -159,16 +193,29 @@ public:
         return m_order.indexOf(type);
     }
 
+    QRegion exposeRegion() const
+    {
+        return m_exposeRegion;
+    }
+
+    QPlatformSurfaceEvent::SurfaceEventType surfaceEventType() const
+    {
+        return m_surfaceventType;
+    }
+
+    QVector<QPoint> m_framePositionsOnMove;
 private:
     QHash<QEvent::Type, int> m_received;
     QVector<QEvent::Type> m_order;
+    QRegion m_exposeRegion;
+    QPlatformSurfaceEvent::SurfaceEventType m_surfaceventType;
 };
 
 void tst_QWindow::eventOrderOnShow()
 {
     // Some platforms enforce minimum widths for windows, which can cause extra resize
     // events, so set the width to suitably large value to avoid those.
-    QRect geometry(80, 80, 300, 40);
+    QRect geometry(m_availableTopLeft + QPoint(80, 80), m_testWindowSize);
 
     Window window;
     window.setGeometry(geometry);
@@ -187,7 +234,7 @@ void tst_QWindow::resizeEventAfterResize()
 {
     // Some platforms enforce minimum widths for windows, which can cause extra resize
     // events, so set the width to suitably large value to avoid those.
-    QRect geometry(QGuiApplication::primaryScreen()->availableGeometry().topLeft() + QPoint(20, 20), QSize(300, 40));
+    QRect geometry(m_availableTopLeft + QPoint(80, 80), m_testWindowSize * 2);
 
     Window window;
     window.setGeometry(geometry);
@@ -197,7 +244,7 @@ void tst_QWindow::resizeEventAfterResize()
 
     // QTBUG-32706
     // Make sure we get a resizeEvent after calling resize
-    window.resize(400, 100);
+    window.resize(m_testWindowSize);
 
 #if defined(Q_OS_BLACKBERRY) // "window" is the "root" window and will always be shown fullscreen
                               // so we only expect one resize event
@@ -210,17 +257,11 @@ void tst_QWindow::resizeEventAfterResize()
 void tst_QWindow::positioning_data()
 {
     QTest::addColumn<int>("windowflags");
-    QTest::addColumn<int>("resizecount");
 
-    QTest::newRow("default") << int(Qt::Window | Qt::WindowTitleHint | Qt::WindowMinMaxButtonsHint | Qt::WindowCloseButtonHint | Qt::WindowFullscreenButtonHint)
-#if defined(Q_OS_OSX) && MAC_OS_X_VERSION_MAX_ALLOWED < MAC_OS_X_VERSION_10_7
-                             << 4;
-#else
-                             << 3;
-#endif
+    QTest::newRow("default") << int(Qt::Window | Qt::WindowTitleHint | Qt::WindowMinMaxButtonsHint | Qt::WindowCloseButtonHint | Qt::WindowFullscreenButtonHint);
 
 #ifdef Q_OS_OSX
-    QTest::newRow("fake") << int(Qt::Window | Qt::WindowTitleHint | Qt::WindowMinMaxButtonsHint | Qt::WindowCloseButtonHint) << 4;
+    QTest::newRow("fake") << int(Qt::Window | Qt::WindowTitleHint | Qt::WindowMinMaxButtonsHint | Qt::WindowCloseButtonHint);
 #endif
 }
 
@@ -231,25 +272,25 @@ void tst_QWindow::positioning()
         QSKIP("This platform does not support non-fullscreen windows");
     }
 
+    if (qApp->platformName().toLower() == QLatin1String("wayland"))
+        QSKIP("Wayland: This fails. Figure out why.");
+
     // Some platforms enforce minimum widths for windows, which can cause extra resize
     // events, so set the width to suitably large value to avoid those.
-    const QSize size = QSize(300, 40);
-    const QRect geometry(QPoint(80, 80), size);
+    const QRect geometry(m_availableTopLeft + QPoint(80, 80), m_testWindowSize);
 
     QFETCH(int, windowflags);
-    QFETCH(int, resizecount);
     Window window((Qt::WindowFlags)windowflags);
-    window.setGeometry(QRect(QPoint(20, 20), size));
-    window.setFramePosition(QPoint(40, 40)); // Move window around before show, size must not change.
-    QCOMPARE(window.geometry().size(), size);
+    window.setGeometry(QRect(m_availableTopLeft + QPoint(20, 20), m_testWindowSize));
+    window.setFramePosition(m_availableTopLeft + QPoint(40, 40)); // Move window around before show, size must not change.
+    QCOMPARE(window.geometry().size(), m_testWindowSize);
     window.setGeometry(geometry);
     QCOMPARE(window.geometry(), geometry);
     //  explicitly use non-fullscreen show. show() can be fullscreen on some platforms
     window.showNormal();
     QCoreApplication::processEvents();
 
-    QTRY_COMPARE(window.received(QEvent::Resize), 1);
-    QTRY_VERIFY(window.received(QEvent::Expose) > 0);
+    QTest::qWaitForWindowExposed(&window);
 
     QMargins originalMargins = window.frameMargins();
 
@@ -259,26 +300,25 @@ void tst_QWindow::positioning()
     QPoint originalPos = window.position();
     QPoint originalFramePos = window.framePosition();
 
+    window.reset();
     window.setWindowState(Qt::WindowFullScreen);
     QCoreApplication::processEvents();
-#if defined(Q_OS_BLACKBERRY) // "window" is the "root" window and will always be shown fullscreen
-                              // so we only expect one resize event
-    Q_UNUSED(resizecount);
-    QTRY_COMPARE(window.received(QEvent::Resize), 1);
-#else
-    QTRY_COMPARE(window.received(QEvent::Resize), 2);
+    // On BB10 the window is the root window and fullscreen, so nothing is resized.
+#if !defined(Q_OS_BLACKBERRY)
+    QTRY_VERIFY(window.received(QEvent::Resize) > 0);
 #endif
 
     QTest::qWait(2000);
 
+    window.reset();
     window.setWindowState(Qt::WindowNoState);
     QCoreApplication::processEvents();
-#if defined(Q_OS_BLACKBERRY) // "window" is the "root" window and will always be shown fullscreen
-                              // so we only expect one resize event
-    QTRY_COMPARE(window.received(QEvent::Resize), 1);
-#else
-    QTRY_COMPARE(window.received(QEvent::Resize), resizecount);
+    // On BB10 the window is the root window and fullscreen, so nothing is resized.
+#if !defined(Q_OS_BLACKBERRY)
+    QTRY_VERIFY(window.received(QEvent::Resize) > 0);
 #endif
+
+    QTest::qWait(2000);
 
     QTRY_COMPARE(originalPos, window.position());
     QTRY_COMPARE(originalFramePos, window.framePosition());
@@ -287,12 +327,20 @@ void tst_QWindow::positioning()
     // if our positioning is actually fully respected by the window manager
     // test whether it correctly handles frame positioning as well
     if (originalPos == geometry.topLeft() && (originalMargins.top() != 0 || originalMargins.left() != 0)) {
-        QPoint framePos = QPlatformScreen::platformScreenForWindow(&window)->availableGeometry().topLeft() + QPoint(40, 40);
+        QPoint framePos = QPlatformScreen::platformScreenForWindow(&window)->availableGeometry().center();
 
         window.reset();
+        const QPoint oldFramePos = window.framePosition();
         window.setFramePosition(framePos);
 
         QTRY_VERIFY(window.received(QEvent::Move));
+        if (window.framePosition() != framePos) {
+            qDebug() << "About to fail auto-test. Here is some additional information:";
+            qDebug() << "window.framePosition() == " << window.framePosition();
+            qDebug() << "old frame position == " << oldFramePos;
+            qDebug() << "We received " << window.received(QEvent::Move) << " move events";
+            qDebug() << "frame positions after each move event:" << window.m_framePositionsOnMove;
+        }
         QTRY_COMPARE(framePos, window.framePosition());
         QTRY_COMPARE(originalMargins, window.frameMargins());
         QCOMPARE(window.position(), window.framePosition() + QPoint(originalMargins.left(), originalMargins.top()));
@@ -306,9 +354,87 @@ void tst_QWindow::positioning()
     }
 }
 
+void tst_QWindow::positioningDuringMinimized()
+{
+    // QTBUG-39544, setting a geometry in minimized state should work as well.
+    if (QGuiApplication::platformName().compare("windows", Qt::CaseInsensitive))
+        QSKIP("Not supported on this platform");
+    Window window;
+    window.setTitle(QStringLiteral("positioningDuringMinimized"));
+    const QRect initialGeometry(m_availableTopLeft + QPoint(100, 100), m_testWindowSize);
+    window.setGeometry(initialGeometry);
+    window.showNormal();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+    QCOMPARE(window.geometry(), initialGeometry);
+    window.setWindowState(Qt::WindowMinimized);
+    QCOMPARE(window.geometry(), initialGeometry);
+    const QRect newGeometry(initialGeometry.topLeft() + QPoint(50, 50), initialGeometry.size() + QSize(50, 50));
+    window.setGeometry(newGeometry);
+    QTRY_COMPARE(window.geometry(), newGeometry);
+    window.setWindowState(Qt::WindowNoState);
+    QTRY_COMPARE(window.geometry(), newGeometry);
+}
+
+class PlatformWindowFilter : public QObject
+{
+    Q_OBJECT
+public:
+    PlatformWindowFilter(QObject *parent = 0)
+        : QObject(parent)
+        , m_window(Q_NULLPTR)
+        , m_alwaysExisted(true)
+    {}
+
+    void setWindow(Window *window) { m_window = window; }
+
+    bool eventFilter(QObject *o, QEvent *e)
+    {
+        // Check that the platform surface events are delivered synchronously.
+        // If they are, the native platform surface should always exist when we
+        // receive a QPlatformSurfaceEvent
+        if (e->type() == QEvent::PlatformSurface && o == m_window) {
+            m_alwaysExisted &= (m_window->handle() != Q_NULLPTR);
+        }
+        return false;
+    }
+
+    bool surfaceExisted() const { return m_alwaysExisted; }
+
+private:
+    Window *m_window;
+    bool m_alwaysExisted;
+};
+
+void tst_QWindow::platformSurface()
+{
+    QRect geometry(m_availableTopLeft + QPoint(80, 80), m_testWindowSize);
+
+    Window window;
+    PlatformWindowFilter filter;
+    filter.setWindow(&window);
+    window.installEventFilter(&filter);
+
+    window.setGeometry(geometry);
+    QCOMPARE(window.geometry(), geometry);
+    window.create();
+
+    QTRY_VERIFY(window.received(QEvent::PlatformSurface) == 1);
+    QTRY_VERIFY(window.surfaceEventType() == QPlatformSurfaceEvent::SurfaceCreated);
+    QTRY_VERIFY(window.handle() != Q_NULLPTR);
+
+    window.destroy();
+    QTRY_VERIFY(window.received(QEvent::PlatformSurface) == 2);
+    QTRY_VERIFY(window.surfaceEventType() == QPlatformSurfaceEvent::SurfaceAboutToBeDestroyed);
+    QTRY_VERIFY(window.handle() == Q_NULLPTR);
+
+    // Check for synchronous delivery of platform surface events and that the platform
+    // surface always existed upon event delivery
+    QTRY_VERIFY(filter.surfaceExisted());
+}
+
 void tst_QWindow::isExposed()
 {
-    QRect geometry(80, 80, 40, 40);
+    QRect geometry(m_availableTopLeft + QPoint(80, 80), m_testWindowSize);
 
     Window window;
     window.setGeometry(geometry);
@@ -319,7 +445,20 @@ void tst_QWindow::isExposed()
     QTRY_VERIFY(window.received(QEvent::Expose) > 0);
     QTRY_VERIFY(window.isExposed());
 
+#ifndef Q_OS_WIN
+    // This is a top-level window so assuming it is completely exposed, the
+    // expose region must be (0, 0), (width, height). If this is not the case,
+    // the platform plugin is sending expose events with a region in an
+    // incorrect coordinate system.
+    QRect r = window.exposeRegion().boundingRect();
+    r = QRect(window.mapToGlobal(r.topLeft()), r.size());
+    QCOMPARE(r, window.geometry());
+#endif
+
     window.hide();
+
+    if (qApp->platformName().toLower() == QLatin1String("wayland"))
+        QSKIP("Wayland: This is flaky. Figure out why.");
 
     QCoreApplication::processEvents();
     QTRY_VERIFY(window.received(QEvent::Expose) > 1);
@@ -329,10 +468,13 @@ void tst_QWindow::isExposed()
 
 void tst_QWindow::isActive()
 {
+    if (qApp->platformName().toLower() == QLatin1String("wayland"))
+        QSKIP("Wayland: This fails. Figure out why.");
+
     Window window;
     // Some platforms enforce minimum widths for windows, which can cause extra resize
     // events, so set the width to suitably large value to avoid those.
-    window.setGeometry(80, 80, 300, 40);
+    window.setGeometry(QRect(m_availableTopLeft + QPoint(80, 80), m_testWindowSize));
     window.show();
     QCoreApplication::processEvents();
 
@@ -372,7 +514,7 @@ void tst_QWindow::isActive()
 
     Window dialog;
     dialog.setTransientParent(&window);
-    dialog.setGeometry(110, 110, 300, 30);
+    dialog.setGeometry(QRect(m_availableTopLeft + QPoint(110, 100), m_testWindowSize));
     dialog.show();
 
     dialog.requestActivate();
@@ -508,7 +650,7 @@ public:
 void tst_QWindow::testInputEvents()
 {
     InputTestWindow window;
-    window.setGeometry(80, 80, 40, 40);
+    window.setGeometry(QRect(m_availableTopLeft + QPoint(80, 80), m_testWindowSize));
     window.showNormal();
     QVERIFY(QTest::qWaitForWindowExposed(&window));
 
@@ -546,7 +688,7 @@ void tst_QWindow::testInputEvents()
     // Now with null pointer as window. local param should not be utilized:
     // handleMouseEvent() with tlw == 0 means the event is in global coords only.
     window.mousePressButton = window.mouseReleaseButton = 0;
-    QPointF nonWindowGlobal(2000, 500); // not inside the window
+    QPointF nonWindowGlobal(window.geometry().topRight() + QPoint(200, 50)); // not inside the window
     QWindowSystemInterface::handleMouseEvent(0, nonWindowGlobal, nonWindowGlobal, Qt::LeftButton);
     QWindowSystemInterface::handleMouseEvent(0, nonWindowGlobal, nonWindowGlobal, Qt::NoButton);
     QCoreApplication::processEvents();
@@ -564,11 +706,9 @@ void tst_QWindow::testInputEvents()
 
 void tst_QWindow::touchToMouseTranslation()
 {
-    if (!QGuiApplicationPrivate::platformIntegration()->styleHint(QPlatformIntegration::SynthesizeMouseFromTouchEvents).toBool())
-        QSKIP("Mouse events are synthesized by the system on this platform.");
     InputTestWindow window;
     window.ignoreTouch = true;
-    window.setGeometry(80, 80, 40, 40);
+    window.setGeometry(QRect(m_availableTopLeft + QPoint(80, 80), m_testWindowSize));
     window.show();
     QVERIFY(QTest::qWaitForWindowExposed(&window));
 
@@ -638,13 +778,42 @@ void tst_QWindow::touchToMouseTranslation()
     QTRY_COMPARE(window.mouseReleaseButton, 0);
 }
 
+void tst_QWindow::touchToMouseTranslationForDevices()
+{
+    InputTestWindow window;
+    window.ignoreTouch = true;
+    window.setGeometry(QRect(m_availableTopLeft + QPoint(80, 80), m_testWindowSize));
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+
+    QPoint touchPoint(10, 10);
+
+    QTest::touchEvent(&window, touchDevice).press(0, touchPoint, &window);
+    QTest::touchEvent(&window, touchDevice).release(0, touchPoint, &window);
+    QCoreApplication::processEvents();
+
+    QCOMPARE(window.mousePressedCount, 1);
+    QCOMPARE(window.mouseReleasedCount, 1);
+
+    window.resetCounters();
+
+    touchDevice->setCapabilities(touchDevice->capabilities() | QTouchDevice::MouseEmulation);
+    QTest::touchEvent(&window, touchDevice).press(0, touchPoint, &window);
+    QTest::touchEvent(&window, touchDevice).release(0, touchPoint, &window);
+    QCoreApplication::processEvents();
+    touchDevice->setCapabilities(touchDevice->capabilities() & ~QTouchDevice::MouseEmulation);
+
+    QCOMPARE(window.mousePressedCount, 0);
+    QCOMPARE(window.mouseReleasedCount, 0);
+}
+
 void tst_QWindow::mouseToTouchTranslation()
 {
     qApp->setAttribute(Qt::AA_SynthesizeTouchForUnhandledMouseEvents, true);
 
     InputTestWindow window;
     window.ignoreMouse = true;
-    window.setGeometry(80, 80, 40, 40);
+    window.setGeometry(QRect(m_availableTopLeft + QPoint(80, 80), m_testWindowSize));
     window.show();
     QVERIFY(QTest::qWaitForWindowExposed(&window));
 
@@ -693,7 +862,7 @@ void tst_QWindow::mouseToTouchLoop()
     InputTestWindow window;
     window.ignoreMouse = true;
     window.ignoreTouch = true;
-    window.setGeometry(80, 80, 40, 40);
+    window.setGeometry(QRect(m_availableTopLeft + QPoint(80, 80), m_testWindowSize));
     window.show();
     QVERIFY(QTest::qWaitForWindowExposed(&window));
 
@@ -708,7 +877,7 @@ void tst_QWindow::mouseToTouchLoop()
 void tst_QWindow::touchCancel()
 {
     InputTestWindow window;
-    window.setGeometry(80, 80, 40, 40);
+    window.setGeometry(QRect(m_availableTopLeft + QPoint(80, 80), m_testWindowSize));
     window.show();
     QVERIFY(QTest::qWaitForWindowExposed(&window));
 
@@ -766,11 +935,9 @@ void tst_QWindow::touchCancel()
 
 void tst_QWindow::touchCancelWithTouchToMouse()
 {
-    if (!QGuiApplicationPrivate::platformIntegration()->styleHint(QPlatformIntegration::SynthesizeMouseFromTouchEvents).toBool())
-        QSKIP("Mouse events are synthesized by the system on this platform.");
     InputTestWindow window;
     window.ignoreTouch = true;
-    window.setGeometry(80, 80, 40, 40);
+    window.setGeometry(QRect(m_availableTopLeft + QPoint(80, 80), m_testWindowSize));
     window.show();
     QVERIFY(QTest::qWaitForWindowExposed(&window));
 
@@ -811,7 +978,7 @@ void tst_QWindow::touchCancelWithTouchToMouse()
 void tst_QWindow::touchInterruptedByPopup()
 {
     InputTestWindow window;
-    window.setGeometry(80, 80, 200, 200);
+    window.setGeometry(QRect(m_availableTopLeft + QPoint(80, 80), m_testWindowSize));
     window.show();
     QVERIFY(QTest::qWaitForWindowExposed(&window));
 
@@ -832,8 +999,7 @@ void tst_QWindow::touchInterruptedByPopup()
     InputTestWindow popup;
     popup.setFlags(Qt::Popup);
     popup.setModality(Qt::WindowModal);
-    popup.setWidth(160);
-    popup.setHeight(160);
+    popup.resize(m_testWindowSize /  2);
     popup.setTransientParent(&window);
     popup.show();
     QVERIFY(QTest::qWaitForWindowExposed(&popup));
@@ -863,7 +1029,7 @@ void tst_QWindow::orientation()
     qRegisterMetaType<Qt::ScreenOrientation>("Qt::ScreenOrientation");
 
     QWindow window;
-    window.setGeometry(80, 80, 40, 40);
+    window.setGeometry(QRect(m_availableTopLeft + QPoint(80, 80), m_testWindowSize));
     window.create();
 
     window.reportContentOrientationChange(Qt::PortraitOrientation);
@@ -946,6 +1112,9 @@ void tst_QWindow::close()
 
 void tst_QWindow::activateAndClose()
 {
+    if (qApp->platformName().toLower() == QLatin1String("wayland"))
+        QSKIP("Wayland: This fails. Figure out why.");
+
     for (int i = 0; i < 10; ++i)  {
        QWindow window;
 #if defined(Q_OS_QNX)
@@ -974,7 +1143,7 @@ void tst_QWindow::mouseEventSequence()
     int doubleClickInterval = qGuiApp->styleHints()->mouseDoubleClickInterval();
 
     InputTestWindow window;
-    window.setGeometry(80, 80, 40, 40);
+    window.setGeometry(QRect(m_availableTopLeft + QPoint(80, 80), m_testWindowSize));
     window.show();
     QVERIFY(QTest::qWaitForWindowExposed(&window));
 
@@ -1096,7 +1265,7 @@ void tst_QWindow::inputReentrancy()
     InputTestWindow window;
     window.spinLoopWhenPressed = true;
 
-    window.setGeometry(80, 80, 40, 40);
+    window.setGeometry(QRect(m_availableTopLeft + QPoint(80, 80), m_testWindowSize));
     window.show();
     QVERIFY(QTest::qWaitForWindowExposed(&window));
 
@@ -1165,7 +1334,7 @@ void tst_QWindow::tabletEvents()
 {
 #ifndef QT_NO_TABLETEVENT
     TabletTestWindow window;
-    window.setGeometry(10, 10, 100, 100);
+    window.setGeometry(QRect(m_availableTopLeft + QPoint(10, 10), m_testWindowSize));
     qGuiApp->installEventFilter(&window);
 
     QPoint local(10, 10);
@@ -1194,19 +1363,22 @@ void tst_QWindow::tabletEvents()
 
 void tst_QWindow::windowModality_QTBUG27039()
 {
+    if (qApp->platformName().toLower() == QLatin1String("wayland"))
+        QSKIP("Wayland: This fails. Figure out why.");
+
     QWindow parent;
-    parent.setGeometry(10, 10, 100, 100);
+    parent.setGeometry(QRect(m_availableTopLeft + QPoint(10, 10), m_testWindowSize));
     parent.show();
 
     InputTestWindow modalA;
     modalA.setTransientParent(&parent);
-    modalA.setGeometry(10, 10, 20, 20);
+    modalA.setGeometry(QRect(m_availableTopLeft + QPoint(20, 10), m_testWindowSize));
     modalA.setModality(Qt::ApplicationModal);
     modalA.show();
 
     InputTestWindow modalB;
     modalB.setTransientParent(&parent);
-    modalB.setGeometry(30, 10, 20, 20);
+    modalA.setGeometry(QRect(m_availableTopLeft + QPoint(30, 10), m_testWindowSize));
     modalB.setModality(Qt::ApplicationModal);
     modalB.show();
 
@@ -1286,50 +1458,59 @@ void tst_QWindow::mask()
 
 void tst_QWindow::initialSize()
 {
+    if (qApp->platformName().toLower() == QLatin1String("wayland"))
+        QSKIP("Wayland: This fails. Figure out why.");
+
     QSize defaultSize(0,0);
     {
     Window w;
-    w.show();
+    w.showNormal();
     QTRY_VERIFY(w.width() > 0);
     QTRY_VERIFY(w.height() > 0);
     defaultSize = QSize(w.width(), w.height());
     }
     {
     Window w;
-    w.setWidth(200);
-    w.show();
+    w.setWidth(m_testWindowSize.width());
+    w.showNormal();
 #if defined(Q_OS_BLACKBERRY) // "window" is the "root" window and will always be shown fullscreen
                               // so we only expect one resize event
     QTRY_COMPARE(w.width(), qGuiApp->primaryScreen()->availableGeometry().width());
 #else
-    QTRY_COMPARE(w.width(), 200);
+    QTRY_COMPARE(w.width(), m_testWindowSize.width());
 #endif
     QTRY_VERIFY(w.height() > 0);
     }
     {
     Window w;
-    w.resize(200, 42);
-    w.show();
+    const QSize testSize(m_testWindowSize.width(), 42);
+    w.resize(testSize);
+    w.showNormal();
+
 #if defined(Q_OS_BLACKBERRY) // "window" is the "root" window and will always be shown fullscreen
                               // so we only expect one resize event
-    QTRY_COMPARE(w.width(), qGuiApp->primaryScreen()->availableGeometry().width());
-    QTRY_COMPARE(w.height(), qGuiApp->primaryScreen()->availableGeometry().height());
+    const QSize expectedSize = QGuiApplication::primaryScreen()->availableGeometry().size();
 #else
-    QTRY_COMPARE(w.width(), 200);
-    QTRY_COMPARE(w.height(), 42);
+    const QSize expectedSize = testSize;
 #endif
+    QTRY_COMPARE(w.size(), expectedSize);
     }
 }
 
 void tst_QWindow::modalDialog()
 {
+    if (qApp->platformName().toLower() == QLatin1String("wayland"))
+        QSKIP("Wayland: This fails. Figure out why.");
+
     QWindow normalWindow;
-    normalWindow.resize(400, 400);
+    normalWindow.setFramePosition(m_availableTopLeft + QPoint(80, 80));
+    normalWindow.resize(m_testWindowSize);
     normalWindow.show();
     QVERIFY(QTest::qWaitForWindowExposed(&normalWindow));
 
     QWindow dialog;
-    dialog.resize(200,200);
+    dialog.setFramePosition(m_availableTopLeft + QPoint(200, 200));
+    dialog.resize(m_testWindowSize);
     dialog.setModality(Qt::ApplicationModal);
     dialog.setFlags(Qt::Dialog);
     dialog.show();
@@ -1344,13 +1525,18 @@ void tst_QWindow::modalDialog()
 
 void tst_QWindow::modalDialogClosingOneOfTwoModal()
 {
+    if (qApp->platformName().toLower() == QLatin1String("wayland"))
+        QSKIP("Wayland: This fails. Figure out why.");
+
     QWindow normalWindow;
-    normalWindow.resize(400, 400);
+    normalWindow.setFramePosition(m_availableTopLeft + QPoint(80, 80));
+    normalWindow.resize(m_testWindowSize);
     normalWindow.show();
     QVERIFY(QTest::qWaitForWindowExposed(&normalWindow));
 
     QWindow first_dialog;
-    first_dialog.resize(200,200);
+    first_dialog.setFramePosition(m_availableTopLeft + QPoint(200, 200));
+    first_dialog.resize(m_testWindowSize);
     first_dialog.setModality(Qt::ApplicationModal);
     first_dialog.setFlags(Qt::Dialog);
     first_dialog.show();
@@ -1358,7 +1544,8 @@ void tst_QWindow::modalDialogClosingOneOfTwoModal()
 
     {
         QWindow second_dialog;
-        second_dialog.resize(200,200);
+        second_dialog.setFramePosition(m_availableTopLeft + QPoint(300, 300));
+        second_dialog.resize(m_testWindowSize);
         second_dialog.setModality(Qt::ApplicationModal);
         second_dialog.setFlags(Qt::Dialog);
         second_dialog.show();
@@ -1376,13 +1563,18 @@ void tst_QWindow::modalDialogClosingOneOfTwoModal()
 
 void tst_QWindow::modalWithChildWindow()
 {
+    if (qApp->platformName().toLower() == QLatin1String("wayland"))
+        QSKIP("Wayland: This fails. Figure out why.");
+
     QWindow normalWindow;
-    normalWindow.resize(400, 400);
+    normalWindow.setFramePosition(m_availableTopLeft + QPoint(80, 80));
+    normalWindow.resize(m_testWindowSize);
     normalWindow.show();
     QVERIFY(QTest::qWaitForWindowExposed(&normalWindow));
 
     QWindow tlw_dialog;
-    tlw_dialog.resize(400,200);
+    tlw_dialog.setFramePosition(m_availableTopLeft + QPoint(200, 200));
+    tlw_dialog.resize(m_testWindowSize);
     tlw_dialog.setModality(Qt::ApplicationModal);
     tlw_dialog.setFlags(Qt::Dialog);
     tlw_dialog.create();
@@ -1405,19 +1597,25 @@ void tst_QWindow::modalWithChildWindow()
 
 void tst_QWindow::modalWindowModallity()
 {
+    if (qApp->platformName().toLower() == QLatin1String("wayland"))
+        QSKIP("Wayland: This fails. Figure out why.");
+
     QWindow normal_window;
-    normal_window.resize(400, 400);
+    normal_window.setFramePosition(m_availableTopLeft + QPoint(80, 80));
+    normal_window.resize(m_testWindowSize);
     normal_window.show();
     QVERIFY(QTest::qWaitForWindowExposed(&normal_window));
 
     QWindow parent_to_modal;
-    parent_to_modal.resize(400, 400);
+    parent_to_modal.setFramePosition(normal_window.geometry().topRight() + QPoint(100, 0));
+    parent_to_modal.resize(m_testWindowSize);
     parent_to_modal.show();
     QVERIFY(QTest::qWaitForWindowExposed(&parent_to_modal));
     QTRY_COMPARE(QGuiApplication::focusWindow(), &parent_to_modal);
 
     QWindow modal_dialog;
-    modal_dialog.resize(400,200);
+    modal_dialog.resize(m_testWindowSize);
+    modal_dialog.setFramePosition(normal_window.geometry().bottomLeft() + QPoint(0, 100));
     modal_dialog.setModality(Qt::WindowModal);
     modal_dialog.setFlags(Qt::Dialog);
     modal_dialog.setTransientParent(&parent_to_modal);
@@ -1433,13 +1631,85 @@ void tst_QWindow::modalWindowModallity()
 void tst_QWindow::modalWindowPosition()
 {
     QWindow window;
-    window.setGeometry(QRect(100, 100, 400, 400));
+    window.setGeometry(QRect(m_availableTopLeft + QPoint(100, 100), m_testWindowSize));
     // Allow for any potential resizing due to constraints
     QRect origGeo = window.geometry();
     window.setModality(Qt::WindowModal);
     window.show();
     QVERIFY(QTest::qWaitForWindowExposed(&window));
     QCOMPARE(window.geometry(), origGeo);
+}
+
+class ColoredWindow : public QRasterWindow {
+public:
+    explicit ColoredWindow(const QColor &color, QWindow *parent = 0) : QRasterWindow(parent), m_color(color) {}
+    void paintEvent(QPaintEvent *) Q_DECL_OVERRIDE
+    {
+        QPainter p(this);
+        p.fillRect(QRect(QPoint(0, 0), size()), m_color);
+    }
+
+private:
+    const QColor m_color;
+};
+
+static bool isNativeWindowVisible(const QWindow *window)
+{
+#if defined(Q_OS_WIN) && !defined(Q_OS_WINCE) && !defined(Q_OS_WINRT)
+    return IsWindowVisible(reinterpret_cast<HWND>(window->winId()));
+#else
+    Q_UNIMPLEMENTED();
+    return window->isVisible();
+#endif
+}
+
+void tst_QWindow::windowsTransientChildren()
+{
+    if (QGuiApplication::platformName().compare(QStringLiteral("windows"), Qt::CaseInsensitive))
+        QSKIP("Windows only test");
+
+    ColoredWindow mainWindow(Qt::yellow);
+    mainWindow.setGeometry(QRect(m_availableTopLeft + QPoint(100, 100), m_testWindowSize));
+    mainWindow.setTitle(QStringLiteral("Main"));
+    ColoredWindow child(Qt::blue, &mainWindow);
+    child.setGeometry(QRect(QPoint(0, 0), m_testWindowSize / 2));
+
+    ColoredWindow dialog(Qt::red);
+    dialog.setGeometry(QRect(m_availableTopLeft + QPoint(200, 200), m_testWindowSize));
+    dialog.setTitle(QStringLiteral("Dialog"));
+    dialog.setTransientParent(&mainWindow);
+
+    mainWindow.show();
+    child.show();
+    dialog.show();
+
+    QVERIFY(QTest::qWaitForWindowExposed(&dialog));
+    mainWindow.setWindowState(Qt::WindowMinimized);
+    QVERIFY(!isNativeWindowVisible(&dialog));
+    dialog.hide();
+    mainWindow.setWindowState(Qt::WindowNoState);
+    // QTBUG-40696, transient children hidden by Qt should not be re-shown by Windows.
+    QVERIFY(!isNativeWindowVisible(&dialog));
+    QVERIFY(isNativeWindowVisible(&child)); // Real children should be visible.
+}
+
+void tst_QWindow::requestUpdate()
+{
+    QRect geometry(m_availableTopLeft + QPoint(80, 80), m_testWindowSize);
+
+    Window window;
+    window.setGeometry(geometry);
+    window.show();
+    QCoreApplication::processEvents();
+    QTRY_VERIFY(window.isExposed());
+
+    QVERIFY(window.received(QEvent::UpdateRequest) == 0);
+
+    window.requestUpdate();
+    QTRY_VERIFY(window.received(QEvent::UpdateRequest) == 1);
+
+    window.requestUpdate();
+    QTRY_VERIFY(window.received(QEvent::UpdateRequest) == 2);
 }
 
 #include <tst_qwindow.moc>

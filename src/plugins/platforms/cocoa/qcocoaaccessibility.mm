@@ -1,39 +1,31 @@
 /****************************************************************************
 **
-** Copyright (C) 2013 Digia Plc and/or its subsidiary(-ies).
-** Contact: http://www.qt-project.org/legal
+** Copyright (C) 2015 The Qt Company Ltd.
+** Contact: http://www.qt.io/licensing/
 **
 ** This file is part of the plugins of the Qt Toolkit.
 **
-** $QT_BEGIN_LICENSE:LGPL$
+** $QT_BEGIN_LICENSE:LGPL21$
 ** Commercial License Usage
 ** Licensees holding valid commercial Qt licenses may use this file in
 ** accordance with the commercial license agreement provided with the
 ** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and Digia.  For licensing terms and
-** conditions see http://qt.digia.com/licensing.  For further information
-** use the contact form at http://qt.digia.com/contact-us.
+** a written agreement between you and The Qt Company. For licensing terms
+** and conditions see http://www.qt.io/terms-conditions. For further
+** information use the contact form at http://www.qt.io/contact-us.
 **
 ** GNU Lesser General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 2.1 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU Lesser General Public License version 2.1 requirements
-** will be met: http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
+** General Public License version 2.1 or version 3 as published by the Free
+** Software Foundation and appearing in the file LICENSE.LGPLv21 and
+** LICENSE.LGPLv3 included in the packaging of this file. Please review the
+** following information to ensure the GNU Lesser General Public License
+** requirements will be met: https://www.gnu.org/licenses/lgpl.html and
+** http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
 **
-** In addition, as a special exception, Digia gives you certain additional
-** rights.  These rights are described in the Digia Qt LGPL Exception
+** As a special exception, The Qt Company gives you certain additional
+** rights. These rights are described in The Qt Company LGPL Exception
 ** version 1.1, included in the file LGPL_EXCEPTION.txt in this package.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3.0 as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU General Public License version 3.0 requirements will be
-** met: http://www.gnu.org/copyleft/gpl.html.
-**
 **
 ** $QT_END_LICENSE$
 **
@@ -42,6 +34,8 @@
 #include "qcocoaaccessibilityelement.h"
 #include <QtGui/qaccessible.h>
 #include <private/qcore_mac_p.h>
+
+QT_BEGIN_NAMESPACE
 
 QCocoaAccessibility::QCocoaAccessibility()
 {
@@ -55,7 +49,7 @@ QCocoaAccessibility::~QCocoaAccessibility()
 
 void QCocoaAccessibility::notifyAccessibilityUpdate(QAccessibleEvent *event)
 {
-    QCocoaAccessibleElement *element = [QCocoaAccessibleElement elementWithId: event->uniqueId()];
+    QMacAccessibilityElement *element = [QMacAccessibilityElement elementWithId: event->uniqueId()];
     if (!element) {
         qWarning() << "QCocoaAccessibility::notifyAccessibilityUpdate: invalid element";
         return;
@@ -140,7 +134,7 @@ static void populateRoleMap()
     roleMap[QAccessible::Row] = NSAccessibilityRowRole;
     roleMap[QAccessible::RowHeader] = NSAccessibilityRowRole;
     roleMap[QAccessible::Cell] = NSAccessibilityTextFieldRole;
-    roleMap[QAccessible::PushButton] = NSAccessibilityButtonRole;
+    roleMap[QAccessible::Button] = NSAccessibilityButtonRole;
     roleMap[QAccessible::EditableText] = NSAccessibilityTextFieldRole;
     roleMap[QAccessible::Link] = NSAccessibilityLinkRole;
     roleMap[QAccessible::Indicator] = NSAccessibilityValueIndicatorRole;
@@ -149,10 +143,20 @@ static void populateRoleMap()
     roleMap[QAccessible::ListItem] = NSAccessibilityStaticTextRole;
     roleMap[QAccessible::Cell] = NSAccessibilityStaticTextRole;
     roleMap[QAccessible::Client] = NSAccessibilityGroupRole;
+    roleMap[QAccessible::Paragraph] = NSAccessibilityGroupRole;
+    roleMap[QAccessible::Section] = NSAccessibilityGroupRole;
+    roleMap[QAccessible::WebDocument] = NSAccessibilityGroupRole;
+    roleMap[QAccessible::ColorChooser] = NSAccessibilityColorWellRole;
+    roleMap[QAccessible::Footer] = NSAccessibilityGroupRole;
+    roleMap[QAccessible::Form] = NSAccessibilityGroupRole;
+    roleMap[QAccessible::Heading] = @"AXHeading";
+    roleMap[QAccessible::Note] = NSAccessibilityGroupRole;
+    roleMap[QAccessible::ComplementaryContent] = NSAccessibilityGroupRole;
+    roleMap[QAccessible::Graphic] = NSAccessibilityImageRole;
 }
 
 /*
-    Returns a Mac accessibility role for the given interface, or
+    Returns a Cocoa accessibility role for the given interface, or
     NSAccessibilityUnknownRole if no role mapping is found.
 */
 NSString *macRole(QAccessibleInterface *interface)
@@ -180,13 +184,24 @@ NSString *macRole(QAccessibleInterface *interface)
 }
 
 /*
-    Mac accessibility supports ignoring elements, which means that
+    Returns a Cocoa sub role for the given interface.
+*/
+NSString *macSubrole(QAccessibleInterface *interface)
+{
+    QAccessible::State s = interface->state();
+    if (s.searchEdit)
+        return NSAccessibilitySearchFieldSubrole;
+    return nil;
+}
+
+/*
+    Cocoa accessibility supports ignoring elements, which means that
     the elements are still present in the accessibility tree but is
     not used by the screen reader.
 */
 bool shouldBeIgnored(QAccessibleInterface *interface)
 {
-    // Mac accessibility does not have an attribute that corresponds to the Invisible/Offscreen
+    // Cocoa accessibility does not have an attribute that corresponds to the Invisible/Offscreen
     // state. Ignore interfaces with those flags set.
     const QAccessible::State state = interface->state();
     if (state.invisible ||
@@ -244,7 +259,7 @@ NSArray *unignoredChildren(QAccessibleInterface *interface)
         QAccessible::Id childId = QAccessible::uniqueId(child);
         //qDebug() << "    kid: " << childId << child;
 
-        QCocoaAccessibleElement *element = [QCocoaAccessibleElement elementWithId: childId];
+        QMacAccessibilityElement *element = [QMacAccessibilityElement elementWithId: childId];
         if (element)
             [kids addObject: element];
         else
@@ -269,6 +284,8 @@ NSString *getTranslatedAction(const QString &qtAction)
         return NSAccessibilityShowMenuAction;
     else if (qtAction == QAccessibleActionInterface::setFocusAction()) // Not 100% sure on this one
         return NSAccessibilityRaiseAction;
+    else if (qtAction == QAccessibleActionInterface::toggleAction())
+        return NSAccessibilityPressAction;
 
     // Not translated:
     //
@@ -290,11 +307,13 @@ NSString *getTranslatedAction(const QString &qtAction)
     Translates between a Mac action constant and a QAccessibleActionInterface action
     Returns an empty QString if there is no Qt predefined equivalent.
 */
-QString translateAction(NSString *nsAction)
+QString translateAction(NSString *nsAction, QAccessibleInterface *interface)
 {
-    if ([nsAction compare: NSAccessibilityPressAction] == NSOrderedSame)
+    if ([nsAction compare: NSAccessibilityPressAction] == NSOrderedSame) {
+        if (interface->role() == QAccessible::CheckBox || interface->role() == QAccessible::RadioButton)
+            return QAccessibleActionInterface::toggleAction();
         return QAccessibleActionInterface::pressAction();
-    else if ([nsAction compare: NSAccessibilityIncrementAction] == NSOrderedSame)
+    } else if ([nsAction compare: NSAccessibilityIncrementAction] == NSOrderedSame)
         return QAccessibleActionInterface::increaseAction();
     else if ([nsAction compare: NSAccessibilityDecrementAction] == NSOrderedSame)
         return QAccessibleActionInterface::decreaseAction();
@@ -343,7 +362,7 @@ id getValueAttribute(QAccessibleInterface *interface)
     }
 
     if (QAccessibleValueInterface *valueInterface = interface->valueInterface()) {
-        return QCFString::toNSString(QString::number(valueInterface->currentValue().toDouble()));
+        return QCFString::toNSString(valueInterface->currentValue().toString());
     }
 
     if (interface->state().checkable) {
@@ -354,3 +373,6 @@ id getValueAttribute(QAccessibleInterface *interface)
 }
 
 } // namespace QCocoaAccessible
+
+QT_END_NAMESPACE
+

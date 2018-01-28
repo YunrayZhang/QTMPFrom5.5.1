@@ -1,39 +1,31 @@
 /****************************************************************************
 **
-** Copyright (C) 2013 Digia Plc and/or its subsidiary(-ies).
-** Contact: http://www.qt-project.org/legal
+** Copyright (C) 2015 The Qt Company Ltd.
+** Contact: http://www.qt.io/licensing/
 **
 ** This file is part of the QtDBus module of the Qt Toolkit.
 **
-** $QT_BEGIN_LICENSE:LGPL$
+** $QT_BEGIN_LICENSE:LGPL21$
 ** Commercial License Usage
 ** Licensees holding valid commercial Qt licenses may use this file in
 ** accordance with the commercial license agreement provided with the
 ** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and Digia.  For licensing terms and
-** conditions see http://qt.digia.com/licensing.  For further information
-** use the contact form at http://qt.digia.com/contact-us.
+** a written agreement between you and The Qt Company. For licensing terms
+** and conditions see http://www.qt.io/terms-conditions. For further
+** information use the contact form at http://www.qt.io/contact-us.
 **
 ** GNU Lesser General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 2.1 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU Lesser General Public License version 2.1 requirements
-** will be met: http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
+** General Public License version 2.1 or version 3 as published by the Free
+** Software Foundation and appearing in the file LICENSE.LGPLv21 and
+** LICENSE.LGPLv3 included in the packaging of this file. Please review the
+** following information to ensure the GNU Lesser General Public License
+** requirements will be met: https://www.gnu.org/licenses/lgpl.html and
+** http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
 **
-** In addition, as a special exception, Digia gives you certain additional
-** rights.  These rights are described in the Digia Qt LGPL Exception
+** As a special exception, The Qt Company gives you certain additional
+** rights. These rights are described in The Qt Company LGPL Exception
 ** version 1.1, included in the file LGPL_EXCEPTION.txt in this package.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3.0 as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU General Public License version 3.0 requirements will be
-** met: http://www.gnu.org/copyleft/gpl.html.
-**
 **
 ** $QT_END_LICENSE$
 **
@@ -55,9 +47,14 @@
 #define QDBUS_SYMBOLS_P_H
 
 #include <QtCore/qglobal.h>
-#include <dbus/dbus.h>
 
 #ifndef QT_NO_DBUS
+
+#ifdef QT_LINKED_LIBDBUS
+#  include <dbus/dbus.h>
+#else
+#  include "dbus_minimal_p.h"
+#endif
 
 QT_BEGIN_NAMESPACE
 
@@ -67,14 +64,90 @@ void (*qdbus_resolve_conditionally(const char *name))(); // doesn't print a warn
 void (*qdbus_resolve_me(const char *name))(); // prints a warning
 bool qdbus_loadLibDBus();
 
+//# define TRACE_DBUS_CALLS
+# ifdef TRACE_DBUS_CALLS
+namespace QtDBusCallTracing {
+struct TraceDBusCall
+{
+    struct ThreadData {
+        TraceDBusCall *ptr;
+        int level;
+        bool finishedPrinted;
+    };
+
+    static inline ThreadData &td()
+    {
+        static thread_local ThreadData value;
+        return value;
+    }
+
+    ThreadData savedData;
+    QDebug s;
+    TraceDBusCall(QDebug s, const char *fname)
+        : savedData(td()), s(s.nospace() << QByteArray(savedData.level * 3, ' ').constData() << fname)
+    {
+        if (savedData.ptr && !savedData.finishedPrinted) {
+            savedData.ptr->s << " ...unfinished";
+            savedData.ptr->s = qDebug().nospace() << QByteArray(savedData.level * 3 - 3, ' ').constData();
+            savedData.finishedPrinted = true;
+        }
+        ThreadData &data = td();
+        data.ptr = this;
+        data.level++;
+        data.finishedPrinted = false;
+    }
+    ~TraceDBusCall()
+    {
+        td() = savedData;
+    }
+
+    void operator()() { s << ")"; }
+    template <typename... Args> void operator()(const char *arg1, Args &&... args)
+    {
+        s << '"' << arg1 << '"';
+        if (sizeof...(args))
+            s << ", ";
+        operator()(args...);
+    }
+    template <typename Arg1, typename... Args> void operator()(Arg1 &&arg1, Args &&... args)
+    {
+        s << arg1;
+        if (sizeof...(args))
+            s << ", ";
+        operator()(args...);
+    }
+};
+template <typename T> T operator,(TraceDBusCall &&tc, T &&ret)
+{
+    tc.s << " = " << ret;
+    return ret;
+}
+inline const char *operator,(TraceDBusCall &&tc, const char *ret)
+{
+    tc.s << " = \"" << ret << '"';
+    return ret;
+}
+
+template <typename T> struct TraceReturn { typedef TraceDBusCall Type; };
+template <>           struct TraceReturn<void> { typedef void Type; };
+}
+
+#  define DEBUGCALL(name, argcall)   QtDBusCallTracing::TraceDBusCall tc(qDebug(), name "("); tc argcall
+#  define DEBUGRET(ret)              (QtDBusCallTracing::TraceReturn<ret>::Type) tc ,
+# else
+#  define DEBUGCALL(name, argcall)
+#  define DEBUGRET(ret)
+# endif
+
 # define DEFINEFUNC(ret, func, args, argcall, funcret)          \
     typedef ret (* _q_PTR_##func) args;                         \
     static inline ret q_##func args                             \
     {                                                           \
         static _q_PTR_##func ptr;                               \
+        DEBUGCALL(#func, argcall);                              \
         if (!ptr)                                               \
             ptr = (_q_PTR_##func) qdbus_resolve_me(#func);      \
-        funcret ptr argcall;                                    \
+        funcret DEBUGRET(ret) ptr argcall;                      \
     }
 
 #else // defined QT_LINKED_LIBDBUS
@@ -322,6 +395,8 @@ DEFINEFUNC(void         , dbus_pending_call_unref, (DBusPendingCall             
 
 /* dbus-server.h */
 DEFINEFUNC(dbus_bool_t , dbus_server_allocate_data_slot, (dbus_int32_t     *slot_p),
+           (slot_p), return)
+DEFINEFUNC(void        , dbus_server_free_data_slot,     (dbus_int32_t     *slot_p),
            (slot_p), return)
 DEFINEFUNC(void        , dbus_server_disconnect, (DBusServer     *server),
            (server), )

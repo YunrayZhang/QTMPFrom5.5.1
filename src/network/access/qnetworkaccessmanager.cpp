@@ -1,39 +1,31 @@
 /****************************************************************************
 **
-** Copyright (C) 2013 Digia Plc and/or its subsidiary(-ies).
-** Contact: http://www.qt-project.org/legal
+** Copyright (C) 2015 The Qt Company Ltd.
+** Contact: http://www.qt.io/licensing/
 **
 ** This file is part of the QtNetwork module of the Qt Toolkit.
 **
-** $QT_BEGIN_LICENSE:LGPL$
+** $QT_BEGIN_LICENSE:LGPL21$
 ** Commercial License Usage
 ** Licensees holding valid commercial Qt licenses may use this file in
 ** accordance with the commercial license agreement provided with the
 ** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and Digia.  For licensing terms and
-** conditions see http://qt.digia.com/licensing.  For further information
-** use the contact form at http://qt.digia.com/contact-us.
+** a written agreement between you and The Qt Company. For licensing terms
+** and conditions see http://www.qt.io/terms-conditions. For further
+** information use the contact form at http://www.qt.io/contact-us.
 **
 ** GNU Lesser General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 2.1 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU Lesser General Public License version 2.1 requirements
-** will be met: http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
+** General Public License version 2.1 or version 3 as published by the Free
+** Software Foundation and appearing in the file LICENSE.LGPLv21 and
+** LICENSE.LGPLv3 included in the packaging of this file. Please review the
+** following information to ensure the GNU Lesser General Public License
+** requirements will be met: https://www.gnu.org/licenses/lgpl.html and
+** http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
 **
-** In addition, as a special exception, Digia gives you certain additional
-** rights.  These rights are described in the Digia Qt LGPL Exception
+** As a special exception, The Qt Company gives you certain additional
+** rights. These rights are described in The Qt Company LGPL Exception
 ** version 1.1, included in the file LGPL_EXCEPTION.txt in this package.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3.0 as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU General Public License version 3.0 requirements will be
-** met: http://www.gnu.org/copyleft/gpl.html.
-**
 **
 ** $QT_END_LICENSE$
 **
@@ -205,7 +197,7 @@ static void ensureInitialized()
     can be:
     \snippet code/src_network_access_qnetworkaccessmanager.cpp 1
 
-    \section1 Network and Roaming support
+    \section1 Network and Roaming Support
 
     With the addition of the \l {Bearer Management} API to Qt 4.7
     QNetworkAccessManager gained the ability to manage network connections.
@@ -286,7 +278,8 @@ static void ensureInitialized()
 
     \snippet code/src_network_access_qnetworkaccessmanager.cpp 4
 
-    Network requests can be reenabled again by calling
+    Network requests can be re-enabled again, and this property will resume to
+    reflect the actual device state by calling
 
     \snippet code/src_network_access_qnetworkaccessmanager.cpp 5
 
@@ -424,6 +417,29 @@ static void ensureInitialized()
     QNetworkReply::sslConfiguration(), QNetworkReply::ignoreSslErrors()
 */
 
+/*!
+    \fn void QNetworkAccessManager::preSharedKeyAuthenticationRequired(QNetworkReply *reply, QSslPreSharedKeyAuthenticator *authenticator)
+    \since 5.5
+
+    This signal is emitted if the SSL/TLS handshake negotiates a PSK
+    ciphersuite, and therefore a PSK authentication is then required.
+    The \a reply object is the QNetworkReply that is negotiating
+    such ciphersuites.
+
+    When using PSK, the client must send to the server a valid identity and a
+    valid pre shared key, in order for the SSL handshake to continue.
+    Applications can provide this information in a slot connected to this
+    signal, by filling in the passed \a authenticator object according to their
+    needs.
+
+    \note Ignoring this signal, or failing to provide the required credentials,
+    will cause the handshake to fail, and therefore the connection to be aborted.
+
+    \note The \a authenticator object is owned by the reply and must not be
+    deleted by the application.
+
+    \sa QSslPreSharedKeyAuthenticator
+*/
 
 /*!
     Constructs a QNetworkAccessManager object that is the center of
@@ -442,6 +458,7 @@ QNetworkAccessManager::QNetworkAccessManager(QObject *parent)
 #ifndef QT_NO_SSL
     qRegisterMetaType<QList<QSslError> >();
     qRegisterMetaType<QSslConfiguration>();
+    qRegisterMetaType<QSslPreSharedKeyAuthenticator *>();
 #endif
     qRegisterMetaType<QList<QPair<QByteArray,QByteArray> > >();
 #ifndef QT_NO_HTTP
@@ -451,16 +468,12 @@ QNetworkAccessManager::QNetworkAccessManager(QObject *parent)
     qRegisterMetaType<QSharedPointer<char> >();
 
 #ifndef QT_NO_BEARERMANAGEMENT
-    if (!d->networkSessionRequired) {
-        // if a session is required, we track online state through
-        // the QNetworkSession's signals
-        connect(&d->networkConfigurationManager, SIGNAL(onlineStateChanged(bool)),
-                SLOT(_q_onlineStateChanged(bool)));
-        // we would need all active configurations to check for
-        // d->networkConfigurationManager.isOnline(), which is asynchronous
-        // and potentially expensive. We can just check the configuration here
-        d->online = (d->networkConfiguration.state() & QNetworkConfiguration::Active);
-    }
+    // if a session is required, we track online state through
+    // the QNetworkSession's signals if a request is already made.
+    // we need to track current accessibility state by default
+    //
+    connect(&d->networkConfigurationManager, SIGNAL(onlineStateChanged(bool)),
+            SLOT(_q_onlineStateChanged(bool)));
 #endif
 }
 
@@ -931,6 +944,8 @@ void QNetworkAccessManager::setNetworkAccessible(QNetworkAccessManager::NetworkA
 {
     Q_D(QNetworkAccessManager);
 
+    d->defaultAccessControl = accessible == NotAccessible ? false : true;
+
     if (d->networkAccessible != accessible) {
         NetworkAccessibility previous = networkAccessible();
         d->networkAccessible = accessible;
@@ -949,6 +964,9 @@ QNetworkAccessManager::NetworkAccessibility QNetworkAccessManager::networkAccess
 {
     Q_D(const QNetworkAccessManager);
 
+    if (d->networkConfiguration.state().testFlag(QNetworkConfiguration::Undefined))
+        return UnknownAccessibility;
+
     if (d->networkSessionRequired) {
         QSharedPointer<QNetworkSession> networkSession(d->getNetworkSession());
         if (networkSession) {
@@ -959,7 +977,13 @@ QNetworkAccessManager::NetworkAccessibility QNetworkAccessManager::networkAccess
                 return NotAccessible;
         } else {
             // Network accessibility is either disabled or unknown.
-            return (d->networkAccessible == NotAccessible) ? NotAccessible : UnknownAccessibility;
+            if (d->defaultAccessControl) {
+                if (d->online)
+                    return d->networkAccessible;
+                else
+                    return NotAccessible;
+            }
+            return (d->networkAccessible);
         }
     } else {
         if (d->online)
@@ -968,6 +992,27 @@ QNetworkAccessManager::NetworkAccessibility QNetworkAccessManager::networkAccess
             return NotAccessible;
     }
 }
+
+/*!
+    \internal
+
+    Returns the network session currently in use.
+    This can be changed at any time, ownership remains with the QNetworkAccessManager
+*/
+const QWeakPointer<const QNetworkSession> QNetworkAccessManagerPrivate::getNetworkSession(const QNetworkAccessManager *q)
+{
+    return q->d_func()->networkSessionWeakRef;
+}
+
+QSharedPointer<QNetworkSession> QNetworkAccessManagerPrivate::getNetworkSession() const
+{
+    if (networkSessionStrongRef)
+        return networkSessionStrongRef;
+    return networkSessionWeakRef.toStrongRef();
+}
+
+#endif // QT_NO_BEARERMANAGEMENT
+
 
 #ifndef QT_NO_SSL
 /*!
@@ -1028,26 +1073,6 @@ void QNetworkAccessManager::connectToHost(const QString &hostName, quint16 port)
     QNetworkRequest request(url);
     get(request);
 }
-
-/*!
-    \internal
-
-    Returns the network session currently in use.
-    This can be changed at any time, ownership remains with the QNetworkAccessManager
-*/
-const QWeakPointer<const QNetworkSession> QNetworkAccessManagerPrivate::getNetworkSession(const QNetworkAccessManager *q)
-{
-    return q->d_func()->networkSessionWeakRef;
-}
-
-QSharedPointer<QNetworkSession> QNetworkAccessManagerPrivate::getNetworkSession() const
-{
-    if (networkSessionStrongRef)
-        return networkSessionStrongRef;
-    return networkSessionWeakRef.toStrongRef();
-}
-
-#endif // QT_NO_BEARERMANAGEMENT
 
 /*!
     \since 4.7
@@ -1143,7 +1168,12 @@ QNetworkReply *QNetworkAccessManager::createRequest(QNetworkAccessManager::Opera
     if (!d->networkSessionStrongRef && (d->initializeSession || !d->networkConfiguration.identifier().isEmpty())) {
         QNetworkConfigurationManager manager;
         if (!d->networkConfiguration.identifier().isEmpty()) {
-            d->createSession(d->networkConfiguration);
+            if ((d->networkConfiguration.state() & QNetworkConfiguration::Defined)
+                    && d->networkConfiguration != manager.defaultConfiguration())
+                d->createSession(manager.defaultConfiguration());
+            else
+                d->createSession(d->networkConfiguration);
+
         } else {
             if (manager.capabilities() & QNetworkConfigurationManager::NetworkSessionRequired)
                 d->createSession(manager.defaultConfiguration());
@@ -1331,6 +1361,18 @@ void QNetworkAccessManagerPrivate::_q_replySslErrors(const QList<QSslError> &err
 #endif
 }
 
+void QNetworkAccessManagerPrivate::_q_replyPreSharedKeyAuthenticationRequired(QSslPreSharedKeyAuthenticator *authenticator)
+{
+#ifndef QT_NO_SSL
+    Q_Q(QNetworkAccessManager);
+    QNetworkReply *reply = qobject_cast<QNetworkReply *>(q->sender());
+    if (reply)
+    emit q->preSharedKeyAuthenticationRequired(reply, authenticator);
+#else
+    Q_UNUSED(authenticator);
+#endif
+}
+
 QNetworkReply *QNetworkAccessManagerPrivate::postProcess(QNetworkReply *reply)
 {
     Q_Q(QNetworkAccessManager);
@@ -1341,6 +1383,7 @@ QNetworkReply *QNetworkAccessManagerPrivate::postProcess(QNetworkReply *reply)
      * avoid getting a connection error. */
     q->connect(reply, SIGNAL(encrypted()), SLOT(_q_replyEncrypted()));
     q->connect(reply, SIGNAL(sslErrors(QList<QSslError>)), SLOT(_q_replySslErrors(QList<QSslError>)));
+    q->connect(reply, SIGNAL(preSharedKeyAuthenticationRequired(QSslPreSharedKeyAuthenticator*)), SLOT(_q_replyPreSharedKeyAuthenticationRequired(QSslPreSharedKeyAuthenticator*)));
 #endif
 #ifndef QT_NO_BEARERMANAGEMENT
     activeReplyCount++;
@@ -1533,7 +1576,7 @@ void QNetworkAccessManagerPrivate::createSession(const QNetworkConfiguration &co
     if (!networkSessionStrongRef) {
         online = false;
 
-        if (networkAccessible == QNetworkAccessManager::NotAccessible)
+        if (networkAccessible == QNetworkAccessManager::NotAccessible || !online)
             emit q->networkAccessibleChanged(QNetworkAccessManager::NotAccessible);
         else
             emit q->networkAccessibleChanged(QNetworkAccessManager::UnknownAccessibility);
@@ -1581,24 +1624,56 @@ void QNetworkAccessManagerPrivate::_q_networkSessionStateChanged(QNetworkSession
     if (online) {
         if (state != QNetworkSession::Connected && state != QNetworkSession::Roaming) {
             online = false;
-            emit q->networkAccessibleChanged(QNetworkAccessManager::NotAccessible);
+            if (networkAccessible != QNetworkAccessManager::NotAccessible) {
+                networkAccessible = QNetworkAccessManager::NotAccessible;
+                emit q->networkAccessibleChanged(networkAccessible);
+            }
         }
     } else {
         if (state == QNetworkSession::Connected || state == QNetworkSession::Roaming) {
             online = true;
-            emit q->networkAccessibleChanged(networkAccessible);
+            if (defaultAccessControl)
+                if (networkAccessible != QNetworkAccessManager::Accessible) {
+                    networkAccessible = QNetworkAccessManager::Accessible;
+                    emit q->networkAccessibleChanged(networkAccessible);
+                }
         }
     }
 }
 
 void QNetworkAccessManagerPrivate::_q_onlineStateChanged(bool isOnline)
 {
-    // if the user set a config, we only care whether this one is active.
+   Q_Q(QNetworkAccessManager);
+   // if the user set a config, we only care whether this one is active.
     // Otherwise, this QNAM is online if there is an online config.
     if (customNetworkConfiguration) {
         online = (networkConfiguration.state() & QNetworkConfiguration::Active);
     } else {
-        online = isOnline;
+        if (online != isOnline) {
+            if (isOnline) {
+                networkSessionStrongRef.clear();
+                networkSessionWeakRef.clear();
+            }
+            online = isOnline;
+        }
+    }
+    if (online) {
+        if (defaultAccessControl) {
+            if (networkAccessible != QNetworkAccessManager::Accessible) {
+                networkAccessible = QNetworkAccessManager::Accessible;
+                emit q->networkAccessibleChanged(networkAccessible);
+            }
+        }
+    } else if (networkConfiguration.state().testFlag(QNetworkConfiguration::Undefined)) {
+        if (networkAccessible != QNetworkAccessManager::UnknownAccessibility) {
+            networkAccessible = QNetworkAccessManager::UnknownAccessibility;
+            emit q->networkAccessibleChanged(networkAccessible);
+        }
+    } else {
+        if (networkAccessible != QNetworkAccessManager::NotAccessible) {
+            networkAccessible = QNetworkAccessManager::NotAccessible;
+            emit q->networkAccessibleChanged(networkAccessible);
+        }
     }
 }
 

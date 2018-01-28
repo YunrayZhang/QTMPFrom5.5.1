@@ -1,39 +1,31 @@
 /****************************************************************************
 **
-** Copyright (C) 2013 Digia Plc and/or its subsidiary(-ies).
-** Contact: http://www.qt-project.org/legal
+** Copyright (C) 2015 The Qt Company Ltd.
+** Contact: http://www.qt.io/licensing/
 **
 ** This file is part of the QtGui module of the Qt Toolkit.
 **
-** $QT_BEGIN_LICENSE:LGPL$
+** $QT_BEGIN_LICENSE:LGPL21$
 ** Commercial License Usage
 ** Licensees holding valid commercial Qt licenses may use this file in
 ** accordance with the commercial license agreement provided with the
 ** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and Digia.  For licensing terms and
-** conditions see http://qt.digia.com/licensing.  For further information
-** use the contact form at http://qt.digia.com/contact-us.
+** a written agreement between you and The Qt Company. For licensing terms
+** and conditions see http://www.qt.io/terms-conditions. For further
+** information use the contact form at http://www.qt.io/contact-us.
 **
 ** GNU Lesser General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 2.1 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU Lesser General Public License version 2.1 requirements
-** will be met: http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
+** General Public License version 2.1 or version 3 as published by the Free
+** Software Foundation and appearing in the file LICENSE.LGPLv21 and
+** LICENSE.LGPLv3 included in the packaging of this file. Please review the
+** following information to ensure the GNU Lesser General Public License
+** requirements will be met: https://www.gnu.org/licenses/lgpl.html and
+** http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
 **
-** In addition, as a special exception, Digia gives you certain additional
-** rights.  These rights are described in the Digia Qt LGPL Exception
+** As a special exception, The Qt Company gives you certain additional
+** rights. These rights are described in The Qt Company LGPL Exception
 ** version 1.1, included in the file LGPL_EXCEPTION.txt in this package.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3.0 as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU General Public License version 3.0 requirements will be
-** met: http://www.gnu.org/copyleft/gpl.html.
-**
 **
 ** $QT_END_LICENSE$
 **
@@ -76,8 +68,6 @@ QT_FORWARD_DECLARE_CLASS(QWindow)
 QT_USE_NAMESPACE
 
 typedef QSharedPointer<QFileDialogOptions> SharedPointerFileDialogOptions;
-
-@class QT_MANGLE_NAMESPACE(QNSOpenSavePanelDelegate);
 
 @interface QT_MANGLE_NAMESPACE(QNSOpenSavePanelDelegate)
     : NSObject<NSOpenSavePanelDelegate>
@@ -191,16 +181,7 @@ QT_NAMESPACE_ALIAS_OBJC_CLASS(QNSOpenSavePanelDelegate);
 static QString strippedText(QString s)
 {
     s.remove( QString::fromLatin1("...") );
-    int i = 0;
-    while (i < s.size()) {
-        ++i;
-        if (s.at(i-1) != QLatin1Char('&'))
-            continue;
-        if (i < s.size() && s.at(i) == QLatin1Char('&'))
-            ++i;
-        s.remove(i-1,1);
-    }
-    return s.trimmed();
+    return qt_mac_removeMnemonics(s).trimmed();
 }
 
 - (NSString *)strip:(const QString &)label
@@ -457,7 +438,7 @@ static QString strippedText(QString s)
 - (void)panelSelectionDidChange:(id)sender
 {
     Q_UNUSED(sender);
-    if (mHelper) {
+    if (mHelper && [mSavePanel isVisible]) {
         QString selection = QCFString::toQString([[mSavePanel URL] path]);
         if (selection != mCurrentSelection) {
             *mCurrentSelection = selection;
@@ -577,7 +558,7 @@ QCocoaFileDialogHelper::~QCocoaFileDialogHelper()
     if (!mDelegate)
         return;
     QCocoaAutoReleasePool pool;
-    [reinterpret_cast<QNSOpenSavePanelDelegate *>(mDelegate) release];
+    [mDelegate release];
     mDelegate = 0;
 }
 
@@ -613,18 +594,16 @@ extern void qt_mac_to_pascal_string(QString s, Str255 str, TextEncoding encoding
 
 void QCocoaFileDialogHelper::setDirectory(const QUrl &directory)
 {
-    QNSOpenSavePanelDelegate *delegate = static_cast<QNSOpenSavePanelDelegate *>(mDelegate);
-    if (delegate)
-        [delegate->mSavePanel setDirectoryURL:[NSURL fileURLWithPath:QCFString::toNSString(directory.toLocalFile())]];
+    if (mDelegate)
+        [mDelegate->mSavePanel setDirectoryURL:[NSURL fileURLWithPath:QCFString::toNSString(directory.toLocalFile())]];
     else
         mDir = directory;
 }
 
 QUrl QCocoaFileDialogHelper::directory() const
 {
-    QNSOpenSavePanelDelegate *delegate = static_cast<QNSOpenSavePanelDelegate *>(mDelegate);
-    if (delegate) {
-        QString path = QCFString::toQString([[delegate->mSavePanel directoryURL] path]).normalized(QString::NormalizationForm_C);
+    if (mDelegate) {
+        QString path = QCFString::toQString([[mDelegate->mSavePanel directoryURL] path]).normalized(QString::NormalizationForm_C);
         return QUrl::fromLocalFile(path);
     }
     return mDir;
@@ -643,25 +622,23 @@ void QCocoaFileDialogHelper::selectFile(const QUrl &filename)
 
 QList<QUrl> QCocoaFileDialogHelper::selectedFiles() const
 {
-    QNSOpenSavePanelDelegate *delegate = static_cast<QNSOpenSavePanelDelegate *>(mDelegate);
-    if (delegate)
-        return [delegate selectedFiles];
+    if (mDelegate)
+        return [mDelegate selectedFiles];
     return QList<QUrl>();
 }
 
 void QCocoaFileDialogHelper::setFilter()
 {
-    QNSOpenSavePanelDelegate *delegate = static_cast<QNSOpenSavePanelDelegate *>(mDelegate);
-    if (!delegate)
+    if (!mDelegate)
         return;
     const SharedPointerFileDialogOptions &opts = options();
-    [delegate->mSavePanel setTitle:QCFString::toNSString(opts->windowTitle())];
+    [mDelegate->mSavePanel setTitle:QCFString::toNSString(opts->windowTitle())];
     if (opts->isLabelExplicitlySet(QFileDialogOptions::Accept))
-        [delegate->mSavePanel setPrompt:[delegate strip:opts->labelText(QFileDialogOptions::Accept)]];
+        [mDelegate->mSavePanel setPrompt:[mDelegate strip:opts->labelText(QFileDialogOptions::Accept)]];
     if (opts->isLabelExplicitlySet(QFileDialogOptions::FileName))
-        [delegate->mSavePanel setNameFieldLabel:[delegate strip:opts->labelText(QFileDialogOptions::FileName)]];
+        [mDelegate->mSavePanel setNameFieldLabel:[mDelegate strip:opts->labelText(QFileDialogOptions::FileName)]];
 
-    [delegate updateProperties];
+    [mDelegate updateProperties];
 }
 
 void QCocoaFileDialogHelper::selectNameFilter(const QString &filter)
@@ -670,22 +647,20 @@ void QCocoaFileDialogHelper::selectNameFilter(const QString &filter)
         return;
     const int index = options()->nameFilters().indexOf(filter);
     if (index != -1) {
-        QNSOpenSavePanelDelegate *delegate = static_cast<QNSOpenSavePanelDelegate *>(mDelegate);
-        if (!delegate) {
+        if (!mDelegate) {
             options()->setInitiallySelectedNameFilter(filter);
             return;
         }
-        [delegate->mPopUpButton selectItemAtIndex:index];
-        [delegate filterChanged:nil];
+        [mDelegate->mPopUpButton selectItemAtIndex:index];
+        [mDelegate filterChanged:nil];
     }
 }
 
 QString QCocoaFileDialogHelper::selectedNameFilter() const
 {
-    QNSOpenSavePanelDelegate *delegate = static_cast<QNSOpenSavePanelDelegate *>(mDelegate);
-    if (!delegate)
+    if (!mDelegate)
         return options()->initiallySelectedNameFilter();
-    int index = [delegate->mPopUpButton indexOfSelectedItem];
+    int index = [mDelegate->mPopUpButton indexOfSelectedItem];
     if (index >= options()->nameFilters().count())
         return QString();
     return index != -1 ? options()->nameFilters().at(index) : QString();
@@ -732,13 +707,12 @@ void QCocoaFileDialogHelper::createNSOpenSavePanelDelegate()
 bool QCocoaFileDialogHelper::showCocoaFilePanel(Qt::WindowModality windowModality, QWindow *parent)
 {
     createNSOpenSavePanelDelegate();
-    QNSOpenSavePanelDelegate *delegate = static_cast<QNSOpenSavePanelDelegate *>(mDelegate);
-    if (!delegate)
+    if (!mDelegate)
         return false;
     if (windowModality == Qt::NonModal)
-        [delegate showModelessPanel];
+        [mDelegate showModelessPanel];
     else if (windowModality == Qt::WindowModal && parent)
-        [delegate showWindowModalSheet:parent];
+        [mDelegate showWindowModalSheet:parent];
     // no need to show a Qt::ApplicationModal dialog here, since it will be done in _q_platformRunNativeAppModalPanel()
     return true;
 }
@@ -750,8 +724,7 @@ bool QCocoaFileDialogHelper::hideCocoaFilePanel()
         // open regarding whether or not to go native:
         return false;
     } else {
-        QNSOpenSavePanelDelegate *delegate = static_cast<QNSOpenSavePanelDelegate *>(mDelegate);
-        [delegate closePanel];
+        [mDelegate closePanel];
         // Even when we hide it, we are still using a
         // native dialog, so return true:
         return true;
@@ -765,8 +738,7 @@ void QCocoaFileDialogHelper::exec()
     // yet been reactivated (regardless if [NSApp run] is still on the stack)),
     // showing a native modal dialog will fail.
     QCocoaAutoReleasePool pool;
-    QNSOpenSavePanelDelegate *delegate = static_cast<QNSOpenSavePanelDelegate *>(mDelegate);
-    if ([delegate runApplicationModalPanel])
+    if ([mDelegate runApplicationModalPanel])
         emit accept();
     else
         emit reject();

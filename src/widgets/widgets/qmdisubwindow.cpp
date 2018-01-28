@@ -1,39 +1,31 @@
 /****************************************************************************
 **
-** Copyright (C) 2013 Digia Plc and/or its subsidiary(-ies).
-** Contact: http://www.qt-project.org/legal
+** Copyright (C) 2015 The Qt Company Ltd.
+** Contact: http://www.qt.io/licensing/
 **
 ** This file is part of the QtWidgets module of the Qt Toolkit.
 **
-** $QT_BEGIN_LICENSE:LGPL$
+** $QT_BEGIN_LICENSE:LGPL21$
 ** Commercial License Usage
 ** Licensees holding valid commercial Qt licenses may use this file in
 ** accordance with the commercial license agreement provided with the
 ** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and Digia.  For licensing terms and
-** conditions see http://qt.digia.com/licensing.  For further information
-** use the contact form at http://qt.digia.com/contact-us.
+** a written agreement between you and The Qt Company. For licensing terms
+** and conditions see http://www.qt.io/terms-conditions. For further
+** information use the contact form at http://www.qt.io/contact-us.
 **
 ** GNU Lesser General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 2.1 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU Lesser General Public License version 2.1 requirements
-** will be met: http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
+** General Public License version 2.1 or version 3 as published by the Free
+** Software Foundation and appearing in the file LICENSE.LGPLv21 and
+** LICENSE.LGPLv3 included in the packaging of this file. Please review the
+** following information to ensure the GNU Lesser General Public License
+** requirements will be met: https://www.gnu.org/licenses/lgpl.html and
+** http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
 **
-** In addition, as a special exception, Digia gives you certain additional
-** rights.  These rights are described in the Digia Qt LGPL Exception
+** As a special exception, The Qt Company gives you certain additional
+** rights. These rights are described in The Qt Company LGPL Exception
 ** version 1.1, included in the file LGPL_EXCEPTION.txt in this package.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3.0 as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU General Public License version 3.0 requirements will be
-** met: http://www.gnu.org/copyleft/gpl.html.
-**
 **
 ** $QT_END_LICENSE$
 **
@@ -282,7 +274,7 @@ static inline bool isHoverControl(QStyle::SubControl control)
     return control != QStyle::SC_None && control != QStyle::SC_TitleBarLabel;
 }
 
-#if defined(Q_WS_WIN)
+#if defined(Q_DEAD_CODE_FROM_QT4_WIN)
 static inline QRgb colorref2qrgb(COLORREF col)
 {
     return qRgb(GetRValue(col),GetGValue(col),GetBValue(col));
@@ -370,18 +362,18 @@ class ControlLabel : public QWidget
 public:
     ControlLabel(QMdiSubWindow *subWindow, QWidget *parent = 0);
 
-    QSize sizeHint() const;
+    QSize sizeHint() const Q_DECL_OVERRIDE;
 
 signals:
     void _q_clicked();
     void _q_doubleClicked();
 
 protected:
-    bool event(QEvent *event);
-    void paintEvent(QPaintEvent *paintEvent);
-    void mousePressEvent(QMouseEvent *mouseEvent);
-    void mouseDoubleClickEvent(QMouseEvent *mouseEvent);
-    void mouseReleaseEvent(QMouseEvent *mouseEvent);
+    bool event(QEvent *event) Q_DECL_OVERRIDE;
+    void paintEvent(QPaintEvent *paintEvent) Q_DECL_OVERRIDE;
+    void mousePressEvent(QMouseEvent *mouseEvent) Q_DECL_OVERRIDE;
+    void mouseDoubleClickEvent(QMouseEvent *mouseEvent) Q_DECL_OVERRIDE;
+    void mouseReleaseEvent(QMouseEvent *mouseEvent) Q_DECL_OVERRIDE;
 
 private:
     QPixmap label;
@@ -496,7 +488,7 @@ class ControllerWidget : public QWidget
     Q_OBJECT
 public:
     ControllerWidget(QMdiSubWindow *subWindow, QWidget *parent = 0);
-    QSize sizeHint() const;
+    QSize sizeHint() const Q_DECL_OVERRIDE;
     void setControlVisible(QMdiSubWindowPrivate::WindowStateAction action, bool visible);
     inline bool hasVisibleControls() const
     {
@@ -511,12 +503,12 @@ signals:
     void _q_close();
 
 protected:
-    void paintEvent(QPaintEvent *event);
-    void mousePressEvent(QMouseEvent *event);
-    void mouseReleaseEvent(QMouseEvent *event);
-    void mouseMoveEvent(QMouseEvent *event);
-    void leaveEvent(QEvent *event);
-    bool event(QEvent *event);
+    void paintEvent(QPaintEvent *event) Q_DECL_OVERRIDE;
+    void mousePressEvent(QMouseEvent *event) Q_DECL_OVERRIDE;
+    void mouseReleaseEvent(QMouseEvent *event) Q_DECL_OVERRIDE;
+    void mouseMoveEvent(QMouseEvent *event) Q_DECL_OVERRIDE;
+    void leaveEvent(QEvent *event) Q_DECL_OVERRIDE;
+    bool event(QEvent *event) Q_DECL_OVERRIDE;
 
 private:
     QStyle::SubControl activeControl;
@@ -1043,6 +1035,7 @@ void QMdiSubWindowPrivate::createSystemMenu()
     Q_ASSERT_X(q, "QMdiSubWindowPrivate::createSystemMenu",
                "You can NOT call this function before QMdiSubWindow's ctor");
     systemMenu = new QMenu(q);
+    systemMenu->installEventFilter(q);
     const QStyle *style = q->style();
     addToSystemMenu(RestoreAction, QMdiSubWindow::tr("&Restore"), SLOT(showNormal()));
     actions[RestoreAction]->setIcon(style->standardIcon(QStyle::SP_TitleBarNormalButton, 0, q));
@@ -1321,6 +1314,14 @@ void QMdiSubWindowPrivate::setNormalMode()
     updateMask();
 }
 
+inline void QMdiSubWindowPrivate::storeFocusWidget()
+{
+    if (QWidget *focus = QApplication::focusWidget()) {
+        if (!restoreFocusWidget && q_func()->isAncestorOf(focus))
+            restoreFocusWidget = focus;
+    }
+}
+
 /*!
     \internal
 */
@@ -1333,8 +1334,7 @@ void QMdiSubWindowPrivate::setMaximizeMode()
     isShadeMode = false;
     isMaximizeMode = true;
 
-    if (!restoreFocusWidget && q->isAncestorOf(QApplication::focusWidget()))
-        restoreFocusWidget = QApplication::focusWidget();
+    storeFocusWidget();
 
 #ifndef QT_NO_SIZEGRIP
     setSizeGripVisible(false);
@@ -1436,6 +1436,7 @@ void QMdiSubWindowPrivate::setActive(bool activate, bool changeFocus)
         Qt::WindowStates oldWindowState = q->windowState();
         q->overrideWindowState(q->windowState() & ~Qt::WindowActive);
         if (changeFocus) {
+            storeFocusWidget();
             QWidget *focusWidget = QApplication::focusWidget();
             if (focusWidget && (focusWidget == q || q->isAncestorOf(focusWidget)))
                 focusWidget->clearFocus();
@@ -1920,7 +1921,7 @@ QPalette QMdiSubWindowPrivate::desktopPalette() const
     QPalette newPalette = q->palette();
 
     bool colorsInitialized = false;
-#ifdef Q_WS_WIN // ask system properties on windows
+#ifdef Q_DEAD_CODE_FROM_QT4_WIN // ask system properties on windows
 #ifndef SPI_GETGRADIENTCAPTIONS
 #define SPI_GETGRADIENTCAPTIONS 0x1008
 #endif
@@ -1956,7 +1957,7 @@ QPalette QMdiSubWindowPrivate::desktopPalette() const
                                 newPalette.color(QPalette::Inactive, QPalette::Highlight));
         }
     }
-#endif // Q_WS_WIN
+#endif // Q_DEAD_CODE_FROM_QT4_WIN
     if (!colorsInitialized) {
         newPalette.setColor(QPalette::Active, QPalette::Highlight,
                             newPalette.color(QPalette::Active, QPalette::Highlight));
@@ -2026,6 +2027,9 @@ void QMdiSubWindowPrivate::setFocusWidget()
         return;
     }
 
+    if (!(q->windowState() & Qt::WindowMinimized) && restoreFocus())
+        return;
+
     if (QWidget *focusWidget = baseWidget->focusWidget()) {
         if (!focusWidget->hasFocus() && q->isAncestorOf(focusWidget)
                 && focusWidget->isVisible() && !q->isMinimized()
@@ -2048,16 +2052,19 @@ void QMdiSubWindowPrivate::setFocusWidget()
         q->setFocus();
 }
 
-void QMdiSubWindowPrivate::restoreFocus()
+bool QMdiSubWindowPrivate::restoreFocus()
 {
-    if (!restoreFocusWidget)
-        return;
-    if (!restoreFocusWidget->hasFocus() && q_func()->isAncestorOf(restoreFocusWidget)
-            && restoreFocusWidget->isVisible()
-            && restoreFocusWidget->focusPolicy() != Qt::NoFocus) {
-        restoreFocusWidget->setFocus();
+    if (restoreFocusWidget.isNull())
+        return false;
+    QWidget *candidate = restoreFocusWidget;
+    restoreFocusWidget.clear();
+    if (!candidate->hasFocus() && q_func()->isAncestorOf(candidate)
+        && candidate->isVisible()
+        && candidate->focusPolicy() != Qt::NoFocus) {
+        candidate->setFocus();
+        return true;
     }
-    restoreFocusWidget = 0;
+    return candidate->hasFocus();
 }
 
 /*!
@@ -2555,7 +2562,6 @@ void QMdiSubWindow::showSystemMenu()
     // Adjust x() with -menuwidth in reverse mode.
     if (isRightToLeft())
         globalPopupPos -= QPoint(d->systemMenu->sizeHint().width(), 0);
-    d->systemMenu->installEventFilter(this);
     d->systemMenu->popup(globalPopupPos);
 }
 #endif // QT_NO_MENU
@@ -2605,9 +2611,7 @@ void QMdiSubWindow::showShaded()
 
     d->isMaximizeMode = false;
 
-    QWidget *currentFocusWidget = QApplication::focusWidget();
-    if (!d->restoreFocusWidget && isAncestorOf(currentFocusWidget))
-        d->restoreFocusWidget = currentFocusWidget;
+    d->storeFocusWidget();
 
     if (!d->isShadeRequestFromMinimizeMode) {
         d->isShadeMode = true;
@@ -2621,7 +2625,7 @@ void QMdiSubWindow::showShaded()
     // showMinimized() will reset Qt::WindowActive, which makes sense
     // for top level widgets, but in MDI it makes sense to have an
     // active window which is minimized.
-    if (hasFocus() || isAncestorOf(currentFocusWidget))
+    if (hasFocus() || isAncestorOf(QApplication::focusWidget()))
         d->ensureWindowState(Qt::WindowActive);
 
 #ifndef QT_NO_SIZEGRIP
@@ -2690,7 +2694,6 @@ bool QMdiSubWindow::eventFilter(QObject *object, QEvent *event)
             QMouseEvent *mouseEvent = static_cast<QMouseEvent *>(event);
             d->hoveredSubControl = d->getSubControl(mapFromGlobal(mouseEvent->globalPos()));
         } else if (event->type() == QEvent::Hide) {
-            d->systemMenu->removeEventFilter(this);
             d->activeSubControl = QStyle::SC_None;
             update(QRegion(0, 0, width(), d->titleBarHeight()));
         }
@@ -3055,6 +3058,9 @@ void QMdiSubWindow::leaveEvent(QEvent * /*leaveEvent*/)
 
 /*!
     \reimp
+
+    \warning When maximizing or restoring a subwindow, the resulting call to this function
+    may have an invalid QResizeEvent::oldSize().
 */
 void QMdiSubWindow::resizeEvent(QResizeEvent *resizeEvent)
 {

@@ -2,11 +2,12 @@ CONFIG += testcase
 TARGET = tst_qaccessibility
 requires(contains(QT_CONFIG,accessibility))
 QT += testlib core-private gui-private widgets-private
-SOURCES  += tst_qaccessibility.cpp
+SOURCES += tst_qaccessibility.cpp
+HEADERS += accessiblewidgets.h
 
-unix:!mac:LIBS+=-lm
+unix:!mac:!haiku:LIBS+=-lm
 
-wince*: {
+wince {
 	accessneeded.files = $$QT_BUILD_TREE\\plugins\\accessible\\*.dll
 	accessneeded.path = accessible
 	DEPLOYMENT += accessneeded

@@ -8,12 +8,7 @@ DEFINES += QT_STATICPLUGIN
 
 load(qt_plugin)
 
-!contains(ANDROID_PLATFORM, android-9) {
-    INCLUDEPATH += $$NDK_ROOT/platforms/android-9/arch-$$ANDROID_ARCHITECTURE/usr/include
-    LIBS += -L$$NDK_ROOT/platforms/android-9/arch-$$ANDROID_ARCHITECTURE/usr/lib -ljnigraphics -landroid
-} else {
-    LIBS += -ljnigraphics -landroid
-}
+LIBS += -ljnigraphics -landroid
 
 QT += core-private gui-private platformsupport-private
 
@@ -21,9 +16,12 @@ CONFIG += qpa/genericunixfontdatabase
 
 OTHER_FILES += $$PWD/android.json
 
-INCLUDEPATH += $$PWD
+INCLUDEPATH += \
+    $$PWD \
+    $$QT_SOURCE_TREE/src/3rdparty/android
 
 SOURCES += $$PWD/androidplatformplugin.cpp \
+           $$PWD/androiddeadlockprotector.cpp \
            $$PWD/androidjnimain.cpp \
            $$PWD/androidjniaccessibility.cpp \
            $$PWD/androidjniinput.cpp \
@@ -45,12 +43,13 @@ SOURCES += $$PWD/androidplatformplugin.cpp \
            $$PWD/qandroidplatformscreen.cpp \
            $$PWD/qandroidplatformwindow.cpp \
            $$PWD/qandroidplatformopenglwindow.cpp \
-           $$PWD/qandroidplatformrasterwindow.cpp \
            $$PWD/qandroidplatformbackingstore.cpp \
            $$PWD/qandroidplatformopenglcontext.cpp \
-           $$PWD/qandroidplatformforeignwindow.cpp
+           $$PWD/qandroidplatformforeignwindow.cpp \
+           $$PWD/qandroideventdispatcher.cpp
 
 HEADERS += $$PWD/qandroidplatformintegration.h \
+           $$PWD/androiddeadlockprotector.h \
            $$PWD/androidjnimain.h \
            $$PWD/androidjniaccessibility.h \
            $$PWD/androidjniinput.h \
@@ -72,10 +71,13 @@ HEADERS += $$PWD/qandroidplatformintegration.h \
            $$PWD/qandroidplatformscreen.h \
            $$PWD/qandroidplatformwindow.h \
            $$PWD/qandroidplatformopenglwindow.h \
-           $$PWD/qandroidplatformrasterwindow.h \
            $$PWD/qandroidplatformbackingstore.h \
            $$PWD/qandroidplatformopenglcontext.h \
-           $$PWD/qandroidplatformforeignwindow.h
+           $$PWD/qandroidplatformforeignwindow.h \
+           $$PWD/qandroideventdispatcher.h
+
+android-style-assets: SOURCES += $$PWD/extract.cpp
+else: SOURCES += $$PWD/extract-dummy.cpp
 
 #Non-standard install directory, QTBUG-29859
 DESTDIR = $$DESTDIR/android

@@ -1,39 +1,31 @@
 /****************************************************************************
 **
-** Copyright (C) 2013 Digia Plc and/or its subsidiary(-ies).
-** Contact: http://www.qt-project.org/legal
+** Copyright (C) 2015 The Qt Company Ltd.
+** Contact: http://www.qt.io/licensing/
 **
 ** This file is part of the QtCore module of the Qt Toolkit.
 **
-** $QT_BEGIN_LICENSE:LGPL$
+** $QT_BEGIN_LICENSE:LGPL21$
 ** Commercial License Usage
 ** Licensees holding valid commercial Qt licenses may use this file in
 ** accordance with the commercial license agreement provided with the
 ** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and Digia.  For licensing terms and
-** conditions see http://qt.digia.com/licensing.  For further information
-** use the contact form at http://qt.digia.com/contact-us.
+** a written agreement between you and The Qt Company. For licensing terms
+** and conditions see http://www.qt.io/terms-conditions. For further
+** information use the contact form at http://www.qt.io/contact-us.
 **
 ** GNU Lesser General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 2.1 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU Lesser General Public License version 2.1 requirements
-** will be met: http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
+** General Public License version 2.1 or version 3 as published by the Free
+** Software Foundation and appearing in the file LICENSE.LGPLv21 and
+** LICENSE.LGPLv3 included in the packaging of this file. Please review the
+** following information to ensure the GNU Lesser General Public License
+** requirements will be met: https://www.gnu.org/licenses/lgpl.html and
+** http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
 **
-** In addition, as a special exception, Digia gives you certain additional
-** rights.  These rights are described in the Digia Qt LGPL Exception
+** As a special exception, The Qt Company gives you certain additional
+** rights. These rights are described in The Qt Company LGPL Exception
 ** version 1.1, included in the file LGPL_EXCEPTION.txt in this package.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3.0 as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU General Public License version 3.0 requirements will be
-** met: http://www.gnu.org/copyleft/gpl.html.
-**
 **
 ** $QT_END_LICENSE$
 **
@@ -55,6 +47,7 @@ QT_BEGIN_NAMESPACE
     \class QJsonArray
     \inmodule QtCore
     \ingroup json
+    \ingroup shared
     \reentrant
     \since 5.0
 
@@ -64,7 +57,7 @@ QT_BEGIN_NAMESPACE
     removing QJsonValue's from the array.
 
     A QJsonArray can be converted to and from a QVariantList. You can query the
-    number of entries with size(), insert(), and remove() entries from it
+    number of entries with size(), insert(), and removeAt() entries from it
     and iterate over its content using the standard C++ iterator pattern.
 
     QJsonArray is an implicitly shared class and shares the data with the document
@@ -138,6 +131,18 @@ QJsonArray::QJsonArray()
 }
 
 /*!
+    \fn QJsonArray::QJsonArray(std::initializer_list<QJsonValue> args)
+    \since 5.4
+    Creates an array initialized from \a args initialization list.
+
+    QJsonArray can be constructed in a way similar to JSON notation,
+    for example:
+    \code
+    QJsonArray array = { 1, 2.2, QString() };
+    \endcode
+ */
+
+/*!
     \internal
  */
 QJsonArray::QJsonArray(QJsonPrivate::Data *data, QJsonPrivate::Array *array)
@@ -146,6 +151,19 @@ QJsonArray::QJsonArray(QJsonPrivate::Data *data, QJsonPrivate::Array *array)
     Q_ASSERT(data);
     Q_ASSERT(array);
     d->ref.ref();
+}
+
+/*!
+    This method replaces part of QJsonArray(std::initializer_list<QJsonValue> args) .
+    The constructor needs to be inline, but we do not want to leak implementation details
+    of this class.
+    \note this method is called for an uninitialized object
+    \internal
+ */
+void QJsonArray::initialize()
+{
+    d = 0;
+    a = 0;
 }
 
 /*!
@@ -514,8 +532,8 @@ bool QJsonArray::contains(const QJsonValue &value) const
     \a i must be a valid index position in the array (i.e., \c{0 <= i <
     size()}).
 
-    The return value is of type QJsonValueRef, a helper class for QJsonArray
-    and QJsonObject. When you get an object of type QJsonValueRef, you can
+    The return value is of type \keyword QJsonValueRef, a helper class for QJsonArray
+    and QJsonObject. When you get an object of type \keyword QJsonValueRef, you can
     use it as if it were a reference to a QJsonValue. If you assign to it,
     the assignment will apply to the character in the QJsonArray of QJsonObject
     from which you got the reference.
@@ -692,6 +710,11 @@ bool QJsonArray::operator!=(const QJsonArray &other) const
     \internal
 */
 
+/*! \typedef QJsonArray::iterator::pointer
+
+    \internal
+*/
+
 /*! \fn QJsonArray::iterator::iterator()
 
     Constructs an uninitialized iterator.
@@ -709,16 +732,22 @@ bool QJsonArray::operator!=(const QJsonArray &other) const
 
 /*! \fn QJsonValueRef QJsonArray::iterator::operator*() const
 
+
     Returns a modifiable reference to the current item.
 
     You can change the value of an item by using operator*() on the
     left side of an assignment.
 
-    The return value is of type QJsonValueRef, a helper class for QJsonArray
-    and QJsonObject. When you get an object of type QJsonValueRef, you can
+    The return value is of type \keyword QJsonValueRef, a helper class for QJsonArray
+    and QJsonObject. When you get an object of type \keyword QJsonValueRef, you can
     use it as if it were a reference to a QJsonValue. If you assign to it,
     the assignment will apply to the character in the QJsonArray of QJsonObject
     from which you got the reference.
+*/
+
+/*! \fn QJsonValueRef *QJsonArray::iterator::operator->() const
+
+    Returns a pointer to a modifiable reference to the current item.
 */
 
 /*! \fn QJsonValueRef QJsonArray::iterator::operator[](int j) const
@@ -729,8 +758,8 @@ bool QJsonArray::operator!=(const QJsonArray &other) const
     This function is provided to make QJsonArray iterators behave like C++
     pointers.
 
-    The return value is of type QJsonValueRef, a helper class for QJsonArray
-    and QJsonObject. When you get an object of type QJsonValueRef, you can
+    The return value is of type \keyword QJsonValueRef, a helper class for QJsonArray
+    and QJsonObject. When you get an object of type \keyword QJsonValueRef, you can
     use it as if it were a reference to a QJsonValue. If you assign to it,
     the assignment will apply to the character in the QJsonArray of QJsonObject
     from which you got the reference.
@@ -931,6 +960,11 @@ bool QJsonArray::operator!=(const QJsonArray &other) const
     \internal
 */
 
+/*! \typedef QJsonArray::const_iterator::pointer
+
+    \internal
+*/
+
 /*! \fn QJsonArray::const_iterator::const_iterator(const const_iterator &other)
 
     Constructs a copy of \a other.
@@ -944,6 +978,11 @@ bool QJsonArray::operator!=(const QJsonArray &other) const
 /*! \fn QJsonValue QJsonArray::const_iterator::operator*() const
 
     Returns the current item.
+*/
+
+/*! \fn QJsonValue *QJsonArray::const_iterator::operator->() const
+
+    Returns a pointer to the current item.
 */
 
 /*! \fn QJsonValue QJsonArray::const_iterator::operator[](int j) const
@@ -1117,6 +1156,7 @@ void QJsonArray::compact()
 #if !defined(QT_NO_DEBUG_STREAM) && !defined(QT_JSON_READONLY)
 QDebug operator<<(QDebug dbg, const QJsonArray &a)
 {
+    QDebugStateSaver saver(dbg);
     if (!a.a) {
         dbg << "QJsonArray()";
         return dbg;
@@ -1126,7 +1166,7 @@ QDebug operator<<(QDebug dbg, const QJsonArray &a)
     dbg.nospace() << "QJsonArray("
                   << json.constData() // print as utf-8 string without extra quotation marks
                   << ")";
-    return dbg.space();
+    return dbg;
 }
 #endif
 

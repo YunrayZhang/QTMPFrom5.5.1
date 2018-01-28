@@ -2,7 +2,6 @@ include($QT_INSTALL_DOCS/global/qt-module-defaults.qdocconf)
 
 project                 = QtSql
 description             = Qt SQL Reference Documentation
-url                     = http://qt-project.org/doc/qt-$QT_VER
 version                 = $QT_VERSION
 
 examplesinstallpath     = sql
@@ -26,7 +25,7 @@ qhp.QtSql.subprojects.classes.selectors = class fake:headerfile
 qhp.QtSql.subprojects.classes.sortPages = true
 tagfile                 = ../../../doc/qtsql/qtsql.tags
 
-depends                 += qtcore qtwidgets qtdoc
+depends                 += qtcore qtwidgets qtdoc qmake
 
 headerdirs  += ..
 

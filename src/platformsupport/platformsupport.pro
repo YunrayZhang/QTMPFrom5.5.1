@@ -18,7 +18,13 @@ include(input/input.pri)
 include(devicediscovery/devicediscovery.pri)
 include(services/services.pri)
 include(themes/themes.pri)
+include(accessibility/accessibility.pri)
 include(linuxaccessibility/linuxaccessibility.pri)
 include(clipboard/clipboard.pri)
+include(platformcompositor/platformcompositor.pri)
+contains(QT_CONFIG, dbus) {
+    include(dbusmenu/dbusmenu.pri)
+    include(dbustray/dbustray.pri)
+}
 
 load(qt_module)

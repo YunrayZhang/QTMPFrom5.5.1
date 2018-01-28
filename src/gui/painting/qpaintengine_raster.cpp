@@ -1,39 +1,31 @@
 /****************************************************************************
 **
-** Copyright (C) 2014 Digia Plc and/or its subsidiary(-ies).
-** Contact: http://www.qt-project.org/legal
+** Copyright (C) 2015 The Qt Company Ltd.
+** Contact: http://www.qt.io/licensing/
 **
 ** This file is part of the QtGui module of the Qt Toolkit.
 **
-** $QT_BEGIN_LICENSE:LGPL$
+** $QT_BEGIN_LICENSE:LGPL21$
 ** Commercial License Usage
 ** Licensees holding valid commercial Qt licenses may use this file in
 ** accordance with the commercial license agreement provided with the
 ** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and Digia.  For licensing terms and
-** conditions see http://qt.digia.com/licensing.  For further information
-** use the contact form at http://qt.digia.com/contact-us.
+** a written agreement between you and The Qt Company. For licensing terms
+** and conditions see http://www.qt.io/terms-conditions. For further
+** information use the contact form at http://www.qt.io/contact-us.
 **
 ** GNU Lesser General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 2.1 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU Lesser General Public License version 2.1 requirements
-** will be met: http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
+** General Public License version 2.1 or version 3 as published by the Free
+** Software Foundation and appearing in the file LICENSE.LGPLv21 and
+** LICENSE.LGPLv3 included in the packaging of this file. Please review the
+** following information to ensure the GNU Lesser General Public License
+** requirements will be met: https://www.gnu.org/licenses/lgpl.html and
+** http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
 **
-** In addition, as a special exception, Digia gives you certain additional
-** rights.  These rights are described in the Digia Qt LGPL Exception
+** As a special exception, The Qt Company gives you certain additional
+** rights. These rights are described in The Qt Company LGPL Exception
 ** version 1.1, included in the file LGPL_EXCEPTION.txt in this package.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3.0 as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU General Public License version 3.0 requirements will be
-** met: http://www.gnu.org/copyleft/gpl.html.
-**
 **
 ** $QT_END_LICENSE$
 **
@@ -56,7 +48,6 @@
 
 //   #include <private/qdatabuffer_p.h>
 //   #include <private/qpainter_p.h>
-#include <private/qmath_p.h>
 #include <private/qtextengine_p.h>
 #include <private/qfontengine_p.h>
 #include <private/qpixmap_raster_p.h>
@@ -415,30 +406,12 @@ void QRasterPaintEngine::init()
     case QImage::Format_Mono:
         d->mono_surface = true;
         break;
-    case QImage::Format_ARGB8565_Premultiplied:
-    case QImage::Format_ARGB8555_Premultiplied:
-    case QImage::Format_ARGB6666_Premultiplied:
-    case QImage::Format_ARGB4444_Premultiplied:
-    case QImage::Format_ARGB32_Premultiplied:
-    case QImage::Format_ARGB32:
-    case QImage::Format_RGBA8888_Premultiplied:
-    case QImage::Format_RGBA8888:
-        gccaps |= PorterDuff;
-        break;
-    case QImage::Format_RGB32:
-    case QImage::Format_RGB444:
-    case QImage::Format_RGB555:
-    case QImage::Format_RGB666:
-    case QImage::Format_RGB888:
-    case QImage::Format_RGB16:
-    case QImage::Format_RGBX8888:
-        break;
     default:
+        if (QImage::toPixelFormat(format).alphaUsage() == QPixelFormat::UsesAlpha)
+            gccaps |= PorterDuff;
         break;
     }
 }
-
-
 
 
 /*!
@@ -1891,7 +1864,7 @@ void QRasterPaintEngine::fillPolygon(const QPointF *points, int pointCount, Poly
     }
 
     // Compose polygon fill..,
-    QVectorPath vp((qreal *) points, pointCount, 0, QVectorPath::polygonFlags(mode));
+    QVectorPath vp((const qreal *) points, pointCount, 0, QVectorPath::polygonFlags(mode));
     ensureOutlineMapper();
     QT_FT_Outline *outline = d->outlineMapper->convertPath(vp);
 
@@ -1916,7 +1889,7 @@ void QRasterPaintEngine::drawPolygon(const QPointF *points, int pointCount, Poly
 #endif
     Q_ASSERT(pointCount >= 2);
 
-    if (mode != PolylineMode && QVectorPath::isRect((qreal *) points, pointCount)) {
+    if (mode != PolylineMode && QVectorPath::isRect((const qreal *) points, pointCount)) {
         QRectF r(points[0], points[2]);
         drawRects(&r, 1);
         return;
@@ -1932,7 +1905,7 @@ void QRasterPaintEngine::drawPolygon(const QPointF *points, int pointCount, Poly
 
     // Do the outline...
     if (s->penData.blend) {
-        QVectorPath vp((qreal *) points, pointCount, 0, QVectorPath::polygonFlags(mode));
+        QVectorPath vp((const qreal *) points, pointCount, 0, QVectorPath::polygonFlags(mode));
         if (s->flags.fast_pen) {
             QCosmeticStroker stroker(s, d->deviceRect, d->deviceRectUnclipped);
             stroker.setLegacyRoundingEnabled(s->flags.legacy_rounding);
@@ -1957,7 +1930,7 @@ void QRasterPaintEngine::drawPolygon(const QPoint *points, int pointCount, Polyg
         qDebug() << "   - " << points[i];
 #endif
     Q_ASSERT(pointCount >= 2);
-    if (mode != PolylineMode && QVectorPath::isRect((int *) points, pointCount)) {
+    if (mode != PolylineMode && QVectorPath::isRect((const int *) points, pointCount)) {
         QRect r(points[0].x(),
                 points[0].y(),
                 points[2].x() - points[0].x(),
@@ -1995,7 +1968,7 @@ void QRasterPaintEngine::drawPolygon(const QPoint *points, int pointCount, Polyg
         int count = pointCount * 2;
         QVarLengthArray<qreal> fpoints(count);
         for (int i=0; i<count; ++i)
-            fpoints[i] = ((int *) points)[i];
+            fpoints[i] = ((const int *) points)[i];
         QVectorPath vp((qreal *) fpoints.data(), pointCount, 0, QVectorPath::polygonFlags(mode));
 
         if (s->flags.fast_pen) {
@@ -2243,6 +2216,8 @@ void QRasterPaintEngine::drawImage(const QRectF &r, const QImage &img, const QRe
         case QImage::Format_ARGB8555_Premultiplied:
         case QImage::Format_ARGB4444_Premultiplied:
         case QImage::Format_RGBA8888_Premultiplied:
+        case QImage::Format_A2BGR30_Premultiplied:
+        case QImage::Format_A2RGB30_Premultiplied:
             // Combine premultiplied color with the opacity set on the painter.
             d->solid_color_filler.solid.color =
                 ((((color & 0x00ff00ff) * s->intOpacity) >> 8) & 0x00ff00ff)
@@ -2720,7 +2695,7 @@ void QRasterPaintEngine::alphaPenBlt(const void* src, int bpl, int depth, int rx
             scanline += bpl;
         }
     } else { // 32-bit alpha...
-        uint *sl = (uint *) scanline;
+        const uint *sl = (const uint *) scanline;
         for (int y = y0; y < y1; ++y) {
             for (int x = x0; x < x1; ) {
                 // Skip those with 0 coverage
@@ -2781,12 +2756,12 @@ bool QRasterPaintEngine::drawCachedGlyphs(int numGlyphs, const glyph_t *glyphs,
             QFixed spp = fontEngine->subPixelPositionForX(positions[i].x);
 
             QPoint offset;
-            QImage *alphaMap = fontEngine->lockedAlphaMapForGlyph(glyphs[i], spp, neededFormat, s->matrix,
-                                                                  &offset);
+            const QImage *alphaMap = fontEngine->lockedAlphaMapForGlyph(glyphs[i], spp, neededFormat, s->matrix,
+                                                                        &offset);
             if (alphaMap == 0 || alphaMap->isNull())
                 continue;
 
-            alphaPenBlt(alphaMap->bits(), alphaMap->bytesPerLine(), alphaMap->depth(),
+            alphaPenBlt(alphaMap->constBits(), alphaMap->bytesPerLine(), alphaMap->depth(),
                         qFloor(positions[i].x) + offset.x(),
                         qRound(positions[i].y) + offset.y(),
                         alphaMap->width(), alphaMap->height());
@@ -3306,6 +3281,10 @@ bool QRasterPaintEngine::requiresPretransformedGlyphPositions(QFontEngine *fontE
     return QPaintEngineEx::requiresPretransformedGlyphPositions(fontEngine, m);
 }
 
+/*!
+   Indicates whether glyph caching is supported by the font engine
+   \a fontEngine with the given transform \a m applied.
+*/
 bool QRasterPaintEngine::shouldDrawCachedGlyphs(QFontEngine *fontEngine, const QTransform &m) const
 {
     // The raster engine does not support projected cached glyph drawing
@@ -4490,7 +4469,7 @@ void QSpanData::setup(const QBrush &brush, int alpha, QPainter::CompositionMode 
             QPointF center = g->center();
             conicalData.center.x = center.x();
             conicalData.center.y = center.y();
-            conicalData.angle = g->angle() * 2 * Q_PI / 360.0;
+            conicalData.angle = qDegreesToRadians(g->angle());
         }
         break;
 

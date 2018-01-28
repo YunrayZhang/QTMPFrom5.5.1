@@ -1,39 +1,31 @@
 /****************************************************************************
 **
-** Copyright (C) 2013 Digia Plc and/or its subsidiary(-ies).
-** Contact: http://www.qt-project.org/legal
+** Copyright (C) 2015 The Qt Company Ltd.
+** Contact: http://www.qt.io/licensing/
 **
 ** This file is part of the test suite of the Qt Toolkit.
 **
-** $QT_BEGIN_LICENSE:LGPL$
+** $QT_BEGIN_LICENSE:LGPL21$
 ** Commercial License Usage
 ** Licensees holding valid commercial Qt licenses may use this file in
 ** accordance with the commercial license agreement provided with the
 ** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and Digia.  For licensing terms and
-** conditions see http://qt.digia.com/licensing.  For further information
-** use the contact form at http://qt.digia.com/contact-us.
+** a written agreement between you and The Qt Company. For licensing terms
+** and conditions see http://www.qt.io/terms-conditions. For further
+** information use the contact form at http://www.qt.io/contact-us.
 **
 ** GNU Lesser General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 2.1 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU Lesser General Public License version 2.1 requirements
-** will be met: http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
+** General Public License version 2.1 or version 3 as published by the Free
+** Software Foundation and appearing in the file LICENSE.LGPLv21 and
+** LICENSE.LGPLv3 included in the packaging of this file. Please review the
+** following information to ensure the GNU Lesser General Public License
+** requirements will be met: https://www.gnu.org/licenses/lgpl.html and
+** http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
 **
-** In addition, as a special exception, Digia gives you certain additional
-** rights.  These rights are described in the Digia Qt LGPL Exception
+** As a special exception, The Qt Company gives you certain additional
+** rights. These rights are described in The Qt Company LGPL Exception
 ** version 1.1, included in the file LGPL_EXCEPTION.txt in this package.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3.0 as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU General Public License version 3.0 requirements will be
-** met: http://www.gnu.org/copyleft/gpl.html.
-**
 **
 ** $QT_END_LICENSE$
 **
@@ -56,6 +48,14 @@
 #include <qpa/qplatformtheme_p.h>
 
 QT_FORWARD_DECLARE_CLASS(QDialog)
+
+// work around function being protected
+class DummyDialog : public QDialog
+{
+public:
+    DummyDialog(): QDialog(0, Qt::X11BypassWindowManagerHint) {}
+    using QDialog::showExtension;
+};
 
 class tst_QDialog : public QObject
 {
@@ -90,7 +90,7 @@ private slots:
     void transientParent();
 
 private:
-    QDialog *testWidget;
+    DummyDialog *testWidget;
 };
 
 // Testing get/set functions
@@ -115,13 +115,6 @@ void tst_QDialog::getSetCheck()
     obj1.setResult(INT_MAX);
     QCOMPARE(INT_MAX, obj1.result());
 }
-
-// work around function being protected
-class DummyDialog : public QDialog {
-public:
-    DummyDialog(): QDialog(0) {}
-    void showExtension( bool b ) { QDialog::showExtension( b ); }
-};
 
 class ToolDialog : public QDialog
 {
@@ -156,7 +149,7 @@ tst_QDialog::tst_QDialog()
 void tst_QDialog::initTestCase()
 {
     // Create the test class
-    testWidget = new QDialog(0, Qt::X11BypassWindowManagerHint);
+    testWidget = new DummyDialog;
     testWidget->resize(200,200);
     testWidget->show();
     qApp->setActiveWindow(testWidget);
@@ -201,7 +194,7 @@ void tst_QDialog::showExtension()
     QPoint oldPosition = testWidget->pos();
 
     // show
-    ((DummyDialog*)testWidget)->showExtension( true );
+    testWidget->showExtension( true );
 //     while ( testWidget->size() == dlgSize )
 //         qApp->processEvents();
 
@@ -210,7 +203,7 @@ void tst_QDialog::showExtension()
     QCOMPARE(testWidget->pos(), oldPosition);
 
     // hide extension. back to old size ?
-    ((DummyDialog*)testWidget)->showExtension( false );
+    testWidget->showExtension( false );
     QCOMPARE( testWidget->size(), dlgSize );
 
     testWidget->setExtension( 0 );
@@ -565,11 +558,19 @@ void tst_QDialog::snapToDefaultButton()
 #ifdef QT_NO_CURSOR
     QSKIP("Test relies on there being a cursor");
 #else
+    if (qApp->platformName().toLower() == QLatin1String("wayland"))
+        QSKIP("Wayland: Wayland does not support setting the cursor position.");
+
     QPoint topLeftPos = QApplication::desktop()->availableGeometry().topLeft();
     topLeftPos = QPoint(topLeftPos.x() + 100, topLeftPos.y() + 100);
     QPoint startingPos(topLeftPos.x() + 250, topLeftPos.y() + 250);
     QCursor::setPos(startingPos);
-    QVERIFY(QCursor::pos() == startingPos);
+#ifdef Q_OS_OSX
+    // On OS X we use CGEventPost to move the cursor, it needs at least
+    // some time before the event handled and the position really set.
+    QTest::qWait(100);
+#endif
+    QCOMPARE(QCursor::pos(), startingPos);
     QDialog dialog;
     QPushButton *button = new QPushButton(&dialog);
     button->setDefault(true);
@@ -581,7 +582,7 @@ void tst_QDialog::snapToDefaultButton()
             QPoint localPos = button->mapFromGlobal(QCursor::pos());
             QVERIFY(button->rect().contains(localPos));
         } else {
-            QVERIFY(startingPos == QCursor::pos());
+            QCOMPARE(startingPos, QCursor::pos());
         }
     }
 #endif // !QT_NO_CURSOR

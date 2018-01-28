@@ -1,39 +1,31 @@
 /****************************************************************************
 **
-** Copyright (C) 2012 Digia Plc and/or its subsidiary(-ies).
-** Contact: http://www.qt-project.org/legal
+** Copyright (C) 2015 The Qt Company Ltd.
+** Contact: http://www.qt.io/licensing/
 **
 ** This file is part of the test suite of the Qt Toolkit.
 **
-** $QT_BEGIN_LICENSE:LGPL$
+** $QT_BEGIN_LICENSE:LGPL21$
 ** Commercial License Usage
 ** Licensees holding valid commercial Qt licenses may use this file in
 ** accordance with the commercial license agreement provided with the
 ** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and Digia.  For licensing terms and
-** conditions see http://qt.digia.com/licensing.  For further information
-** use the contact form at http://qt.digia.com/contact-us.
+** a written agreement between you and The Qt Company. For licensing terms
+** and conditions see http://www.qt.io/terms-conditions. For further
+** information use the contact form at http://www.qt.io/contact-us.
 **
 ** GNU Lesser General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 2.1 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU Lesser General Public License version 2.1 requirements
-** will be met: http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
+** General Public License version 2.1 or version 3 as published by the Free
+** Software Foundation and appearing in the file LICENSE.LGPLv21 and
+** LICENSE.LGPLv3 included in the packaging of this file. Please review the
+** following information to ensure the GNU Lesser General Public License
+** requirements will be met: https://www.gnu.org/licenses/lgpl.html and
+** http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
 **
-** In addition, as a special exception, Digia gives you certain additional
-** rights.  These rights are described in the Digia Qt LGPL Exception
+** As a special exception, The Qt Company gives you certain additional
+** rights. These rights are described in The Qt Company LGPL Exception
 ** version 1.1, included in the file LGPL_EXCEPTION.txt in this package.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3.0 as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU General Public License version 3.0 requirements will be
-** met: http://www.gnu.org/copyleft/gpl.html.
-**
 **
 ** $QT_END_LICENSE$
 **
@@ -48,6 +40,8 @@
 
 #include <qdockwidget.h>
 #include <qmainwindow.h>
+#include <qscreen.h>
+#include <qscopedpointer.h>
 
 
 class Window : public QWindow
@@ -73,6 +67,10 @@ public:
 class tst_QWindowContainer: public QObject
 {
     Q_OBJECT
+
+public:
+    tst_QWindowContainer() : m_availableGeometry(QGuiApplication::primaryScreen()->availableGeometry()) {}
+
 private slots:
     void testShow();
     void testPositionAndSize();
@@ -83,14 +81,22 @@ private slots:
     void testActivation();
     void testAncestorChange();
     void testDockWidget();
+    void cleanup();
+
+private:
+    const QRect m_availableGeometry;
 };
 
-
+void tst_QWindowContainer::cleanup()
+{
+    QVERIFY(QGuiApplication::topLevelWindows().isEmpty());
+}
 
 void tst_QWindowContainer::testShow()
 {
     QWidget root;
-    root.setGeometry(100, 100, 400, 400);
+    root.setWindowTitle(QTest::currentTestFunction());
+    root.setGeometry(m_availableGeometry.x() + 100, m_availableGeometry.y() + 100, 400, 400);
 
     Window *window = new Window();
     QWidget *container = QWidget::createWindowContainer(window, &root);
@@ -107,14 +113,15 @@ void tst_QWindowContainer::testShow()
 void tst_QWindowContainer::testPositionAndSize()
 {
     QWindow *window = new QWindow();
-    window->setGeometry(300, 400, 500, 600);
+    window->setGeometry(m_availableGeometry.x() + 300, m_availableGeometry.y() + 400, 500, 600);
 
-    QWidget *container = QWidget::createWindowContainer(window);
+    QScopedPointer<QWidget> container(QWidget::createWindowContainer(window));
+    container->setWindowTitle(QTest::currentTestFunction());
     container->setGeometry(50, 50, 200, 200);
 
 
     container->show();
-    QVERIFY(QTest::qWaitForWindowExposed(container));
+    QVERIFY(QTest::qWaitForWindowExposed(container.data()));
 
     QCOMPARE(window->x(), 0);
     QCOMPARE(window->y(), 0);
@@ -128,11 +135,12 @@ void tst_QWindowContainer::testExposeObscure()
 {
     Window *window = new Window();
 
-    QWidget *container = QWidget::createWindowContainer(window);
-    container->setGeometry(50, 50, 200, 200);
+    QScopedPointer<QWidget> container(QWidget::createWindowContainer(window));
+    container->setWindowTitle(QTest::currentTestFunction());
+    container->setGeometry(m_availableGeometry.x() + 50, m_availableGeometry.y() + 50, 200, 200);
 
     container->show();
-    QVERIFY(QTest::qWaitForWindowExposed(container));
+    QVERIFY(QTest::qWaitForWindowExposed(container.data()));
     QVERIFY(QTest::qWaitForWindowExposed(window));
 
     QVERIFY(window->numberOfExposes > 0);
@@ -181,19 +189,20 @@ void tst_QWindowContainer::testBehindTheScenesDeletion()
 void tst_QWindowContainer::testActivation()
 {
     QWidget root;
+    root.setWindowTitle(QTest::currentTestFunction());
 
     QWindow *window = new QWindow();
     QWidget *container = QWidget::createWindowContainer(window, &root);
 
     container->setGeometry(100, 100, 200, 100);
-    root.setGeometry(100, 100, 400, 300);
+    root.setGeometry(m_availableGeometry.x() + 100, m_availableGeometry.y() + 100, 400, 300);
 
     root.show();
     root.activateWindow();
     QVERIFY(QTest::qWaitForWindowExposed(&root));
 
     QVERIFY(QTest::qWaitForWindowActive(root.windowHandle()));
-    QVERIFY(QGuiApplication::focusWindow() == root.windowHandle());
+    QCOMPARE(QGuiApplication::focusWindow(), root.windowHandle());
 
     // Verify that all states in the root widget indicate it is active
     QVERIFY(root.windowHandle()->isActive());
@@ -207,7 +216,7 @@ void tst_QWindowContainer::testActivation()
         QTest::qWait(100);
 
     window->requestActivate();
-    QTRY_VERIFY(QGuiApplication::focusWindow() == window);
+    QTRY_COMPARE(QGuiApplication::focusWindow(), window);
 
     // Verify that all states in the root widget still indicate it is active
     QVERIFY(root.windowHandle()->isActive());
@@ -220,14 +229,15 @@ void tst_QWindowContainer::testActivation()
 void tst_QWindowContainer::testUnparenting()
 {
     QWindow *window = new QWindow();
-    QWidget *container = QWidget::createWindowContainer(window);
-    container->setGeometry(100, 100, 200, 100);
+    QScopedPointer<QWidget> container(QWidget::createWindowContainer(window));
+    container->setWindowTitle(QTest::currentTestFunction());
+    container->setGeometry(m_availableGeometry.x() + 100, m_availableGeometry.y() + 100, 200, 100);
 
     window->setParent(0);
 
     container->show();
 
-    QVERIFY(QTest::qWaitForWindowExposed(container));
+    QVERIFY(QTest::qWaitForWindowExposed(container.data()));
 
     // Window should not be made visible by container..
     QVERIFY(!window->isVisible());
@@ -236,10 +246,12 @@ void tst_QWindowContainer::testUnparenting()
 void tst_QWindowContainer::testAncestorChange()
 {
     QWidget root;
+    root.setWindowTitle(QStringLiteral("Root ") + QTest::currentTestFunction());
     QWidget *left = new QWidget(&root);
     QWidget *right = new QWidget(&root);
 
-    root.setGeometry(0, 0, 200, 100);
+
+    root.setGeometry(m_availableGeometry.x() + 50, m_availableGeometry.y() + 50, 200, 100);
     left->setGeometry(0, 0, 100, 100);
     right->setGeometry(100, 0, 100, 100);
 
@@ -265,6 +277,7 @@ void tst_QWindowContainer::testAncestorChange()
     QCOMPARE(window->geometry(), QRect(100, 0, 100, 100));
 
     QWidget *newRoot = new QWidget(&root);
+    newRoot->setWindowTitle(QStringLiteral("newRoot ") + QTest::currentTestFunction());
     newRoot->setGeometry(50, 50, 200, 200);
     right->setParent(newRoot);
     //      Root
@@ -278,7 +291,8 @@ void tst_QWindowContainer::testAncestorChange()
     QCOMPARE(window->geometry(), QRect(100, 0, 100, 100));
 
     newRoot->setParent(0);
-    newRoot->setGeometry(100, 100, 200, 200);
+    QScopedPointer<QWidget> newRootGuard(newRoot);
+    newRoot->setGeometry(m_availableGeometry.x() + 100, m_availableGeometry.y() + 100, 200, 200);
     newRoot->show();
     QVERIFY(QTest::qWaitForWindowExposed(newRoot));
     QCOMPARE(newRoot->windowHandle(), window->parent());
@@ -293,9 +307,11 @@ void tst_QWindowContainer::testAncestorChange()
 void tst_QWindowContainer::testDockWidget()
 {
     QMainWindow mainWindow;
+    mainWindow.setWindowTitle(QTest::currentTestFunction());
     mainWindow.resize(200, 200);
+    mainWindow.move(m_availableGeometry.center() - QPoint(100, 100));
 
-    QDockWidget *dock = new QDockWidget();
+    QDockWidget *dock = new QDockWidget(QStringLiteral("Dock ") + QTest::currentTestFunction());
     QWindow *window = new QWindow();
     QWidget *container = QWidget::createWindowContainer(window);
     dock->setWidget(container);
@@ -303,7 +319,7 @@ void tst_QWindowContainer::testDockWidget()
 
     mainWindow.show();
     QVERIFY(QTest::qWaitForWindowExposed(&mainWindow));
-    QVERIFY(window->parent() == mainWindow.window()->windowHandle());
+    QCOMPARE(window->parent(), mainWindow.window()->windowHandle());
 
     QTest::qWait(1000);
     dock->setFloating(true);

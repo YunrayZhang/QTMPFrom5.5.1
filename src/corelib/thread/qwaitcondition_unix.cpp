@@ -1,39 +1,31 @@
 /****************************************************************************
 **
-** Copyright (C) 2013 Digia Plc and/or its subsidiary(-ies).
-** Contact: http://www.qt-project.org/legal
+** Copyright (C) 2015 The Qt Company Ltd.
+** Contact: http://www.qt.io/licensing/
 **
 ** This file is part of the QtCore module of the Qt Toolkit.
 **
-** $QT_BEGIN_LICENSE:LGPL$
+** $QT_BEGIN_LICENSE:LGPL21$
 ** Commercial License Usage
 ** Licensees holding valid commercial Qt licenses may use this file in
 ** accordance with the commercial license agreement provided with the
 ** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and Digia.  For licensing terms and
-** conditions see http://qt.digia.com/licensing.  For further information
-** use the contact form at http://qt.digia.com/contact-us.
+** a written agreement between you and The Qt Company. For licensing terms
+** and conditions see http://www.qt.io/terms-conditions. For further
+** information use the contact form at http://www.qt.io/contact-us.
 **
 ** GNU Lesser General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 2.1 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU Lesser General Public License version 2.1 requirements
-** will be met: http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
+** General Public License version 2.1 or version 3 as published by the Free
+** Software Foundation and appearing in the file LICENSE.LGPLv21 and
+** LICENSE.LGPLv3 included in the packaging of this file. Please review the
+** following information to ensure the GNU Lesser General Public License
+** requirements will be met: https://www.gnu.org/licenses/lgpl.html and
+** http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
 **
-** In addition, as a special exception, Digia gives you certain additional
-** rights.  These rights are described in the Digia Qt LGPL Exception
+** As a special exception, The Qt Company gives you certain additional
+** rights. These rights are described in The Qt Company LGPL Exception
 ** version 1.1, included in the file LGPL_EXCEPTION.txt in this package.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3.0 as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU General Public License version 3.0 requirements will be
-** met: http://www.gnu.org/copyleft/gpl.html.
-**
 **
 ** $QT_END_LICENSE$
 **
@@ -60,9 +52,12 @@
 QT_BEGIN_NAMESPACE
 
 #ifdef Q_OS_ANDROID
-// Android lacks pthread_condattr_setclock, but it does have a nice function
-// for relative waits. Use weakref so we can determine at runtime whether it is
-// present.
+// pthread_condattr_setclock is available only since Android 5.0. On older versions, there's
+// a private function for relative waits (hidden in 5.0).
+// Use weakref so we can determine at runtime whether each of them is present.
+static int local_condattr_setclock(pthread_condattr_t*, clockid_t)
+__attribute__((weakref("pthread_condattr_setclock")));
+
 static int local_cond_timedwait_relative(pthread_cond_t*, pthread_mutex_t *, const timespec *)
 __attribute__((weakref("__pthread_cond_timedwait_relative")));
 #endif
@@ -78,9 +73,14 @@ void qt_initialize_pthread_cond(pthread_cond_t *cond, const char *where)
     pthread_condattr_t condattr;
 
     pthread_condattr_init(&condattr);
-#if !defined(Q_OS_MAC) && !defined(Q_OS_ANDROID) && (_POSIX_MONOTONIC_CLOCK-0 >= 0)
+#if (_POSIX_MONOTONIC_CLOCK-0 >= 0)
+#if defined(Q_OS_ANDROID)
+    if (local_condattr_setclock && QElapsedTimer::clockType() == QElapsedTimer::MonotonicClock)
+        local_condattr_setclock(&condattr, CLOCK_MONOTONIC);
+#elif !defined(Q_OS_MAC) && !defined(Q_OS_HAIKU)
     if (QElapsedTimer::clockType() == QElapsedTimer::MonotonicClock)
         pthread_condattr_setclock(&condattr, CLOCK_MONOTONIC);
+#endif
 #endif
     report_error(pthread_cond_init(cond, &condattr), where, "cv init");
     pthread_condattr_destroy(&condattr);
@@ -116,7 +116,7 @@ public:
     {
         timespec ti;
 #ifdef Q_OS_ANDROID
-        if (Q_LIKELY(local_cond_timedwait_relative)) {
+        if (local_cond_timedwait_relative) {
             ti.tv_sec = time / 1000;
             ti.tv_nsec = time % 1000 * Q_UINT64_C(1000) * 1000;
             return local_cond_timedwait_relative(&cond, &mutex, &ti);

@@ -1,39 +1,31 @@
 /****************************************************************************
 **
-** Copyright (C) 2013 Digia Plc and/or its subsidiary(-ies).
-** Contact: http://www.qt-project.org/legal
+** Copyright (C) 2015 The Qt Company Ltd.
+** Contact: http://www.qt.io/licensing/
 **
 ** This file is part of the QtCore module of the Qt Toolkit.
 **
-** $QT_BEGIN_LICENSE:LGPL$
+** $QT_BEGIN_LICENSE:LGPL21$
 ** Commercial License Usage
 ** Licensees holding valid commercial Qt licenses may use this file in
 ** accordance with the commercial license agreement provided with the
 ** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and Digia.  For licensing terms and
-** conditions see http://qt.digia.com/licensing.  For further information
-** use the contact form at http://qt.digia.com/contact-us.
+** a written agreement between you and The Qt Company. For licensing terms
+** and conditions see http://www.qt.io/terms-conditions. For further
+** information use the contact form at http://www.qt.io/contact-us.
 **
 ** GNU Lesser General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 2.1 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU Lesser General Public License version 2.1 requirements
-** will be met: http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
+** General Public License version 2.1 or version 3 as published by the Free
+** Software Foundation and appearing in the file LICENSE.LGPLv21 and
+** LICENSE.LGPLv3 included in the packaging of this file. Please review the
+** following information to ensure the GNU Lesser General Public License
+** requirements will be met: https://www.gnu.org/licenses/lgpl.html and
+** http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
 **
-** In addition, as a special exception, Digia gives you certain additional
-** rights.  These rights are described in the Digia Qt LGPL Exception
+** As a special exception, The Qt Company gives you certain additional
+** rights. These rights are described in The Qt Company LGPL Exception
 ** version 1.1, included in the file LGPL_EXCEPTION.txt in this package.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3.0 as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU General Public License version 3.0 requirements will be
-** met: http://www.gnu.org/copyleft/gpl.html.
-**
 **
 ** $QT_END_LICENSE$
 **
@@ -44,13 +36,12 @@
 #include "qdatastream.h"
 #include "qendian.h"
 #include "qdebug.h"
+#include "private/qtools_p.h"
 
 #ifndef QT_BOOTSTRAPPED
 #include "qcryptographichash.h"
 #endif
 QT_BEGIN_NAMESPACE
-
-static const char digits[] = "0123456789abcdef";
 
 template <class Char, class Integral>
 void _q_toHex(Char *&dst, Integral value)
@@ -60,10 +51,8 @@ void _q_toHex(Char *&dst, Integral value)
     const char* p = reinterpret_cast<const char*>(&value);
 
     for (uint i = 0; i < sizeof(Integral); ++i, dst += 2) {
-        uint j = (p[i] >> 4) & 0xf;
-        dst[0] = Char(digits[j]);
-        j = p[i] & 0xf;
-        dst[1] = Char(digits[j]);
+        dst[0] = Char(QtMiscUtils::toHexLower((p[i] >> 4) & 0xf));
+        dst[1] = Char(QtMiscUtils::toHexLower(p[i] & 0xf));
     }
 }
 
@@ -73,15 +62,9 @@ bool _q_fromHex(const Char *&src, Integral &value)
     value = 0;
 
     for (uint i = 0; i < sizeof(Integral) * 2; ++i) {
-        int ch = *src++;
-        int tmp;
-        if (ch >= '0' && ch <= '9')
-            tmp = ch - '0';
-        else if (ch >= 'a' && ch <= 'f')
-            tmp = ch - 'a' + 10;
-        else if (ch >= 'A' && ch <= 'F')
-            tmp = ch - 'A' + 10;
-        else
+        uint ch = *src++;
+        int tmp = QtMiscUtils::fromHex(ch);
+        if (tmp == -1)
             return false;
 
         value = value * 16 + tmp;
@@ -560,7 +543,7 @@ QUuid QUuid::fromRfc4122(const QByteArray &bytes)
 QString QUuid::toString() const
 {
     QString result(38, Qt::Uninitialized);
-    ushort *data = (ushort *)result.unicode();
+    ushort *data = (ushort *)result.data();
 
     _q_uuidToHex(data, data1, data2, data3, data4);
 
@@ -738,7 +721,7 @@ QDataStream &operator>>(QDataStream &s, QUuid &id)
     Returns \c true if this is the null UUID
     {00000000-0000-0000-0000-000000000000}; otherwise returns \c false.
 */
-bool QUuid::isNull() const
+bool QUuid::isNull() const Q_DECL_NOTHROW
 {
     return data4[0] == 0 && data4[1] == 0 && data4[2] == 0 && data4[3] == 0 &&
            data4[4] == 0 && data4[5] == 0 && data4[6] == 0 && data4[7] == 0 &&
@@ -787,7 +770,7 @@ bool QUuid::isNull() const
 
     \sa version()
 */
-QUuid::Variant QUuid::variant() const
+QUuid::Variant QUuid::variant() const Q_DECL_NOTHROW
 {
     if (isNull())
         return VarUnknown;
@@ -808,7 +791,7 @@ QUuid::Variant QUuid::variant() const
 
     \sa variant()
 */
-QUuid::Version QUuid::version() const
+QUuid::Version QUuid::version() const Q_DECL_NOTHROW
 {
     // Check the 4 MSB of data3
     Version ver = (Version)(data3>>12);
@@ -831,18 +814,19 @@ QUuid::Version QUuid::version() const
 
     \sa variant()
 */
-#define ISLESS(f1, f2) if (f1!=f2) return (f1<f2);
-bool QUuid::operator<(const QUuid &other) const
+bool QUuid::operator<(const QUuid &other) const Q_DECL_NOTHROW
 {
     if (variant() != other.variant())
         return variant() < other.variant();
 
+#define ISLESS(f1, f2) if (f1!=f2) return (f1<f2);
     ISLESS(data1, other.data1);
     ISLESS(data2, other.data2);
     ISLESS(data3, other.data3);
     for (int n = 0; n < 8; n++) {
         ISLESS(data4[n], other.data4[n]);
     }
+#undef ISLESS
     return false;
 }
 
@@ -857,20 +841,38 @@ bool QUuid::operator<(const QUuid &other) const
 
     \sa variant()
 */
-#define ISMORE(f1, f2) if (f1!=f2) return (f1>f2);
-bool QUuid::operator>(const QUuid &other) const
+bool QUuid::operator>(const QUuid &other) const Q_DECL_NOTHROW
 {
-    if (variant() != other.variant())
-        return variant() > other.variant();
-
-    ISMORE(data1, other.data1);
-    ISMORE(data2, other.data2);
-    ISMORE(data3, other.data3);
-    for (int n = 0; n < 8; n++) {
-        ISMORE(data4[n], other.data4[n]);
-    }
-    return false;
+    return other < *this;
 }
+
+/*!
+    \fn bool operator<=(const QUuid &lhs, const QUuid &rhs)
+    \relates QUuid
+    \since 5.5
+
+    Returns \c true if \a lhs has the same \l{Variant field}
+    {variant field} as \a rhs and is lexicographically
+    \e{not after} \a rhs. If \a rhs has a
+    different variant field, the return value is determined by
+    comparing the two \l{QUuid::Variant} {variants}.
+
+    \sa variant()
+*/
+
+/*!
+    \fn bool operator>=(const QUuid &lhs, const QUuid &rhs)
+    \relates QUuid
+    \since 5.5
+
+    Returns \c true if \a lhs has the same \l{Variant field}
+    {variant field} as \a rhs and is lexicographically
+    \e{not before} \a rhs. If \a rhs has a
+    different variant field, the return value is determined by
+    comparing the two \l{QUuid::Variant} {variants}.
+
+    \sa variant()
+*/
 
 /*!
     \fn QUuid QUuid::createUuid()
@@ -1010,8 +1012,9 @@ QUuid QUuid::createUuid()
 */
 QDebug operator<<(QDebug dbg, const QUuid &id)
 {
+    QDebugStateSaver saver(dbg);
     dbg.nospace() << "QUuid(" << id.toString() << ')';
-    return dbg.space();
+    return dbg;
 }
 #endif
 

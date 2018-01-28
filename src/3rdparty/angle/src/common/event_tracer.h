@@ -5,13 +5,7 @@
 #ifndef COMMON_EVENT_TRACER_H_
 #define COMMON_EVENT_TRACER_H_
 
-#if !defined(TRACE_ENTRY)
-#if defined(_WIN32)
-#define TRACE_ENTRY __stdcall
-#else
-#define TRACE_ENTRY
-#endif // // _WIN32
-#endif //TRACE_ENTRY
+#include "common/platform.h"
 
 extern "C" {
 
@@ -21,14 +15,13 @@ typedef void (*AddTraceEventFunc)(char phase, const unsigned char* categoryGroup
                                   const unsigned char* argTypes, const unsigned long long* argValues,
                                   unsigned char flags);
 
-// extern "C" so that it has a reasonable name for GetProcAddress.
-void TRACE_ENTRY SetTraceFunctionPointers(GetCategoryEnabledFlagFunc get_category_enabled_flag,
-                                          AddTraceEventFunc add_trace_event_func);
-
 }
 
 namespace gl
 {
+
+extern GetCategoryEnabledFlagFunc g_getCategoryEnabledFlag;
+extern AddTraceEventFunc g_addTraceEvent;
 
 const unsigned char* TraceGetTraceCategoryEnabledFlag(const char* name);
 

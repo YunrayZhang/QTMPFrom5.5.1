@@ -1,39 +1,31 @@
 /****************************************************************************
 **
-** Copyright (C) 2013 Digia Plc and/or its subsidiary(-ies).
-** Contact: http://www.qt-project.org/legal
+** Copyright (C) 2015 The Qt Company Ltd.
+** Contact: http://www.qt.io/licensing/
 **
 ** This file is part of the QtSql module of the Qt Toolkit.
 **
-** $QT_BEGIN_LICENSE:LGPL$
+** $QT_BEGIN_LICENSE:LGPL21$
 ** Commercial License Usage
 ** Licensees holding valid commercial Qt licenses may use this file in
 ** accordance with the commercial license agreement provided with the
 ** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and Digia.  For licensing terms and
-** conditions see http://qt.digia.com/licensing.  For further information
-** use the contact form at http://qt.digia.com/contact-us.
+** a written agreement between you and The Qt Company. For licensing terms
+** and conditions see http://www.qt.io/terms-conditions. For further
+** information use the contact form at http://www.qt.io/contact-us.
 **
 ** GNU Lesser General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 2.1 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU Lesser General Public License version 2.1 requirements
-** will be met: http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
+** General Public License version 2.1 or version 3 as published by the Free
+** Software Foundation and appearing in the file LICENSE.LGPLv21 and
+** LICENSE.LGPLv3 included in the packaging of this file. Please review the
+** following information to ensure the GNU Lesser General Public License
+** requirements will be met: https://www.gnu.org/licenses/lgpl.html and
+** http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
 **
-** In addition, as a special exception, Digia gives you certain additional
-** rights.  These rights are described in the Digia Qt LGPL Exception
+** As a special exception, The Qt Company gives you certain additional
+** rights. These rights are described in The Qt Company LGPL Exception
 ** version 1.1, included in the file LGPL_EXCEPTION.txt in this package.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3.0 as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU General Public License version 3.0 requirements will be
-** met: http://www.gnu.org/copyleft/gpl.html.
-**
 **
 ** $QT_END_LICENSE$
 **
@@ -86,7 +78,7 @@ public:
 #else
         tc(0),
 #endif
-        preparedQuerysEnabled(false) { dbmsType = MySqlServer; }
+        preparedQuerysEnabled(false) { dbmsType = QSqlDriver::MySqlServer; }
     MYSQL *mysql;
     QTextCodec *tc;
 
@@ -678,6 +670,8 @@ QVariant QMYSQLResult::data(int field)
 
 bool QMYSQLResult::isNull(int field)
 {
+   if (field < 0 || field >= d->fields.count())
+       return true;
    if (d->preparedQuery)
        return d->fields.at(field).nullIndicator;
    else
@@ -1243,6 +1237,9 @@ bool QMYSQLDriver::open(const QString& db,
     QString unixSocket;
 #if MYSQL_VERSION_ID >= 50000
     my_bool reconnect=false;
+    uint connectTimeout = 0;
+    uint readTimeout = 0;
+    uint writeTimeout = 0;
 #endif
 
     // extract the real options from the string
@@ -1258,6 +1255,12 @@ bool QMYSQLDriver::open(const QString& db,
             else if (opt == QLatin1String("MYSQL_OPT_RECONNECT")) {
                 if (val == QLatin1String("TRUE") || val == QLatin1String("1") || val.isEmpty())
                     reconnect = true;
+            } else if (opt == QLatin1String("MYSQL_OPT_CONNECT_TIMEOUT")) {
+                connectTimeout = val.toInt();
+            } else if (opt == QLatin1String("MYSQL_OPT_READ_TIMEOUT")) {
+                readTimeout = val.toInt();
+            } else if (opt == QLatin1String("MYSQL_OPT_WRITE_TIMEOUT")) {
+                writeTimeout = val.toInt();
             }
 #endif
             else if (val == QLatin1String("TRUE") || val == QLatin1String("1"))
@@ -1270,36 +1273,51 @@ bool QMYSQLDriver::open(const QString& db,
         }
     }
 
-    if ((d->mysql = mysql_init((MYSQL*) 0)) &&
-            mysql_real_connect(d->mysql,
-                               host.isNull() ? static_cast<const char *>(0)
-                                             : host.toLocal8Bit().constData(),
-                               user.isNull() ? static_cast<const char *>(0)
-                                             : user.toLocal8Bit().constData(),
-                               password.isNull() ? static_cast<const char *>(0)
-                                                 : password.toLocal8Bit().constData(),
-                               db.isNull() ? static_cast<const char *>(0)
-                                           : db.toLocal8Bit().constData(),
-                               (port > -1) ? port : 0,
-                               unixSocket.isNull() ? static_cast<const char *>(0)
-                                           : unixSocket.toLocal8Bit().constData(),
-                               optionFlags))
-    {
-        if (!db.isEmpty() && mysql_select_db(d->mysql, db.toLocal8Bit().constData())) {
-            setLastError(qMakeError(tr("Unable to open database '%1'").arg(db), QSqlError::ConnectionError, d));
+    if ((d->mysql = mysql_init((MYSQL*) 0))) {
+#if MYSQL_VERSION_ID >= 50000
+        if (connectTimeout != 0)
+            mysql_options(d->mysql, MYSQL_OPT_CONNECT_TIMEOUT, &connectTimeout);
+        if (readTimeout != 0)
+            mysql_options(d->mysql, MYSQL_OPT_READ_TIMEOUT, &readTimeout);
+        if (writeTimeout != 0)
+            mysql_options(d->mysql, MYSQL_OPT_WRITE_TIMEOUT, &writeTimeout);
+#endif
+        MYSQL *mysql = mysql_real_connect(d->mysql,
+                                          host.isNull() ? static_cast<const char *>(0)
+                                                        : host.toLocal8Bit().constData(),
+                                          user.isNull() ? static_cast<const char *>(0)
+                                                        : user.toLocal8Bit().constData(),
+                                          password.isNull() ? static_cast<const char *>(0)
+                                                            : password.toLocal8Bit().constData(),
+                                          db.isNull() ? static_cast<const char *>(0)
+                                                      : db.toLocal8Bit().constData(),
+                                          (port > -1) ? port : 0,
+                                          unixSocket.isNull() ? static_cast<const char *>(0)
+                                                              : unixSocket.toLocal8Bit().constData(),
+                                          optionFlags);
+
+        if (mysql == d->mysql) {
+            if (!db.isEmpty() && mysql_select_db(d->mysql, db.toLocal8Bit().constData())) {
+                setLastError(qMakeError(tr("Unable to open database '%1'").arg(db), QSqlError::ConnectionError, d));
+                mysql_close(d->mysql);
+                setOpenError(true);
+                return false;
+            }
+#if MYSQL_VERSION_ID >= 50000
+            if (reconnect)
+                mysql_options(d->mysql, MYSQL_OPT_RECONNECT, &reconnect);
+#endif
+        } else {
+            setLastError(qMakeError(tr("Unable to connect"),
+                         QSqlError::ConnectionError, d));
             mysql_close(d->mysql);
+            d->mysql = NULL;
             setOpenError(true);
             return false;
         }
-#if MYSQL_VERSION_ID >= 50000
-        if(reconnect)
-            mysql_options(d->mysql, MYSQL_OPT_RECONNECT, &reconnect);
-#endif
     } else {
-        setLastError(qMakeError(tr("Unable to connect"),
-                     QSqlError::ConnectionError, d));
-        mysql_close(d->mysql);
-        d->mysql = NULL;
+        setLastError(qMakeError(tr("Failed to allocated data"),
+                     QSqlError::UnknownError, d));
         setOpenError(true);
         return false;
     }
@@ -1506,6 +1524,9 @@ QString QMYSQLDriver::formatValue(const QSqlField &field, bool trimStrings) cons
         r = QLatin1String("NULL");
     } else {
         switch(field.type()) {
+        case QVariant::Double:
+            r = QString::number(field.value().toDouble(), 'g', field.precision());
+            break;
         case QVariant::String:
             // Escape '\' characters
             r = QSqlDriver::formatValue(field, trimStrings);

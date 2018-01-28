@@ -16,7 +16,7 @@ contains(QT_CONFIG, dbus-linked) {
 }
 
 win32 { 
-    wince*:LIBS_PRIVATE += -lws2
+    wince: LIBS_PRIVATE += -lws2
     else:LIBS_PRIVATE += -lws2_32 \
         -ladvapi32 \
         -lnetapi32 \
@@ -61,7 +61,8 @@ HEADERS += $$PUB_HEADERS \
     qdbusintegrator_p.h \
     qdbuspendingcall_p.h \
     qdbus_symbols_p.h \
-    qdbusintrospection_p.h
+    qdbusintrospection_p.h \
+    dbus_minimal_p.h
 SOURCES += qdbusconnection.cpp \
     qdbusconnectioninterface.cpp \
     qdbuserror.cpp \

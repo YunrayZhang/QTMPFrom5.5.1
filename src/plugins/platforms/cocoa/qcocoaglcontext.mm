@@ -1,39 +1,31 @@
 /****************************************************************************
 **
-** Copyright (C) 2013 Digia Plc and/or its subsidiary(-ies).
-** Contact: http://www.qt-project.org/legal
+** Copyright (C) 2015 The Qt Company Ltd.
+** Contact: http://www.qt.io/licensing/
 **
 ** This file is part of the plugins of the Qt Toolkit.
 **
-** $QT_BEGIN_LICENSE:LGPL$
+** $QT_BEGIN_LICENSE:LGPL21$
 ** Commercial License Usage
 ** Licensees holding valid commercial Qt licenses may use this file in
 ** accordance with the commercial license agreement provided with the
 ** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and Digia.  For licensing terms and
-** conditions see http://qt.digia.com/licensing.  For further information
-** use the contact form at http://qt.digia.com/contact-us.
+** a written agreement between you and The Qt Company. For licensing terms
+** and conditions see http://www.qt.io/terms-conditions. For further
+** information use the contact form at http://www.qt.io/contact-us.
 **
 ** GNU Lesser General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 2.1 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU Lesser General Public License version 2.1 requirements
-** will be met: http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
+** General Public License version 2.1 or version 3 as published by the Free
+** Software Foundation and appearing in the file LICENSE.LGPLv21 and
+** LICENSE.LGPLv3 included in the packaging of this file. Please review the
+** following information to ensure the GNU Lesser General Public License
+** requirements will be met: https://www.gnu.org/licenses/lgpl.html and
+** http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
 **
-** In addition, as a special exception, Digia gives you certain additional
-** rights.  These rights are described in the Digia Qt LGPL Exception
+** As a special exception, The Qt Company gives you certain additional
+** rights. These rights are described in The Qt Company LGPL Exception
 ** version 1.1, included in the file LGPL_EXCEPTION.txt in this package.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3.0 as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU General Public License version 3.0 requirements will be
-** met: http://www.gnu.org/copyleft/gpl.html.
-**
 **
 ** $QT_END_LICENSE$
 **
@@ -46,8 +38,11 @@
 #include <qdebug.h>
 #include <QtCore/private/qcore_mac_p.h>
 #include <QtPlatformSupport/private/cglconvenience_p.h>
+#include <QtPlatformHeaders/qcocoanativecontext.h>
 
 #import <Cocoa/Cocoa.h>
+
+QT_BEGIN_NAMESPACE
 
 static inline QByteArray getGlString(GLenum param)
 {
@@ -117,11 +112,33 @@ static void updateFormatFromContext(QSurfaceFormat *format)
         format->setProfile(QSurfaceFormat::CompatibilityProfile);
 }
 
-QCocoaGLContext::QCocoaGLContext(const QSurfaceFormat &format, QPlatformOpenGLContext *share)
+QCocoaGLContext::QCocoaGLContext(const QSurfaceFormat &format, QPlatformOpenGLContext *share,
+                                 const QVariant &nativeHandle)
     : m_context(nil),
       m_shareContext(nil),
       m_format(format)
 {
+    if (!nativeHandle.isNull()) {
+        if (!nativeHandle.canConvert<QCocoaNativeContext>()) {
+            qWarning("QCocoaGLContext: Requires a QCocoaNativeContext");
+            return;
+        }
+        QCocoaNativeContext handle = nativeHandle.value<QCocoaNativeContext>();
+        NSOpenGLContext *context = handle.context();
+        if (!context) {
+            qWarning("QCocoaGLContext: No NSOpenGLContext given");
+            return;
+        }
+        m_context = context;
+        [m_context retain];
+        m_shareContext = share ? static_cast<QCocoaGLContext *>(share)->nsOpenGLContext() : nil;
+        // OpenGL surfaces can be ordered either above(default) or below the NSWindow.
+        const GLint order = qt_mac_resolveOption(1, "QT_MAC_OPENGL_SURFACE_ORDER");
+        [m_context setValues:&order forParameter:NSOpenGLCPSurfaceOrder];
+        updateSurfaceFormat();
+        return;
+    }
+
     // we only support OpenGL contexts under Cocoa
     if (m_format.renderableType() == QSurfaceFormat::DefaultRenderableType)
         m_format.setRenderableType(QSurfaceFormat::OpenGL);
@@ -166,6 +183,11 @@ QCocoaGLContext::~QCocoaGLContext()
         static_cast<QCocoaWindow *>(m_currentWindow.data()->handle())->setCurrentContext(0);
 
     [m_context release];
+}
+
+QVariant QCocoaGLContext::nativeHandle() const
+{
+    return QVariant::fromValue<QCocoaNativeContext>(QCocoaNativeContext(m_context));
 }
 
 // Match up with createNSOpenGLPixelFormat!
@@ -331,3 +353,6 @@ bool QCocoaGLContext::isSharing() const
 {
     return m_shareContext != nil;
 }
+
+QT_END_NAMESPACE
+

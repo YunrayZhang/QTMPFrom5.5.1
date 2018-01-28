@@ -1,7 +1,7 @@
 /****************************************************************************
 **
-** Copyright (C) 2013 Digia Plc and/or its subsidiary(-ies).
-** Contact: http://www.qt-project.org/legal
+** Copyright (C) 2015 The Qt Company Ltd.
+** Contact: http://www.qt.io/licensing/
 **
 ** This file is part of the examples of the Qt Toolkit.
 **
@@ -17,8 +17,8 @@
 **     notice, this list of conditions and the following disclaimer in
 **     the documentation and/or other materials provided with the
 **     distribution.
-**   * Neither the name of Digia Plc and its Subsidiary(-ies) nor the names
-**     of its contributors may be used to endorse or promote products derived
+**   * Neither the name of The Qt Company Ltd nor the names of its
+**     contributors may be used to endorse or promote products derived
 **     from this software without specific prior written permission.
 **
 **
@@ -41,11 +41,12 @@
 #include "glwidget.h"
 #include "helper.h"
 
+#include <QPainter>
 #include <QTimer>
 
 //! [0]
 GLWidget::GLWidget(Helper *helper, QWidget *parent)
-    : QGLWidget(QGLFormat(QGL::SampleBuffers), parent), helper(helper)
+    : QOpenGLWidget(parent), helper(helper)
 {
     elapsed = 0;
     setFixedSize(200, 200);
@@ -57,7 +58,7 @@ GLWidget::GLWidget(Helper *helper, QWidget *parent)
 void GLWidget::animate()
 {
     elapsed = (elapsed + qobject_cast<QTimer*>(sender())->interval()) % 1000;
-    repaint();
+    update();
 }
 //! [1]
 

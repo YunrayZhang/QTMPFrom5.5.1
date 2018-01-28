@@ -1,39 +1,31 @@
 /****************************************************************************
 **
-** Copyright (C) 2013 Digia Plc and/or its subsidiary(-ies).
-** Contact: http://www.qt-project.org/legal
+** Copyright (C) 2015 The Qt Company Ltd.
+** Contact: http://www.qt.io/licensing/
 **
 ** This file is part of the QtCore module of the Qt Toolkit.
 **
-** $QT_BEGIN_LICENSE:LGPL$
+** $QT_BEGIN_LICENSE:LGPL21$
 ** Commercial License Usage
 ** Licensees holding valid commercial Qt licenses may use this file in
 ** accordance with the commercial license agreement provided with the
 ** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and Digia.  For licensing terms and
-** conditions see http://qt.digia.com/licensing.  For further information
-** use the contact form at http://qt.digia.com/contact-us.
+** a written agreement between you and The Qt Company. For licensing terms
+** and conditions see http://www.qt.io/terms-conditions. For further
+** information use the contact form at http://www.qt.io/contact-us.
 **
 ** GNU Lesser General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 2.1 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU Lesser General Public License version 2.1 requirements
-** will be met: http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
+** General Public License version 2.1 or version 3 as published by the Free
+** Software Foundation and appearing in the file LICENSE.LGPLv21 and
+** LICENSE.LGPLv3 included in the packaging of this file. Please review the
+** following information to ensure the GNU Lesser General Public License
+** requirements will be met: https://www.gnu.org/licenses/lgpl.html and
+** http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
 **
-** In addition, as a special exception, Digia gives you certain additional
-** rights.  These rights are described in the Digia Qt LGPL Exception
+** As a special exception, The Qt Company gives you certain additional
+** rights. These rights are described in The Qt Company LGPL Exception
 ** version 1.1, included in the file LGPL_EXCEPTION.txt in this package.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3.0 as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU General Public License version 3.0 requirements will be
-** met: http://www.gnu.org/copyleft/gpl.html.
-**
 **
 ** $QT_END_LICENSE$
 **
@@ -43,8 +35,9 @@
 #include "qcoreapplication.h"
 #include "qcoreapplication_p.h"
 
-#include "qmutex.h"
-#include "qset.h"
+#include "qbasicatomic.h"
+
+#include <limits>
 
 QT_BEGIN_NAMESPACE
 
@@ -65,7 +58,7 @@ QT_BEGIN_NAMESPACE
     send events using QCoreApplication::sendEvent() and
     QCoreApplication::postEvent() (spontaneous() returns \c false).
 
-    QObjects receive events by having their QObject::event() function
+    \l {QObject}{QObjects} receive events by having their QObject::event() function
     called. The function can be reimplemented in subclasses to
     customize event handling and add additional event types;
     QWidget::event() is a notable example. By default, events are
@@ -109,13 +102,13 @@ QT_BEGIN_NAMESPACE
     \value ChildAdded                       An object gets a child (QChildEvent).
     \value ChildPolished                    A widget child gets polished (QChildEvent).
     \value ChildRemoved                     An object loses a child (QChildEvent).
-    \value Clipboard                        The clipboard contents have changed (QClipboardEvent).
+    \value Clipboard                        The clipboard contents have changed.
     \value Close                            Widget was closed (QCloseEvent).
     \value CloseSoftwareInputPanel          A widget wants to close the software input panel (SIP).
     \value ContentsRectChange               The margins of the widget's content rect changed.
     \value ContextMenu                      Context popup menu (QContextMenuEvent).
     \value CursorChange                     The widget's cursor has changed.
-    \value DeferredDelete                   The object will be deleted after it has cleaned up (QDeferredDeleteEvent).
+    \value DeferredDelete                   The object will be deleted after it has cleaned up (QDeferredDeleteEvent)
     \value DragEnter                        The cursor enters a widget during a drag and drop operation (QDragEnterEvent).
     \value DragLeave                        The cursor leaves a widget during a drag and drop operation (QDragLeaveEvent).
     \value DragMove                         A drag and drop operation is in progress (QDragMoveEvent).
@@ -123,7 +116,7 @@ QT_BEGIN_NAMESPACE
     \value DynamicPropertyChange            A dynamic property was added, changed, or removed from the object.
     \value EnabledChange                    Widget's enabled state has changed.
     \value Enter                            Mouse enters widget's boundaries (QEnterEvent).
-    \value EnterEditFocus                   An editor widget gains focus for editing. QT_KEYPAD_NAVIGATION must be defined.
+    \value EnterEditFocus                   An editor widget gains focus for editing. \c QT_KEYPAD_NAVIGATION must be defined.
     \value EnterWhatsThisMode               Send to toplevel widgets when the application enters "What's This?" mode.
     \value Expose                           Sent to a window when its on-screen contents are invalidated and need to be flushed from the backing store.
     \value FileOpen                         File open request (QFileOpenEvent).
@@ -174,7 +167,7 @@ QT_BEGIN_NAMESPACE
     \value NonClientAreaMouseButtonPress    A mouse button press occurred outside the client area.
     \value NonClientAreaMouseButtonRelease  A mouse button release occurred outside the client area.
     \value NonClientAreaMouseMove           A mouse move occurred outside the client area.
-    \value MacSizeChange                    The user changed his widget sizes (Mac OS X only).
+    \value MacSizeChange                    The user changed his widget sizes (OS X only).
     \value MetaCall                         An asynchronous method invocation via QMetaObject::invokeMethod().
     \value ModifiedChange                   Widgets modification state has been changed.
     \value MouseButtonDblClick              Mouse press again (QMouseEvent).
@@ -183,15 +176,18 @@ QT_BEGIN_NAMESPACE
     \value MouseMove                        Mouse move (QMouseEvent).
     \value MouseTrackingChange              The mouse tracking state has changed.
     \value Move                             Widget's position changed (QMoveEvent).
-    \value OrientationChange                The screens orientation has changes (QScreenOrientationChangeEvent)
+    \value NativeGesture                    The system has detected a gesture (QNativeGestureEvent).
+    \value OrientationChange                The screens orientation has changes (QScreenOrientationChangeEvent).
     \value Paint                            Screen update necessary (QPaintEvent).
     \value PaletteChange                    Palette of the widget changed.
     \value ParentAboutToChange              The widget parent is about to change.
     \value ParentChange                     The widget parent has changed.
     \value PlatformPanel                    A platform specific panel has been requested.
+    \value PlatformSurface                  A native platform surface has been created or is about to be destroyed (QPlatformSurfaceEvent).
     \value Polish                           The widget is polished.
     \value PolishRequest                    The widget should be polished.
     \value QueryWhatsThis                   The widget should accept the event if it has "What's This?" help.
+    \value ReadOnlyChange                   Widget's read-only state has changed (since Qt 5.4).
     \value RequestSoftwareInputPanel        A widget wants to open a software input panel (SIP).
     \value Resize                           Widget's size changed (QResizeEvent).
     \value ScrollPrepare                    The object needs to fill in its geometry information (QScrollPrepareEvent).
@@ -215,7 +211,7 @@ QT_BEGIN_NAMESPACE
     \omitvalue ThemeChange
     \value ThreadChange                     The object is moved to another thread. This is the last event sent to this object in the previous thread. See QObject::moveToThread().
     \value Timer                            Regular timer events (QTimerEvent).
-    \value ToolBarChange                    The toolbar button is toggled on Mac OS X.
+    \value ToolBarChange                    The toolbar button is toggled on OS X.
     \value ToolTip                          A tooltip was requested (QHelpEvent).
     \value ToolTipChange                    The widget's tooltip has changed.
     \value TouchBegin                       Beginning of a sequence of touch-screen or track-pad events (QTouchEvent).
@@ -275,6 +271,7 @@ QT_BEGIN_NAMESPACE
     \omitvalue FutureCallOut
     \omitvalue NativeGesture
     \omitvalue WindowChangeInternal
+    \omitvalue ScreenChangeInternal
 */
 
 /*!
@@ -389,13 +386,71 @@ QEvent::~QEvent()
     The return value of this function is not defined for paint events.
 */
 
-class QEventUserEventRegistration
-{
-public:
-    QMutex mutex;
-    QSet<int> set;
+namespace {
+template <size_t N>
+struct QBasicAtomicBitField {
+    enum {
+        BitsPerInt = std::numeric_limits<uint>::digits,
+        NumInts = (N + BitsPerInt - 1) / BitsPerInt,
+        NumBits = N
+    };
+
+    // This atomic int points to the next (possibly) free ID saving
+    // the otherwise necessary scan through 'data':
+    QBasicAtomicInteger<uint> next;
+    QBasicAtomicInteger<uint> data[NumInts];
+
+    bool allocateSpecific(int which) Q_DECL_NOTHROW
+    {
+        QBasicAtomicInteger<uint> &entry = data[which / BitsPerInt];
+        const uint old = entry.load();
+        const uint bit = 1U << (which % BitsPerInt);
+        return !(old & bit) // wasn't taken
+            && entry.testAndSetRelaxed(old, old | bit); // still wasn't taken
+
+        // don't update 'next' here - it's unlikely that it will need
+        // to be updated, in the general case, and having 'next'
+        // trailing a bit is not a problem, as it is just a starting
+        // hint for allocateNext(), which, when wrong, will just
+        // result in a few more rounds through the allocateNext()
+        // loop.
+    }
+
+    int allocateNext() Q_DECL_NOTHROW
+    {
+        // Unroll loop to iterate over ints, then bits? Would save
+        // potentially a lot of cmpxchgs, because we can scan the
+        // whole int before having to load it again.
+
+        // Then again, this should never execute many iterations, so
+        // leave like this for now:
+        for (uint i = next.load(); i < NumBits; ++i) {
+            if (allocateSpecific(i)) {
+                // remember next (possibly) free id:
+                const uint oldNext = next.load();
+                next.testAndSetRelaxed(oldNext, qMax(i + 1, oldNext));
+                return i;
+            }
+        }
+        return -1;
+    }
 };
-Q_GLOBAL_STATIC(QEventUserEventRegistration, userEventRegistrationHelper)
+
+} // unnamed namespace
+
+typedef QBasicAtomicBitField<QEvent::MaxUser - QEvent::User + 1> UserEventTypeRegistry;
+
+static UserEventTypeRegistry userEventTypeRegistry;
+
+static inline int registerEventTypeZeroBased(int id) Q_DECL_NOTHROW
+{
+    // if the type hint hasn't been registered yet, take it:
+    if (id < UserEventTypeRegistry::NumBits && id >= 0 && userEventTypeRegistry.allocateSpecific(id))
+        return id;
+
+    // otherwise, ignore hint:
+    return userEventTypeRegistry.allocateNext();
+}
 
 /*!
     \since 4.4
@@ -410,30 +465,10 @@ Q_GLOBAL_STATIC(QEventUserEventRegistration, userEventRegistrationHelper)
     Returns -1 if all available values are already taken or the
     program is shutting down.
 */
-int QEvent::registerEventType(int hint)
+int QEvent::registerEventType(int hint) Q_DECL_NOTHROW
 {
-    QEventUserEventRegistration *userEventRegistration
-        = userEventRegistrationHelper();
-    if (!userEventRegistration)
-        return -1;
-
-    QMutexLocker locker(&userEventRegistration->mutex);
-
-    // if the type hint hasn't been registered yet, take it
-    if (hint >= QEvent::User && hint <= QEvent::MaxUser && !userEventRegistration->set.contains(hint)) {
-        userEventRegistration->set.insert(hint);
-        return hint;
-    }
-
-    // find a free event type, starting at MaxUser and decreasing
-    int id = QEvent::MaxUser;
-    while (userEventRegistration->set.contains(id) && id >= QEvent::User)
-        --id;
-    if (id >= QEvent::User) {
-        userEventRegistration->set.insert(id);
-        return id;
-    }
-    return -1;
+    const int result = registerEventTypeZeroBased(QEvent::MaxUser - hint);
+    return result < 0 ? -1 : QEvent::MaxUser - result ;
 }
 
 /*!
@@ -504,7 +539,7 @@ QTimerEvent::~QTimerEvent()
     \a child.
 
     \a type can be QEvent::ChildAdded, QEvent::ChildRemoved,
-    QEvent::ChildPolished, or QEvent::ChildRemoved.
+    or QEvent::ChildPolished.
 
     \sa child()
 */

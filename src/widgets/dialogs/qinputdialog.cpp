@@ -1,39 +1,31 @@
 /****************************************************************************
 **
-** Copyright (C) 2013 Digia Plc and/or its subsidiary(-ies).
-** Contact: http://www.qt-project.org/legal
+** Copyright (C) 2015 The Qt Company Ltd.
+** Contact: http://www.qt.io/licensing/
 **
 ** This file is part of the QtWidgets module of the Qt Toolkit.
 **
-** $QT_BEGIN_LICENSE:LGPL$
+** $QT_BEGIN_LICENSE:LGPL21$
 ** Commercial License Usage
 ** Licensees holding valid commercial Qt licenses may use this file in
 ** accordance with the commercial license agreement provided with the
 ** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and Digia.  For licensing terms and
-** conditions see http://qt.digia.com/licensing.  For further information
-** use the contact form at http://qt.digia.com/contact-us.
+** a written agreement between you and The Qt Company. For licensing terms
+** and conditions see http://www.qt.io/terms-conditions. For further
+** information use the contact form at http://www.qt.io/contact-us.
 **
 ** GNU Lesser General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 2.1 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU Lesser General Public License version 2.1 requirements
-** will be met: http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
+** General Public License version 2.1 or version 3 as published by the Free
+** Software Foundation and appearing in the file LICENSE.LGPLv21 and
+** LICENSE.LGPLv3 included in the packaging of this file. Please review the
+** following information to ensure the GNU Lesser General Public License
+** requirements will be met: https://www.gnu.org/licenses/lgpl.html and
+** http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
 **
-** In addition, as a special exception, Digia gives you certain additional
-** rights.  These rights are described in the Digia Qt LGPL Exception
+** As a special exception, The Qt Company gives you certain additional
+** rights. These rights are described in The Qt Company LGPL Exception
 ** version 1.1, included in the file LGPL_EXCEPTION.txt in this package.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3.0 as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU General Public License version 3.0 requirements will be
-** met: http://www.gnu.org/copyleft/gpl.html.
-**
 **
 ** $QT_END_LICENSE$
 **
@@ -60,25 +52,37 @@
 
 QT_USE_NAMESPACE
 
+enum CandidateSignal {
+    TextValueSelectedSignal,
+    IntValueSelectedSignal,
+    DoubleValueSelectedSignal,
+
+    NumCandidateSignals
+};
+
+static const char *candidateSignal(int which)
+{
+    switch (CandidateSignal(which)) {
+    case TextValueSelectedSignal:   return SIGNAL(textValueSelected(QString));
+    case IntValueSelectedSignal:    return SIGNAL(intValueSelected(int));
+    case DoubleValueSelectedSignal: return SIGNAL(doubleValueSelected(double));
+
+    case NumCandidateSignals:       ; // fall through
+    };
+    Q_UNREACHABLE();
+    return Q_NULLPTR;
+}
+
 static const char *signalForMember(const char *member)
 {
-    static const int NumCandidates = 4;
-    static const char * const candidateSignals[NumCandidates] = {
-        SIGNAL(textValueSelected(QString)),
-        SIGNAL(intValueSelected(int)),
-        SIGNAL(doubleValueSelected(double)),
-        SIGNAL(accepted())
-    };
-
     QByteArray normalizedMember(QMetaObject::normalizedSignature(member));
 
-    int i = 0;
-    while (i < NumCandidates - 1) { // sic
-        if (QMetaObject::checkConnectArgs(candidateSignals[i], normalizedMember))
-            break;
-        ++i;
-    }
-    return candidateSignals[i];
+    for (int i = 0; i < NumCandidateSignals; ++i)
+        if (QMetaObject::checkConnectArgs(candidateSignal(i), normalizedMember))
+            return candidateSignal(i);
+
+    // otherwise, use fit-all accepted signal:
+    return SIGNAL(accepted());
 }
 
 QT_BEGIN_NAMESPACE
@@ -107,7 +111,7 @@ private slots:
     void notifyTextChanged() { emit textChanged(hasAcceptableInput()); }
 
 private:
-    void keyPressEvent(QKeyEvent *event) {
+    void keyPressEvent(QKeyEvent *event) Q_DECL_OVERRIDE {
         if ((event->key() == Qt::Key_Return || event->key() == Qt::Key_Enter) && !hasAcceptableInput()) {
 #ifndef QT_NO_PROPERTIES
             setProperty("value", property("value"));
@@ -118,7 +122,7 @@ private:
         notifyTextChanged();
     }
 
-    void mousePressEvent(QMouseEvent *event) {
+    void mousePressEvent(QMouseEvent *event) Q_DECL_OVERRIDE {
         QSpinBox::mousePressEvent(event);
         notifyTextChanged();
     }
@@ -142,7 +146,7 @@ private slots:
     void notifyTextChanged() { emit textChanged(hasAcceptableInput()); }
 
 private:
-    void keyPressEvent(QKeyEvent *event) {
+    void keyPressEvent(QKeyEvent *event) Q_DECL_OVERRIDE {
         if ((event->key() == Qt::Key_Return || event->key() == Qt::Key_Enter) && !hasAcceptableInput()) {
 #ifndef QT_NO_PROPERTIES
             setProperty("value", property("value"));
@@ -153,7 +157,7 @@ private:
         notifyTextChanged();
     }
 
-    void mousePressEvent(QMouseEvent *event) {
+    void mousePressEvent(QMouseEvent *event) Q_DECL_OVERRIDE {
         QDoubleSpinBox::mousePressEvent(event);
         notifyTextChanged();
     }

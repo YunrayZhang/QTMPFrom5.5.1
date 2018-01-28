@@ -1,39 +1,31 @@
 /****************************************************************************
 **
-** Copyright (C) 2013 Digia Plc and/or its subsidiary(-ies).
-** Contact: http://www.qt-project.org/legal
+** Copyright (C) 2015 The Qt Company Ltd.
+** Contact: http://www.qt.io/licensing/
 **
 ** This file is part of the QtCore module of the Qt Toolkit.
 **
-** $QT_BEGIN_LICENSE:LGPL$
+** $QT_BEGIN_LICENSE:LGPL21$
 ** Commercial License Usage
 ** Licensees holding valid commercial Qt licenses may use this file in
 ** accordance with the commercial license agreement provided with the
 ** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and Digia.  For licensing terms and
-** conditions see http://qt.digia.com/licensing.  For further information
-** use the contact form at http://qt.digia.com/contact-us.
+** a written agreement between you and The Qt Company. For licensing terms
+** and conditions see http://www.qt.io/terms-conditions. For further
+** information use the contact form at http://www.qt.io/contact-us.
 **
 ** GNU Lesser General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 2.1 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU Lesser General Public License version 2.1 requirements
-** will be met: http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
+** General Public License version 2.1 or version 3 as published by the Free
+** Software Foundation and appearing in the file LICENSE.LGPLv21 and
+** LICENSE.LGPLv3 included in the packaging of this file. Please review the
+** following information to ensure the GNU Lesser General Public License
+** requirements will be met: https://www.gnu.org/licenses/lgpl.html and
+** http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
 **
-** In addition, as a special exception, Digia gives you certain additional
-** rights.  These rights are described in the Digia Qt LGPL Exception
+** As a special exception, The Qt Company gives you certain additional
+** rights. These rights are described in The Qt Company LGPL Exception
 ** version 1.1, included in the file LGPL_EXCEPTION.txt in this package.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3.0 as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU General Public License version 3.0 requirements will be
-** met: http://www.gnu.org/copyleft/gpl.html.
-**
 **
 ** $QT_END_LICENSE$
 **
@@ -93,8 +85,8 @@ static const int QTEXTSTREAM_BUFFERSIZE = 16384;
 
     \li Chunk by chunk, by calling readLine() or readAll().
 
-    \li Word by word. QTextStream supports streaming into QStrings,
-    QByteArrays and char* buffers. Words are delimited by space, and
+    \li Word by word. QTextStream supports streaming into \l {QString}s,
+    \l {QByteArray}s and char* buffers. Words are delimited by space, and
     leading white space is automatically skipped.
 
     \li Character by character, by streaming into QChar or char types.
@@ -166,7 +158,7 @@ static const int QTEXTSTREAM_BUFFERSIZE = 16384;
     parameter: qSetFieldWidth(), qSetPadChar(), and
     qSetRealNumberPrecision().
 
-    \sa QDataStream, QIODevice, QFile, QBuffer, QTcpSocket, {Codecs Example}
+    \sa QDataStream, QIODevice, QFile, QBuffer, QTcpSocket, {Text Codecs Example}
 */
 
 /*! \enum QTextStream::RealNumberNotation
@@ -241,6 +233,7 @@ static const int QTEXTSTREAM_BUFFERSIZE = 16384;
 
 #if defined QTEXTSTREAM_DEBUG
 #include <ctype.h>
+#include "private/qtools_p.h"
 
 QT_BEGIN_NAMESPACE
 
@@ -258,10 +251,16 @@ static QByteArray qt_prettyDebug(const char *data, int len, int maxSize)
         case '\n': out += "\\n"; break;
         case '\r': out += "\\r"; break;
         case '\t': out += "\\t"; break;
-        default:
-            QString tmp;
-            tmp.sprintf("\\x%x", (unsigned int)(unsigned char)c);
-            out += tmp.toLatin1();
+        default: {
+            const char buf[] = {
+                '\\',
+                'x',
+                QtMiscUtils::toHexLower(uchar(c) / 16),
+                QtMiscUtils::toHexLower(uchar(c) % 16),
+                0
+            };
+            out += buf;
+            }
         }
     }
 
@@ -448,6 +447,9 @@ bool QTextStreamPrivate::fillReadBuffer(qint64 maxBytes)
             bytesRead = device->read(buf, sizeof(buf));
     }
 
+    if (bytesRead <= 0)
+        return false;
+
 #ifndef QT_NO_TEXTCODEC
     // codec auto detection, explicitly defaults to locale encoding if the
     // codec has been set to 0.
@@ -462,24 +464,22 @@ bool QTextStreamPrivate::fillReadBuffer(qint64 maxBytes)
     }
 #if defined (QTEXTSTREAM_DEBUG)
     qDebug("QTextStreamPrivate::fillReadBuffer(), using %s codec",
-           codec->name().constData());
+           codec ? codec->name().constData() : "no");
 #endif
 #endif
 
 #if defined (QTEXTSTREAM_DEBUG)
     qDebug("QTextStreamPrivate::fillReadBuffer(), device->read(\"%s\", %d) == %d",
-           qt_prettyDebug(buf, qMin(32,int(bytesRead)) , int(bytesRead)).constData(), sizeof(buf), int(bytesRead));
+           qt_prettyDebug(buf, qMin(32,int(bytesRead)) , int(bytesRead)).constData(), int(sizeof(buf)), int(bytesRead));
 #endif
-
-    if (bytesRead <= 0)
-        return false;
 
     int oldReadBufferSize = readBuffer.size();
 #ifndef QT_NO_TEXTCODEC
     // convert to unicode
-    readBuffer += codec->toUnicode(buf, bytesRead, &readConverterState);
+    readBuffer += Q_LIKELY(codec) ? codec->toUnicode(buf, bytesRead, &readConverterState)
+                                  : QString::fromLatin1(buf, bytesRead);
 #else
-    readBuffer += QString::fromLatin1(QByteArray(buf, bytesRead).constData());
+    readBuffer += QString::fromLatin1(buf, bytesRead);
 #endif
 
     // reset the Text flag.
@@ -565,7 +565,8 @@ void QTextStreamPrivate::flushWriteBuffer()
         codec = QTextCodec::codecForLocale();
 #if defined (QTEXTSTREAM_DEBUG)
     qDebug("QTextStreamPrivate::flushWriteBuffer(), using %s codec (%s generating BOM)",
-           codec->name().constData(), writeConverterState.flags & QTextCodec::IgnoreHeader ? "not" : "");
+           codec ? codec->name().constData() : "no",
+           !codec || (writeConverterState.flags & QTextCodec::IgnoreHeader) ? "not" : "");
 #endif
 
     // convert from unicode to raw data
@@ -573,7 +574,7 @@ void QTextStreamPrivate::flushWriteBuffer()
     QByteArray data = Q_LIKELY(codec) ? codec->fromUnicode(writeBuffer.data(), writeBuffer.size(), &writeConverterState)
                                       : writeBuffer.toLatin1();
 #else
-    QByteArray data = writeBuffer.toLocal8Bit();
+    QByteArray data = writeBuffer.toLatin1();
 #endif
     writeBuffer.clear();
 
@@ -689,15 +690,9 @@ bool QTextStreamPrivate::scan(const QChar **ptr, int *length, int maxlen, TokenD
              && (!maxlen || totalSize < maxlen)
              && (device && (canStillReadFromDevice = fillReadBuffer())));
 
-    // if the token was not found, but we reached the end of input,
-    // then we accept what we got. if we are not at the end of input,
-    // we return false.
-    if (!foundToken && (!maxlen || totalSize < maxlen)
-        && (totalSize == 0
-            || (string && stringOffset + totalSize < string->size())
-            || (device && !device->atEnd() && canStillReadFromDevice))) {
+    if (totalSize == 0) {
 #if defined (QTEXTSTREAM_DEBUG)
-        qDebug("QTextStreamPrivate::scan() did not find the token.");
+        qDebug("QTextStreamPrivate::scan() reached the end of input.");
 #endif
         return false;
     }
@@ -820,13 +815,28 @@ inline void QTextStreamPrivate::restoreToSavedConverterState()
 /*!
     \internal
 */
-inline void QTextStreamPrivate::write(const QString &data)
+void QTextStreamPrivate::write(const QChar *data, int len)
 {
     if (string) {
         // ### What about seek()??
-        string->append(data);
+        string->append(data, len);
     } else {
-        writeBuffer += data;
+        writeBuffer.append(data, len);
+        if (writeBuffer.size() > QTEXTSTREAM_BUFFERSIZE)
+            flushWriteBuffer();
+    }
+}
+
+/*!
+    \internal
+*/
+inline void QTextStreamPrivate::write(QChar ch)
+{
+    if (string) {
+        // ### What about seek()??
+        string->append(ch);
+    } else {
+        writeBuffer += ch;
         if (writeBuffer.size() > QTEXTSTREAM_BUFFERSIZE)
             flushWriteBuffer();
     }
@@ -873,45 +883,53 @@ inline void QTextStreamPrivate::ungetChar(QChar ch)
 /*!
     \internal
 */
-inline void QTextStreamPrivate::putString(const QString &s, bool number)
+inline void QTextStreamPrivate::putChar(QChar ch)
 {
-    QString tmp = s;
+    if (params.fieldWidth > 0)
+        putString(&ch, 1);
+    else
+        write(ch);
+}
+
+/*!
+    \internal
+*/
+void QTextStreamPrivate::putString(const QChar *data, int len, bool number)
+{
+    QString pad;
+    int padLeft = 0, padRight = 0;
 
     // handle padding
-    int padSize = params.fieldWidth - s.size();
+    int padSize = params.fieldWidth - len;
     if (padSize > 0) {
-        QString pad(padSize, params.padChar);
+        pad = QString(padSize, params.padChar);
         switch (params.fieldAlignment) {
         case QTextStream::AlignLeft:
-            tmp.append(pad);
+            padRight = padSize;
             break;
         case QTextStream::AlignRight:
         case QTextStream::AlignAccountingStyle:
-            tmp.prepend(pad);
+            padLeft = padSize;
             if (params.fieldAlignment == QTextStream::AlignAccountingStyle && number) {
-                const QChar sign = s.size() > 0 ? s.at(0) : QChar();
+                const QChar sign = len > 0 ? data[0] : QChar();
                 if (sign == locale.negativeSign() || sign == locale.positiveSign()) {
-                    QChar *data = tmp.data();
-                    data[padSize] = tmp.at(0);
-                    data[0] = sign;
+                    // write the sign before the padding, then skip it later
+                    write(&sign, 1);
+                    ++data;
+                    --len;
                 }
-           }
+            }
             break;
         case QTextStream::AlignCenter:
-            tmp.prepend(QString(padSize/2, params.padChar));
-            tmp.append(QString(padSize - padSize/2, params.padChar));
+            padLeft = padSize/2;
+            padRight = padSize - padSize/2;
             break;
         }
     }
 
-#if defined (QTEXTSTREAM_DEBUG)
-    QByteArray a = s.toUtf8();
-    QByteArray b = tmp.toUtf8();
-    qDebug("QTextStreamPrivate::putString(\"%s\") calls write(\"%s\")",
-           qt_prettyDebug(a.constData(), a.size(), qMax(16, a.size())).constData(),
-           qt_prettyDebug(b.constData(), b.size(), qMax(16, b.size())).constData());
-#endif
-    write(tmp);
+    write(pad.constData(), padLeft);
+    write(data, len);
+    write(pad.constData(), padRight);
 }
 
 /*!
@@ -1539,7 +1557,7 @@ bool QTextStream::atEnd() const
     QString. Avoid this function when working on large files, as it
     will consume a significant amount of memory.
 
-    Calling readLine() is better if you do not know how much data is
+    Calling \l {QTextStream::readLine()}{readLine()} is better if you do not know how much data is
     available.
 
     \sa readLine()
@@ -1558,31 +1576,73 @@ QString QTextStream::readAll()
     the stream contains lines longer than this, then the lines will be
     split after \a maxlen characters and returned in parts.
 
-    If \a maxlen is 0, the lines can be of any length. A common value
-    for \a maxlen is 75.
+    If \a maxlen is 0, the lines can be of any length.
 
     The returned line has no trailing end-of-line characters ("\\n"
-    or "\\r\\n"), so calling QString::trimmed() is unnecessary.
+    or "\\r\\n"), so calling QString::trimmed() can be unnecessary.
 
-    If the stream has read to the end of the file, readLine() will return a
-    null QString. For strings, or for devices that support it, you can
-    explicitly test for the end of the stream using atEnd().
+    If the stream has read to the end of the file, \l {QTextStream::readLine()}{readLine()}
+    will return a null QString. For strings, or for devices that support it,
+    you can explicitly test for the end of the stream using atEnd().
 
     \sa readAll(), QIODevice::readLine()
 */
 QString QTextStream::readLine(qint64 maxlen)
 {
+    QString line;
+
+    readLineInto(&line, maxlen);
+    return line;
+}
+
+/*!
+    \since 5.5
+
+    Reads one line of text from the stream into \a line.
+    If \a line is 0, the read line is not stored.
+
+    The maximum allowed line length is set to \a maxlen. If
+    the stream contains lines longer than this, then the lines will be
+    split after \a maxlen characters and returned in parts.
+
+    If \a maxlen is 0, the lines can be of any length.
+
+    The resulting line has no trailing end-of-line characters ("\\n"
+    or "\\r\\n"), so calling QString::trimmed() can be unnecessary.
+
+    If \a line has sufficient capacity for the data that is about to be
+    read, this function may not need to allocate new memory. Because of
+    this, it can be faster than readLine().
+
+    Returns \c false if the stream has read to the end of the file or
+    an error has occurred; otherwise returns \c true. The contents in
+    \a line before the call are discarded in any case.
+
+    \sa readAll(), QIODevice::readLine()
+*/
+bool QTextStream::readLineInto(QString *line, qint64 maxlen)
+{
     Q_D(QTextStream);
-    CHECK_VALID_STREAM(QString());
+    // keep in sync with CHECK_VALID_STREAM
+    if (!d->string && !d->device) {
+        qWarning("QTextStream: No device");
+        if (line && !line->isNull())
+            line->resize(0);
+        return false;
+    }
 
     const QChar *readPtr;
     int length;
-    if (!d->scan(&readPtr, &length, int(maxlen), QTextStreamPrivate::EndOfLine))
-        return QString();
+    if (!d->scan(&readPtr, &length, int(maxlen), QTextStreamPrivate::EndOfLine)) {
+        if (line && !line->isNull())
+            line->resize(0);
+        return false;
+    }
 
-    QString tmp = QString(readPtr, length);
+    if (Q_LIKELY(line))
+        line->setUnicode(readPtr, length);
     d->consumeLastToken();
-    return tmp;
+    return true;
 }
 
 /*!
@@ -2203,7 +2263,7 @@ void QTextStreamPrivate::putNumber(qulonglong number, bool negative)
 
     // add thousands group separators. For backward compatibility we
     // don't add a group separator for C locale.
-    if (locale != QLocale::c())
+    if (locale != QLocale::c() && !locale.numberOptions().testFlag(QLocale::OmitGroupSeparator))
         flags |= QLocaleData::ThousandsGroup;
 
     const QLocaleData *dd = locale.d->m_data;
@@ -2240,7 +2300,7 @@ QTextStream &QTextStream::operator<<(QChar c)
 {
     Q_D(QTextStream);
     CHECK_VALID_STREAM(*this);
-    d->putString(QString(c));
+    d->putChar(c);
     return *this;
 }
 
@@ -2253,7 +2313,7 @@ QTextStream &QTextStream::operator<<(char c)
 {
     Q_D(QTextStream);
     CHECK_VALID_STREAM(*this);
-    d->putString(QString(QChar::fromLatin1(c)));
+    d->putChar(QChar::fromLatin1(c));
     return *this;
 }
 
@@ -2414,6 +2474,8 @@ QTextStream &QTextStream::operator<<(double f)
         flags |= QLocaleData::CapitalEorX;
     if (numberFlags() & ForcePoint)
         flags |= QLocaleData::Alternate;
+    if (locale() != QLocale::c() && !(locale().numberOptions() & QLocale::OmitGroupSeparator))
+        flags |= QLocaleData::ThousandsGroup;
 
     const QLocaleData *dd = d->locale.d->m_data;
     QString num = dd->doubleToString(f, d->params.realNumberPrecision, form, -1, flags);

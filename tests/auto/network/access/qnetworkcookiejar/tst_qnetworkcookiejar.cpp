@@ -1,39 +1,31 @@
 /****************************************************************************
 **
-** Copyright (C) 2013 Digia Plc and/or its subsidiary(-ies).
-** Contact: http://www.qt-project.org/legal
+** Copyright (C) 2015 The Qt Company Ltd.
+** Contact: http://www.qt.io/licensing/
 **
 ** This file is part of the test suite of the Qt Toolkit.
 **
-** $QT_BEGIN_LICENSE:LGPL$
+** $QT_BEGIN_LICENSE:LGPL21$
 ** Commercial License Usage
 ** Licensees holding valid commercial Qt licenses may use this file in
 ** accordance with the commercial license agreement provided with the
 ** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and Digia.  For licensing terms and
-** conditions see http://qt.digia.com/licensing.  For further information
-** use the contact form at http://qt.digia.com/contact-us.
+** a written agreement between you and The Qt Company. For licensing terms
+** and conditions see http://www.qt.io/terms-conditions. For further
+** information use the contact form at http://www.qt.io/contact-us.
 **
 ** GNU Lesser General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 2.1 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU Lesser General Public License version 2.1 requirements
-** will be met: http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
+** General Public License version 2.1 or version 3 as published by the Free
+** Software Foundation and appearing in the file LICENSE.LGPLv21 and
+** LICENSE.LGPLv3 included in the packaging of this file. Please review the
+** following information to ensure the GNU Lesser General Public License
+** requirements will be met: https://www.gnu.org/licenses/lgpl.html and
+** http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
 **
-** In addition, as a special exception, Digia gives you certain additional
-** rights.  These rights are described in the Digia Qt LGPL Exception
+** As a special exception, The Qt Company gives you certain additional
+** rights. These rights are described in The Qt Company LGPL Exception
 ** version 1.1, included in the file LGPL_EXCEPTION.txt in this package.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3.0 as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU General Public License version 3.0 requirements will be
-** met: http://www.gnu.org/copyleft/gpl.html.
-**
 **
 ** $QT_END_LICENSE$
 **
@@ -200,16 +192,16 @@ void tst_QNetworkCookieJar::setCookiesFromUrl_data()
     result += cookie;
     QTest::newRow("effective-tld1-accepted") << preset << cookie << "http://something.co.uk" << result << true;
 
-    // 2. anything .ar is an effective TLD ('*.ar'), but 'gobiernoelectronico.ar' is an exception
+    // 2. anything .mz is an effective TLD ('*.mz'), but 'teledata.mz' is an exception
     result.clear();
     preset.clear();
-    cookie.setDomain(".farmacia.ar");
-    QTest::newRow("effective-tld2-denied") << preset << cookie << "http://farmacia.ar" << result << false;
-    QTest::newRow("effective-tld2-denied2") << preset << cookie << "http://www.farmacia.ar" << result << false;
-    QTest::newRow("effective-tld2-denied3") << preset << cookie << "http://www.anything.farmacia.ar" << result << false;
-    cookie.setDomain(".gobiernoelectronico.ar");
+    cookie.setDomain(".farmacia.mz");
+    QTest::newRow("effective-tld2-denied") << preset << cookie << "http://farmacia.mz" << result << false;
+    QTest::newRow("effective-tld2-denied2") << preset << cookie << "http://www.farmacia.mz" << result << false;
+    QTest::newRow("effective-tld2-denied3") << preset << cookie << "http://www.anything.farmacia.mz" << result << false;
+    cookie.setDomain(".teledata.mz");
     result += cookie;
-    QTest::newRow("effective-tld2-accepted") << preset << cookie << "http://www.gobiernoelectronico.ar" << result << true;
+    QTest::newRow("effective-tld2-accepted") << preset << cookie << "http://www.teledata.mz" << result << true;
 
     result.clear();
     preset.clear();
@@ -411,6 +403,8 @@ void tst_QNetworkCookieJar::effectiveTLDs_data()
     QTest::newRow("yes7") << "org.ws" << true;
     QTest::newRow("yes8") << "co.uk" << true;
     QTest::newRow("yes9") << "wallonie.museum" << true;
+    QTest::newRow("yes10") << "hk.com" << true;
+    QTest::newRow("yes11") << "hk.org" << true;
 
     QTest::newRow("no1") << "anything.com" << false;
     QTest::newRow("no2") << "anything.de" << false;
@@ -422,6 +416,7 @@ void tst_QNetworkCookieJar::effectiveTLDs_data()
     QTest::newRow("no8") << "teatime.co.uk" << false;
     QTest::newRow("no9") << "bla" << false;
     QTest::newRow("no10") << "bla.bla" << false;
+    QTest::newRow("no11") << "mosreg.ru" << false;
 
     const ushort s1[] = {0x74, 0x72, 0x61, 0x6e, 0xf8, 0x79, 0x2e, 0x6e, 0x6f, 0x00}; // xn--trany-yua.no
     const ushort s2[] = {0x5d9, 0x5e8, 0x5d5, 0x5e9, 0x5dc, 0x5d9, 0x5dd, 0x2e, 0x6d, 0x75, 0x73, 0x65, 0x75, 0x6d, 0x00}; // xn--9dbhblg6di.museum
@@ -461,9 +456,10 @@ void tst_QNetworkCookieJar::effectiveTLDs_data()
     QTest::newRow("yes-wildcard1") << "*.jm" << true;
     QTest::newRow("yes-wildcard1.5") << "anything.jm" << true;
     QTest::newRow("yes-wildcard2") << "something.kh" << true;
-    QTest::newRow("yes-wildcard3") << "whatever.uk" << true;
+    QTest::newRow("no-wildcard3") << "whatever.uk" << false; // was changed at some point
     QTest::newRow("yes-wildcard4") << "anything.sendai.jp" << true;
     QTest::newRow("yes-wildcard5") << "foo.sch.uk" << true;
+    QTest::newRow("yes-wildcard6") << "something.platform.sh" << true;
 }
 
 void tst_QNetworkCookieJar::effectiveTLDs()

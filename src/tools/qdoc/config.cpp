@@ -1,39 +1,31 @@
 /****************************************************************************
 **
-** Copyright (C) 2013 Digia Plc and/or its subsidiary(-ies).
-** Contact: http://www.qt-project.org/legal
+** Copyright (C) 2015 The Qt Company Ltd.
+** Contact: http://www.qt.io/licensing/
 **
 ** This file is part of the tools applications of the Qt Toolkit.
 **
-** $QT_BEGIN_LICENSE:LGPL$
+** $QT_BEGIN_LICENSE:LGPL21$
 ** Commercial License Usage
 ** Licensees holding valid commercial Qt licenses may use this file in
 ** accordance with the commercial license agreement provided with the
 ** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and Digia.  For licensing terms and
-** conditions see http://qt.digia.com/licensing.  For further information
-** use the contact form at http://qt.digia.com/contact-us.
+** a written agreement between you and The Qt Company. For licensing terms
+** and conditions see http://www.qt.io/terms-conditions. For further
+** information use the contact form at http://www.qt.io/contact-us.
 **
 ** GNU Lesser General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 2.1 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU Lesser General Public License version 2.1 requirements
-** will be met: http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
+** General Public License version 2.1 or version 3 as published by the Free
+** Software Foundation and appearing in the file LICENSE.LGPLv21 and
+** LICENSE.LGPLv3 included in the packaging of this file. Please review the
+** following information to ensure the GNU Lesser General Public License
+** requirements will be met: https://www.gnu.org/licenses/lgpl.html and
+** http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
 **
-** In addition, as a special exception, Digia gives you certain additional
-** rights.  These rights are described in the Digia Qt LGPL Exception
+** As a special exception, The Qt Company gives you certain additional
+** rights. These rights are described in The Qt Company LGPL Exception
 ** version 1.1, included in the file LGPL_EXCEPTION.txt in this package.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3.0 as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU General Public License version 3.0 requirements will be
-** met: http://www.gnu.org/copyleft/gpl.html.
-**
 **
 ** $QT_END_LICENSE$
 **
@@ -56,6 +48,7 @@
 QT_BEGIN_NAMESPACE
 
 QString ConfigStrings::ALIAS = QStringLiteral("alias");
+QString ConfigStrings::AUTOLINKERRORS = QStringLiteral("autolinkerrors");
 QString ConfigStrings::BASE = QStringLiteral("base");
 QString ConfigStrings::BASEDIR = QStringLiteral("basedir");
 QString ConfigStrings::BUILDVERSION = QStringLiteral("buildversion");
@@ -105,6 +98,7 @@ QString ConfigStrings::QUOTINGINFORMATION = QStringLiteral("quotinginformation")
 QString ConfigStrings::SCRIPTDIRS = QStringLiteral("scriptdirs");
 QString ConfigStrings::SCRIPTS = QStringLiteral("scripts");
 QString ConfigStrings::SHOWINTERNAL = QStringLiteral("showinternal");
+QString ConfigStrings::SINGLEEXEC = QStringLiteral("singleexec");
 QString ConfigStrings::SOURCEDIRS = QStringLiteral("sourcedirs");
 QString ConfigStrings::SOURCEENCODING = QStringLiteral("sourceencoding");
 QString ConfigStrings::SOURCES = QStringLiteral("sources");
@@ -125,6 +119,7 @@ QString ConfigStrings::FILEEXTENSIONS = QStringLiteral("fileextensions");
 QString ConfigStrings::IMAGEEXTENSIONS = QStringLiteral("imageextensions");
 QString ConfigStrings::QMLONLY = QStringLiteral("qmlonly");
 QString ConfigStrings::QMLTYPESPAGE = QStringLiteral("qmltypespage");
+QString ConfigStrings::WRITEQAPAGES = QStringLiteral("writeqapages");
 
 /*!
   An entry in a stack, where each entry is a list
@@ -241,7 +236,8 @@ QStringList MetaStack::getExpanded(const Location& location)
     return top().accum;
 }
 
-QT_STATIC_CONST_IMPL QString Config::dot = QLatin1String(".");
+const QString Config::dot = QLatin1String(".");
+bool Config::debug_ = false;
 bool Config::generateExamples = true;
 QString Config::overrideOutputDir;
 QString Config::installDir;
@@ -326,11 +322,14 @@ bool Config::getBool(const QString& var) const
   Looks up the configuration variable \a var in the string list
   map. Iterates through the string list found, interpreting each
   string in the list as an integer and adding it to a total sum.
-  Returns the sum.
+  Returns the sum or \c -1 if \a var is not set.
  */
 int Config::getInt(const QString& var) const
 {
     QStringList strs = getStringList(var);
+    if (strs.isEmpty())
+        return -1;
+
     QStringList::ConstIterator s = strs.constBegin();
     int sum = 0;
 
@@ -353,6 +352,10 @@ QString Config::getOutputDir() const
         t = getString(CONFIG_OUTPUTDIR);
     else
         t = overrideOutputDir;
+    if (Generator::singleExec()) {
+        QString project = getString(CONFIG_PROJECT);
+        t += QLatin1Char('/') + project.toLower();
+    }
     if (!Generator::useOutputSubdirs()) {
         t = t.left(t.lastIndexOf('/'));
         QString singleOutputSubdir = getString("HTML.outputsubdir");
@@ -393,7 +396,7 @@ QString Config::getString(const QString& var) const
         while (i >= 0) {
             const ConfigVar& cv = configVars[i];
             if (!cv.location_.isEmpty())
-                (Location&) lastLocation_ = cv.location_;
+                const_cast<Config *>(this)->lastLocation_ = cv.location_;
             if (!cv.values_.isEmpty()) {
                 if (!cv.plus_)
                     value.clear();
@@ -440,7 +443,7 @@ QStringList Config::getStringList(const QString& var) const
         int i = configVars.size() - 1;
         while (i >= 0) {
             if (!configVars[i].location_.isEmpty())
-                (Location&) lastLocation_ = configVars[i].location_;
+                const_cast<Config *>(this)->lastLocation_ = configVars[i].location_;
             if (configVars[i].plus_)
                 values.append(configVars[i].values_);
             else
@@ -452,12 +455,21 @@ QStringList Config::getStringList(const QString& var) const
 }
 
 /*!
-   \brief Returns the a path list where all paths are canonicalized, then
-          made relative to the config file.
-   \param var The variable containing the list of paths.
-   \see   Location::canonicalRelativePath()
+   Returns the a path list where all paths from the config variable \a var
+   are canonicalized. If \a validate is true, a warning for invalid paths is
+   generated.
+
+   First, this function looks up the configuration variable \a var
+   in the location map and, if found, sets the internal variable
+   \c{lastLocation_} the Location that \a var maps to.
+
+   Then it looks up the configuration variable \a var in the string
+   list map, which maps to one or more records that each contains a
+   list of file paths.
+
+   \sa Location::canonicalRelativePath()
  */
-QStringList Config::getCanonicalPathList(const QString& var) const
+QStringList Config::getCanonicalPathList(const QString& var, bool validate) const
 {
     QStringList t;
     QList<ConfigVar> configVars = configVars_.values(var);
@@ -466,7 +478,7 @@ QStringList Config::getCanonicalPathList(const QString& var) const
         while (i >= 0) {
             const ConfigVar& cv = configVars[i];
             if (!cv.location_.isEmpty())
-                (Location&) lastLocation_ = cv.location_;
+                const_cast<Config *>(this)->lastLocation_ = cv.location_;
             if (!cv.plus_)
                 t.clear();
             const QString d = cv.currentPath_;
@@ -474,88 +486,14 @@ QStringList Config::getCanonicalPathList(const QString& var) const
             if (!sl.isEmpty()) {
                 t.reserve(t.size() + sl.size());
                 for (int i=0; i<sl.size(); ++i) {
-                    QDir dir(d + "/" + sl[i]);
-                    t.append(dir.canonicalPath());
-                }
-            }
-            --i;
-        }
-    }
-    return t;
-}
-
-/*!
-  This function should only be called when the configuration
-  variable \a var maps to string lists that contain file paths.
-  It cleans the paths with QDir::cleanPath() before returning
-  them.
- */
-QStringList Config::getCleanPathList(const QString& var) const
-{
-    QStringList t;
-    QList<ConfigVar> configVars = configVars_.values(var);
-    if (!configVars.empty()) {
-        int i = configVars.size() - 1;
-        while (i >= 0) {
-            const ConfigVar& cv = configVars[i];
-            if (!cv.plus_)
-                t.clear();
-            if (!cv.location_.isEmpty())
-                (Location&) lastLocation_ = cv.location_;
-            const QStringList& sl = cv.values_;
-            if (!sl.isEmpty()) {
-                t.reserve(t.size() + sl.size());
-                for (int i=0; i<sl.size(); ++i) {
-                    t.append(QDir::cleanPath(sl[i].simplified()));
-                }
-            }
-            --i;
-        }
-    }
-    return t;
-}
-
-/*!
-  This function should only be called when the configuration
-  variable \a var maps to string lists that contain file paths.
-  It cleans the paths with QDir::cleanPath() before returning
-  them.
-
-  First, this function looks up the configuration variable \a var
-  in the location map and, if found, sets the internal variable
-  \c{lastLocation_} the Location that \a var maps to.
-
-  Then it looks up the configuration variable \a var in the string
-  list map, which maps to one or more records that each contains a
-  list of file paths.
-
-  These paths might not be clean, so QDir::cleanPath() is called
-  for each one. The string list returned contains cleaned paths.
- */
-QStringList Config::getPathList(const QString& var) const
-{
-    QStringList t;
-    QList<ConfigVar> configVars = configVars_.values(var);
-    if (!configVars.empty()) {
-        int i = configVars.size() - 1;
-        while (i >= 0) {
-            const ConfigVar& cv = configVars[i];
-            if (!cv.plus_)
-                t.clear();
-            if (!cv.location_.isEmpty())
-                (Location&) lastLocation_ = cv.location_;
-            const QString d = cv.currentPath_;
-            const QStringList& sl = cv.values_;
-            if (!sl.isEmpty()) {
-                t.reserve(t.size() + sl.size());
-                for (int i=0; i<sl.size(); ++i) {
-                    QFileInfo fileInfo;
-                    QString path = d + "/" + QDir::cleanPath(sl[i].simplified());
-                    fileInfo.setFile(path);
-                    if (!fileInfo.exists())
-                        lastLocation_.warning(tr("File '%1' does not exist").arg(path));
+                    QDir dir(sl[i].simplified());
+                    QString path = dir.path();
+                    if (dir.isRelative())
+                        dir.setPath(d + "/" + path);
+                    if (validate && !QFileInfo::exists(dir.path()))
+                        lastLocation_.warning(tr("Cannot find file or directory: %1").arg(path));
                     else
-                        t.append(path);
+                        t.append(dir.canonicalPath());
                 }
             }
             --i;
@@ -563,7 +501,6 @@ QStringList Config::getPathList(const QString& var) const
     }
     return t;
 }
-
 
 /*!
   Calls getRegExpList() with the control variable \a var and
@@ -938,6 +875,36 @@ bool Config::isMetaKeyChar(QChar ch)
 }
 
 /*!
+  \a fileName is a master qdocconf file. It contains a list of
+  qdocconf files and nothing else. Read the list and return it.
+ */
+QStringList Config::loadMaster(const QString& fileName)
+{
+    Location location = Location::null;
+    QFile fin(fileName);
+    if (!fin.open(QFile::ReadOnly | QFile::Text)) {
+        if (!Config::installDir.isEmpty()) {
+            int prefix = location.filePath().length() - location.fileName().length();
+            fin.setFileName(Config::installDir + "/" + fileName.right(fileName.length() - prefix));
+        }
+        if (!fin.open(QFile::ReadOnly | QFile::Text))
+            location.fatal(tr("Cannot open master qdocconf file '%1': %2").arg(fileName).arg(fin.errorString()));
+    }
+    QTextStream stream(&fin);
+#ifndef QT_NO_TEXTCODEC
+    stream.setCodec("UTF-8");
+#endif
+    QStringList qdocFiles;
+    QString line = stream.readLine();
+    while (!line.isNull()) {
+        qdocFiles.append(line);
+        line = stream.readLine();
+    }
+    fin.close();
+    return qdocFiles;
+}
+
+/*!
   Load, parse, and process a qdoc configuration file. This
   function is only called by the other load() function, but
   this one is recursive, i.e., it calls itself when it sees
@@ -1039,8 +1006,8 @@ void Config::load(Location location, const QString& fileName)
                             SKIP_CHAR();
                         }
                         if (!var.isEmpty()) {
-                            char *val = getenv(var.toLatin1().data());
-                            if (val == 0) {
+                            const QByteArray val = qgetenv(var.toLatin1().data());
+                            if (val.isNull()) {
                                 location.fatal(tr("Environment variable '%1' undefined").arg(var));
                             }
                             else {
@@ -1147,8 +1114,8 @@ void Config::load(Location location, const QString& fileName)
                             SKIP_CHAR();
                         }
                         if (!var.isEmpty()) {
-                            char *val = getenv(var.toLatin1().data());
-                            if (val == 0) {
+                            const QByteArray val = qgetenv(var.toLatin1().constData());
+                            if (val.isNull()) {
                                 location.fatal(tr("Environment variable '%1' undefined").arg(var));
                             }
                             else {
@@ -1170,7 +1137,7 @@ void Config::load(Location location, const QString& fileName)
 
                     ConfigVarMultimap::Iterator i;
                     i = configVars_.insert(*key, ConfigVar(*key, rhsValues, QDir::currentPath(), keyLoc));
-                    i.value().plus_ = (plus ? true : false);
+                    i.value().plus_ = plus;
                     ++key;
                 }
             }

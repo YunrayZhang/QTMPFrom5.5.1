@@ -1,39 +1,31 @@
 /****************************************************************************
 **
-** Copyright (C) 2013 Digia Plc and/or its subsidiary(-ies).
-** Contact: http://www.qt-project.org/legal
+** Copyright (C) 2015 The Qt Company Ltd.
+** Contact: http://www.qt.io/licensing/
 **
 ** This file is part of the QtWidgets module of the Qt Toolkit.
 **
-** $QT_BEGIN_LICENSE:LGPL$
+** $QT_BEGIN_LICENSE:LGPL21$
 ** Commercial License Usage
 ** Licensees holding valid commercial Qt licenses may use this file in
 ** accordance with the commercial license agreement provided with the
 ** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and Digia.  For licensing terms and
-** conditions see http://qt.digia.com/licensing.  For further information
-** use the contact form at http://qt.digia.com/contact-us.
+** a written agreement between you and The Qt Company. For licensing terms
+** and conditions see http://www.qt.io/terms-conditions. For further
+** information use the contact form at http://www.qt.io/contact-us.
 **
 ** GNU Lesser General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 2.1 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU Lesser General Public License version 2.1 requirements
-** will be met: http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
+** General Public License version 2.1 or version 3 as published by the Free
+** Software Foundation and appearing in the file LICENSE.LGPLv21 and
+** LICENSE.LGPLv3 included in the packaging of this file. Please review the
+** following information to ensure the GNU Lesser General Public License
+** requirements will be met: https://www.gnu.org/licenses/lgpl.html and
+** http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
 **
-** In addition, as a special exception, Digia gives you certain additional
-** rights.  These rights are described in the Digia Qt LGPL Exception
+** As a special exception, The Qt Company gives you certain additional
+** rights. These rights are described in The Qt Company LGPL Exception
 ** version 1.1, included in the file LGPL_EXCEPTION.txt in this package.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3.0 as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU General Public License version 3.0 requirements will be
-** met: http://www.gnu.org/copyleft/gpl.html.
-**
 **
 ** $QT_END_LICENSE$
 **
@@ -332,6 +324,8 @@
     this flag is disabled; children can draw anywhere. This behavior is
     enforced by QGraphicsView::drawItems() or
     QGraphicsScene::drawItems(). This flag was introduced in Qt 4.3.
+    \note This flag is similar to ItemContainsChildrenInShape but in addition
+    enforces the containment by clipping the children.
 
     \value ItemIgnoresTransformations The item ignores inherited
     transformations (i.e., its position is still anchored to its parent, but
@@ -423,6 +417,19 @@
     ItemStopsClickFocusPropagation, but also suppresses focus-out. This flag
     allows you to completely take over focus handling.
     This flag was introduced in Qt 4.7. \endomit
+
+    \value ItemContainsChildrenInShape This flag indicates that all of the
+    item's direct or indirect children only draw within the item's shape.
+    Unlike ItemClipsChildrenToShape, this restriction is not enforced. Set
+    ItemContainsChildrenInShape when you manually assure that drawing
+    is bound to the item's shape and want to avoid the cost associated with
+    enforcing the clip. Setting this flag enables more efficient drawing and
+    collision detection. The flag is disabled by default.
+    \note If both this flag and ItemClipsChildrenToShape are set, the clip
+    will be enforced. This is equivalent to just setting
+    ItemClipsChildrenToShape.
+
+    This flag was introduced in Qt 5.4.
 */
 
 /*!
@@ -729,7 +736,6 @@
 #include "qgraphicsproxywidget.h"
 #include "qgraphicsscenebsptreeindex_p.h"
 #include <QtCore/qbitarray.h>
-#include <QtCore/qdebug.h>
 #include <QtCore/qpoint.h>
 #include <QtCore/qstack.h>
 #include <QtCore/qtimer.h>
@@ -754,8 +760,7 @@
 #include <private/qwidget_p.h>
 #include <private/qapplication_p.h>
 #include <private/qgesturemanager_p.h>
-
-#include <math.h>
+#include <private/qdebug_p.h>
 
 QT_BEGIN_NAMESPACE
 
@@ -790,7 +795,7 @@ static QPainterPath qt_graphicsItem_shapeFromPath(const QPainterPath &path, cons
     // if we pass a value of 0.0 to QPainterPathStroker::setWidth()
     const qreal penWidthZero = qreal(0.00000001);
 
-    if (path == QPainterPath())
+    if (path == QPainterPath() || pen == Qt::NoPen)
         return path;
     QPainterPathStroker ps;
     ps.setCapStyle(pen.capStyle());
@@ -835,6 +840,10 @@ void QGraphicsItemPrivate::updateAncestorFlag(QGraphicsItem::GraphicsItemFlag ch
         case QGraphicsItem::ItemIgnoresTransformations:
             flag = AncestorIgnoresTransformations;
             enabled = flags & QGraphicsItem::ItemIgnoresTransformations;
+            break;
+        case QGraphicsItem::ItemContainsChildrenInShape:
+            flag = AncestorContainsChildren;
+            enabled = flags & QGraphicsItem::ItemContainsChildrenInShape;
             break;
         default:
             return;
@@ -895,6 +904,8 @@ void QGraphicsItemPrivate::updateAncestorFlags()
             flags |= AncestorClipsChildren;
         if (pd->flags & QGraphicsItem::ItemIgnoresTransformations)
             flags |= AncestorIgnoresTransformations;
+        if (pd->flags & QGraphicsItem::ItemContainsChildrenInShape)
+            flags |= AncestorContainsChildren;
     }
 
     if (ancestorFlags == flags)
@@ -1414,10 +1425,13 @@ QGraphicsItem::~QGraphicsItem()
         QObjectPrivate *p = QObjectPrivate::get(o);
         p->wasDeleted = true;
         if (p->declarativeData) {
-            if (QAbstractDeclarativeData::destroyed)
-                QAbstractDeclarativeData::destroyed(p->declarativeData, o);
-            if (QAbstractDeclarativeData::destroyed_qml1)
-                QAbstractDeclarativeData::destroyed_qml1(p->declarativeData, o);
+            if (static_cast<QAbstractDeclarativeDataImpl*>(p->declarativeData)->ownedByQml1) {
+                if (QAbstractDeclarativeData::destroyed_qml1)
+                    QAbstractDeclarativeData::destroyed_qml1(p->declarativeData, o);
+            } else {
+                if (QAbstractDeclarativeData::destroyed)
+                    QAbstractDeclarativeData::destroyed(p->declarativeData, o);
+            }
             p->declarativeData = 0;
         }
     }
@@ -1831,6 +1845,11 @@ void QGraphicsItem::setFlags(GraphicsItemFlags flags)
         d_ptr->markParentDirty(true);
     }
 
+    if ((flags & ItemContainsChildrenInShape) != (oldFlags & ItemContainsChildrenInShape)) {
+        // Item children containtment changes. Propagate the ancestor flag to all children.
+        d_ptr->updateAncestorFlag(ItemContainsChildrenInShape);
+    }
+
     if ((flags & ItemIgnoresTransformations) != (oldFlags & ItemIgnoresTransformations)) {
         // Item children clipping changes. Propagate the ancestor flag to
         // all children.
@@ -1950,8 +1969,10 @@ QGraphicsItem::CacheMode QGraphicsItem::cacheMode() const
     Caching can speed up rendering if your item spends a significant time
     redrawing itself. In some cases the cache can also slow down rendering, in
     particular when the item spends less time redrawing than QGraphicsItem
-    spends redrawing from the cache. When enabled, the item's paint() function
-    will be called only once for each call to update(); for any subsequent
+    spends redrawing from the cache.
+
+    When caching is enabled, an item's paint() function will generally draw into an
+    offscreen pixmap cache; for any subsequent
     repaint requests, the Graphics View framework will redraw from the
     cache. This approach works particularly well with QGLWidget, which stores
     all the cache as OpenGL textures.
@@ -1961,6 +1982,12 @@ QGraphicsItem::CacheMode QGraphicsItem::cacheMode() const
 
     You can read more about the different cache modes in the CacheMode
     documentation.
+
+    \note Enabling caching does not imply that the item's paint() function will be
+    called only in response to an explicit update() call. For instance, under
+    memory pressure, Qt may decide to drop some of the cache information;
+    in such cases an item's paint() function will be called even if there
+    was no update() call (that is, exactly as if there were no caching enabled).
 
     \sa CacheMode, QPixmapCache::setCacheLimit()
 */
@@ -2322,7 +2349,8 @@ void QGraphicsItemPrivate::setVisibleHelper(bool newVisible, bool explicitly,
     }
 
     // Update children with explicitly = false.
-    const bool updateChildren = update && !((flags & QGraphicsItem::ItemClipsChildrenToShape)
+    const bool updateChildren = update && !((flags & QGraphicsItem::ItemClipsChildrenToShape
+                                             || flags & QGraphicsItem::ItemContainsChildrenInShape)
                                             && !(flags & QGraphicsItem::ItemHasNoContents));
     foreach (QGraphicsItem *child, children) {
         if (!newVisible || !child->d_ptr->explicitlyHidden)
@@ -2420,7 +2448,12 @@ void QGraphicsItemPrivate::setVisibleHelper(bool newVisible, bool explicitly,
     Items are visible by default; it is unnecessary to call
     setVisible() on a new item.
 
-    \sa isVisible(), show(), hide()
+    \note An item with opacity set to 0 will still be considered visible,
+    although it will be treated like an invisible item: mouse events will pass
+    through it, it will not be included in the items returned by
+    QGraphicsView::items(), and so on. However, the item will retain the focus.
+
+    \sa isVisible(), show(), hide(), setOpacity()
 */
 void QGraphicsItem::setVisible(bool visible)
 {
@@ -2688,7 +2721,11 @@ qreal QGraphicsItem::effectiveOpacity() const
     with the parent: ItemIgnoresParentOpacity and
     ItemDoesntPropagateOpacityToChildren.
 
-    \sa opacity(), effectiveOpacity()
+    \note Setting the opacity of an item to 0 will not make the item invisible
+    (according to isVisible()), but the item will be treated like an invisible
+    one. See the documentation of setVisible() for more information.
+
+    \sa opacity(), effectiveOpacity(), setVisible()
 */
 void QGraphicsItem::setOpacity(qreal opacity)
 {
@@ -2835,7 +2872,9 @@ QRectF QGraphicsItemPrivate::effectiveBoundingRect(QGraphicsItem *topMostEffectI
 #ifndef QT_NO_GRAPHICSEFFECT
     Q_Q(const QGraphicsItem);
     QRectF brect = effectiveBoundingRect(q_ptr->boundingRect());
-    if (ancestorFlags & QGraphicsItemPrivate::AncestorClipsChildren || topMostEffectItem == q)
+    if (ancestorFlags & QGraphicsItemPrivate::AncestorClipsChildren
+        || ancestorFlags & QGraphicsItemPrivate::AncestorContainsChildren
+        || topMostEffectItem == q)
         return brect;
 
     const QGraphicsItem *effectParent = parent;
@@ -2847,6 +2886,7 @@ QRectF QGraphicsItemPrivate::effectiveBoundingRect(QGraphicsItem *topMostEffectI
             brect = effectParent->mapRectToItem(q, effectRectInParentSpace);
         }
         if (effectParent->d_ptr->ancestorFlags & QGraphicsItemPrivate::AncestorClipsChildren
+            || effectParent->d_ptr->ancestorFlags & QGraphicsItemPrivate::AncestorContainsChildren
             || topMostEffectItem == effectParent) {
             return brect;
         }
@@ -4465,7 +4505,7 @@ void QGraphicsItem::resetTransform()
     Use
 
     \code
-    setRotation(rotation() + angle);
+    item->setTransform(QTransform().rotate(angle), true);
     \endcode
 
     instead.
@@ -5314,6 +5354,16 @@ void QGraphicsItem::setBoundingRegionGranularity(qreal granularity)
     a non-zero width.
 
     All painting is done in local coordinates.
+
+    \note It is mandatory that an item will always redraw itself in the exact
+    same way, unless update() was called; otherwise visual artifacts may
+    occur. In other words, two subsequent calls to paint() must always produce
+    the same output, unless update() was called between them.
+
+    \note Enabling caching for an item does not guarantee that paint()
+    will be invoked only once by the Graphics View framework,
+    even without any explicit call to update(). See the documentation of
+    setCacheMode() for more details.
 
     \sa setCacheMode(), QPen::width(), {Item Coordinates}, ItemUsesExtendedStyleOption
 */
@@ -6543,7 +6593,7 @@ void QGraphicsItem::setData(int key, const QVariant &value)
 
     For example:
 
-    \snippet code/src_gui_graphicsview_qgraphicsitem.cpp QGraphicsItem type
+    \snippet code/src_gui_graphicsview_qgraphicsitem.cpp 1
 
     \sa UserType
 */
@@ -7343,7 +7393,7 @@ void QGraphicsItem::setInputMethodHints(Qt::InputMethodHints hints)
     QWidget *fw = QApplication::focusWidget();
     if (!fw)
         return;
-    qApp->inputMethod()->update(Qt::ImHints);
+    QGuiApplication::inputMethod()->update(Qt::ImHints);
 }
 
 /*!
@@ -7355,13 +7405,13 @@ void QGraphicsItem::setInputMethodHints(Qt::InputMethodHints hints)
 */
 void QGraphicsItem::updateMicroFocus()
 {
-#if !defined(QT_NO_IM) && defined(Q_WS_X11)
+#if !defined(QT_NO_IM) && defined(Q_DEAD_CODE_FROM_QT4_X11)
     if (QWidget *fw = QApplication::focusWidget()) {
         if (scene()) {
             for (int i = 0 ; i < scene()->views().count() ; ++i) {
                 if (scene()->views().at(i) == fw) {
                     if (qApp)
-                        qApp->inputMethod()->update(Qt::ImQueryAll);
+                        QGuiApplication::inputMethod()->update(Qt::ImQueryAll);
                     break;
                 }
             }
@@ -7442,7 +7492,8 @@ QVariant QGraphicsItem::extension(const QVariant &variant) const
 */
 void QGraphicsItem::addToIndex()
 {
-    if (d_ptr->ancestorFlags & QGraphicsItemPrivate::AncestorClipsChildren) {
+    if (d_ptr->ancestorFlags & QGraphicsItemPrivate::AncestorClipsChildren
+        || d_ptr->ancestorFlags & QGraphicsItemPrivate::AncestorContainsChildren) {
         // ### add to child index only if applicable
         return;
     }
@@ -7459,7 +7510,8 @@ void QGraphicsItem::addToIndex()
 */
 void QGraphicsItem::removeFromIndex()
 {
-    if (d_ptr->ancestorFlags & QGraphicsItemPrivate::AncestorClipsChildren) {
+    if (d_ptr->ancestorFlags & QGraphicsItemPrivate::AncestorClipsChildren
+        || d_ptr->ancestorFlags & QGraphicsItemPrivate::AncestorContainsChildren) {
         // ### remove from child index only if applicable
         return;
     }
@@ -7980,16 +8032,6 @@ void QGraphicsItemPrivate::resetHeight()
   This signal gets emitted whenever the visibility of the item changes
 
   \sa visible
-*/
-
-/*!
-  \fn const QObjectList &QGraphicsObject::children() const
-  \internal
-
-  This function returns the same value as QObject::children(). It's
-  provided to differentiate between the obsolete member
-  QGraphicsItem::children() and QObject::children(). QGraphicsItem now
-  provides childItems() instead.
 */
 
 /*!
@@ -9740,6 +9782,7 @@ QVariant QGraphicsPixmapItem::extension(const QVariant &variant) const
     using textWidth().
 
     \note In order to align HTML text in the center, the item's text width must be set.
+    Otherwise, you can call adjustSize() after setting the item's text.
 
     \image graphicsview-textitem.png
 
@@ -10101,9 +10144,9 @@ bool QGraphicsTextItem::sceneEvent(QEvent *event)
         // Reset the focus widget's input context, regardless
         // of how this item gained or lost focus.
         if (event->type() == QEvent::FocusIn || event->type() == QEvent::FocusOut) {
-            qApp->inputMethod()->reset();
+            QGuiApplication::inputMethod()->reset();
         } else {
-            qApp->inputMethod()->update(Qt::ImQueryInput);
+            QGuiApplication::inputMethod()->update(Qt::ImQueryInput);
         }
         break;
     case QEvent::ShortcutOverride:
@@ -11243,8 +11286,24 @@ QPixmap QGraphicsItemEffectSourcePrivate::pixmap(Qt::CoordinateSystem system, QP
 #endif //QT_NO_GRAPHICSEFFECT
 
 #ifndef QT_NO_DEBUG_STREAM
+static void formatGraphicsItemHelper(QDebug debug, const QGraphicsItem *item)
+{
+    if (const QGraphicsItem *parent = item->parentItem())
+          debug << ", parent=" << static_cast<const void *>(parent);
+    debug << ", pos=";
+    QtDebugUtils::formatQPoint(debug, item->pos());
+    if (const qreal z = item->zValue())
+        debug << ", z=" << z;
+    if (item->flags())
+        debug <<  ", flags=" << item->flags();
+}
+
+// FIXME: Qt 6: Make this QDebug operator<<(QDebug debug, const QGraphicsItem *item)
 QDebug operator<<(QDebug debug, QGraphicsItem *item)
 {
+    QDebugStateSaver saver(debug);
+    debug.nospace();
+
     if (!item) {
         debug << "QGraphicsItem(0)";
         return debug;
@@ -11254,29 +11313,40 @@ QDebug operator<<(QDebug debug, QGraphicsItem *item)
         debug << o->metaObject()->className();
     else
         debug << "QGraphicsItem";
-    debug << "(this =" << (void*)item
-          << ", parent =" << (void*)item->parentItem()
-          << ", pos =" << item->pos()
-          << ", z =" << item->zValue() << ", flags = "
-          << item->flags() << ")";
+    debug << '(' << static_cast<const void *>(item);
+    if (const QGraphicsProxyWidget *pw = qgraphicsitem_cast<const QGraphicsProxyWidget *>(item)) {
+        debug << ", widget=";
+        if (const QWidget *w = pw->widget()) {
+            debug << w->metaObject()->className() << '(' << static_cast<const void *>(w);
+            if (!w->objectName().isEmpty())
+                debug << ", name=" << w->objectName();
+            debug << ')';
+        } else {
+            debug << "QWidget(0)";
+        }
+    }
+    formatGraphicsItemHelper(debug, item);
+    debug << ')';
     return debug;
 }
 
+// FIXME: Qt 6: Make this QDebug operator<<(QDebug debug, const QGraphicsObject *item)
 QDebug operator<<(QDebug debug, QGraphicsObject *item)
 {
+    QDebugStateSaver saver(debug);
+    debug.nospace();
+
     if (!item) {
         debug << "QGraphicsObject(0)";
         return debug;
     }
 
-    debug.nospace() << item->metaObject()->className() << '(' << (void*)item;
+    debug << item->metaObject()->className() << '(' << static_cast<const void *>(item);
     if (!item->objectName().isEmpty())
-        debug << ", name = " << item->objectName();
-    debug.nospace() << ", parent = " << ((void*)item->parentItem())
-          << ", pos = " << item->pos()
-          << ", z = " << item->zValue() << ", flags = "
-          << item->flags() << ')';
-    return debug.space();
+        debug << ", name=" << item->objectName();
+    formatGraphicsItemHelper(debug, item);
+    debug << ')';
+    return debug;
 }
 
 QDebug operator<<(QDebug debug, QGraphicsItem::GraphicsItemChange change)
@@ -11450,6 +11520,9 @@ QDebug operator<<(QDebug debug, QGraphicsItem::GraphicsItemFlag flag)
         break;
     case QGraphicsItem::ItemStopsFocusHandling:
         str = "ItemStopsFocusHandling";
+        break;
+    case QGraphicsItem::ItemContainsChildrenInShape:
+        str = "ItemContainsChildrenInShape";
         break;
     }
     debug << str;

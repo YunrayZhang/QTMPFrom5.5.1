@@ -1,40 +1,32 @@
 /****************************************************************************
 **
-** Copyright (C) 2013 Digia Plc and/or its subsidiary(-ies).
-** Copyright (C) 2012 Intel Corporation.
-** Contact: http://www.qt-project.org/legal
+** Copyright (C) 2015 The Qt Company Ltd.
+** Copyright (C) 2015 Intel Corporation.
+** Contact: http://www.qt.io/licensing/
 **
 ** This file is part of the test suite of the Qt Toolkit.
 **
-** $QT_BEGIN_LICENSE:LGPL$
+** $QT_BEGIN_LICENSE:LGPL21$
 ** Commercial License Usage
 ** Licensees holding valid commercial Qt licenses may use this file in
 ** accordance with the commercial license agreement provided with the
 ** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and Digia.  For licensing terms and
-** conditions see http://qt.digia.com/licensing.  For further information
-** use the contact form at http://qt.digia.com/contact-us.
+** a written agreement between you and The Qt Company. For licensing terms
+** and conditions see http://www.qt.io/terms-conditions. For further
+** information use the contact form at http://www.qt.io/contact-us.
 **
 ** GNU Lesser General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 2.1 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU Lesser General Public License version 2.1 requirements
-** will be met: http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
+** General Public License version 2.1 or version 3 as published by the Free
+** Software Foundation and appearing in the file LICENSE.LGPLv21 and
+** LICENSE.LGPLv3 included in the packaging of this file. Please review the
+** following information to ensure the GNU Lesser General Public License
+** requirements will be met: https://www.gnu.org/licenses/lgpl.html and
+** http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
 **
-** In addition, as a special exception, Digia gives you certain additional
-** rights.  These rights are described in the Digia Qt LGPL Exception
+** As a special exception, The Qt Company gives you certain additional
+** rights. These rights are described in The Qt Company LGPL Exception
 ** version 1.1, included in the file LGPL_EXCEPTION.txt in this package.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3.0 as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU General Public License version 3.0 requirements will be
-** met: http://www.gnu.org/copyleft/gpl.html.
-**
 **
 ** $QT_END_LICENSE$
 **
@@ -165,6 +157,8 @@ private slots:
     void binaryData();
     void fromUserInput_data();
     void fromUserInput();
+    void fromUserInputWithCwd_data();
+    void fromUserInputWithCwd();
     void fileName_data();
     void fileName();
     void isEmptyForEncodedUrl();
@@ -234,6 +228,11 @@ void tst_QUrl::constructing()
     QCOMPARE(url.toString(), QString());
     QVERIFY(url == url);
     QVERIFY(!(url < url));
+
+    QUrl fromLocal = QUrl::fromLocalFile(QString());
+    QVERIFY(!fromLocal.isValid());
+    QVERIFY(fromLocal.isEmpty());
+    QCOMPARE(fromLocal.toString(), QString());
 
     QUrl justHost("qt-project.org");
     QVERIFY(!justHost.isEmpty());
@@ -1180,6 +1179,12 @@ void tst_QUrl::toLocalFile_data()
 
     QTest::newRow("data0") << QString::fromLatin1("file:/a.txt") << QString::fromLatin1("/a.txt");
     QTest::newRow("data4") << QString::fromLatin1("file:///a.txt") << QString::fromLatin1("/a.txt");
+    QTest::newRow("data4a") << QString::fromLatin1("webdavs://somewebdavhost/somedir/somefile")
+#ifdef Q_OS_WIN // QTBUG-42346, WebDAV is visible as local file on Windows only.
+                            << QString::fromLatin1("//somewebdavhost@SSL/somedir/somefile");
+#else
+                            << QString();
+#endif
 #ifdef Q_OS_WIN
     QTest::newRow("data5") << QString::fromLatin1("file:///c:/a.txt") << QString::fromLatin1("c:/a.txt");
 #else
@@ -1228,6 +1233,9 @@ void tst_QUrl::fromLocalFile_data()
     QTest::newRow("data3") << QString::fromLatin1("c:/a.txt") << QString::fromLatin1("file:///c:/a.txt") << QString::fromLatin1("/c:/a.txt");
     QTest::newRow("data4") << QString::fromLatin1("//somehost/somedir/somefile") << QString::fromLatin1("file://somehost/somedir/somefile")
                         << QString::fromLatin1("/somedir/somefile");
+    QTest::newRow("data4a") << QString::fromLatin1("//somewebdavhost@SSL/somedir/somefile")
+                        << QString::fromLatin1("webdavs://somewebdavhost/somedir/somefile")
+                        << QString::fromLatin1("/somedir/somefile");
     QTest::newRow("data5") << QString::fromLatin1("//somehost") << QString::fromLatin1("file://somehost")
                         << QString::fromLatin1("");
     QTest::newRow("data6") << QString::fromLatin1("//somehost/") << QString::fromLatin1("file://somehost/")
@@ -1240,6 +1248,10 @@ void tst_QUrl::fromLocalFile_data()
                            << QString::fromLatin1("/a%25.txt");
     QTest::newRow("data10") << QString::fromLatin1("/%80.txt") << QString::fromLatin1("file:///%2580.txt")
                             << QString::fromLatin1("/%80.txt");
+    QTest::newRow("data11") << QString::fromLatin1("./a.txt") << QString::fromLatin1("file:a.txt") << QString::fromLatin1("a.txt");
+    QTest::newRow("data12") << QString::fromLatin1("././a.txt") << QString::fromLatin1("file:a.txt") << QString::fromLatin1("a.txt");
+    QTest::newRow("data13") << QString::fromLatin1("b/../a.txt") << QString::fromLatin1("file:a.txt") << QString::fromLatin1("a.txt");
+    QTest::newRow("data14") << QString::fromLatin1("/b/../a.txt") << QString::fromLatin1("file:///a.txt") << QString::fromLatin1("/a.txt");
 }
 
 void tst_QUrl::fromLocalFile()
@@ -2003,6 +2015,11 @@ void tst_QUrl::isValid()
         QVERIFY(!url.isValid());
         QVERIFY(url.toString().isEmpty());
         QVERIFY(url.errorString().contains("':' before any '/'"));
+    }
+
+    {
+        QUrl url("file://./localfile.html");
+        QVERIFY(!url.isValid());
     }
 }
 
@@ -2872,6 +2889,13 @@ void tst_QUrl::fromUserInput_data()
     QTest::newRow("add scheme-1") << "www.example.org" << QUrl("http://www.example.org");
     QTest::newRow("add scheme-2") << "ftp.example.org" << QUrl("ftp://ftp.example.org");
     QTest::newRow("add scheme-3") << "hostname" << QUrl("http://hostname");
+    QTest::newRow("ipv4-1") << "127.0.0.1" << QUrl("http://127.0.0.1");
+    QTest::newRow("ipv6-0") << "::" << QUrl("http://[::]");
+    QTest::newRow("ipv6-1") << "::1" << QUrl("http://[::1]");
+    QTest::newRow("ipv6-2") << "1::1" << QUrl("http://[1::1]");
+    QTest::newRow("ipv6-3") << "1::" << QUrl("http://[1::]");
+    QTest::newRow("ipv6-4") << "c::" << QUrl("http://[c::]");
+    QTest::newRow("ipv6-5") << "c:f00:ba4::" << QUrl("http://[c:f00:ba4::]");
 
     // no host
     QTest::newRow("nohost-1") << "http://" << QUrl("http://");
@@ -2918,6 +2942,62 @@ void tst_QUrl::fromUserInput()
 
     QUrl url = QUrl::fromUserInput(string);
     QCOMPARE(url, guessUrlFromString);
+}
+
+void tst_QUrl::fromUserInputWithCwd_data()
+{
+    QTest::addColumn<QString>("string");
+    QTest::addColumn<QString>("directory");
+    QTest::addColumn<QUrl>("guessedUrlDefault");
+    QTest::addColumn<QUrl>("guessedUrlAssumeLocalFile");
+
+    // Null
+    QTest::newRow("null") << QString() << QString() << QUrl() << QUrl();
+
+    // Existing file
+    QDirIterator it(QDir::currentPath(), QDir::NoDotDot | QDir::AllEntries);
+    int c = 0;
+    while (it.hasNext()) {
+        it.next();
+        QUrl url = QUrl::fromLocalFile(it.filePath());
+        QTest::newRow(QString("file-%1").arg(c++).toLatin1()) << it.fileName() << QDir::currentPath() << url << url;
+    }
+    QDir parent = QDir::current();
+    QVERIFY(parent.cdUp());
+    QUrl parentUrl = QUrl::fromLocalFile(parent.path());
+    QTest::newRow("dotdot") << ".." << QDir::currentPath() << parentUrl << parentUrl;
+
+    QTest::newRow("nonexisting") << "nonexisting" << QDir::currentPath() << QUrl("http://nonexisting") << QUrl::fromLocalFile(QDir::currentPath() + "/nonexisting");
+    QTest::newRow("short-url") << "example.org" << QDir::currentPath() << QUrl("http://example.org") << QUrl::fromLocalFile(QDir::currentPath() + "/example.org");
+    QTest::newRow("full-url") << "http://example.org" << QDir::currentPath() << QUrl("http://example.org") << QUrl("http://example.org");
+    QTest::newRow("absolute") << "/doesnotexist.txt" << QDir::currentPath() << QUrl("file:///doesnotexist.txt") << QUrl("file:///doesnotexist.txt");
+#ifdef Q_OS_WIN
+    QTest::newRow("windows-absolute") << "c:/doesnotexist.txt" << QDir::currentPath() << QUrl("file:///c:/doesnotexist.txt") << QUrl("file:///c:/doesnotexist.txt");
+#endif
+
+    // IPv4 & IPv6
+    // same as fromUserInput, but needs retesting
+    QTest::newRow("ipv4-1") << "127.0.0.1" << QDir::currentPath() << QUrl("http://127.0.0.1") << QUrl::fromLocalFile(QDir::currentPath() + "/127.0.0.1");
+    QTest::newRow("ipv6-0") << "::" << QDir::currentPath() << QUrl("http://[::]") << QUrl("http://[::]");
+    QTest::newRow("ipv6-1") << "::1" << QDir::currentPath() << QUrl("http://[::1]") << QUrl("http://[::1]");
+    QTest::newRow("ipv6-2") << "1::1" << QDir::currentPath() << QUrl("http://[1::1]") << QUrl("http://[1::1]");
+    QTest::newRow("ipv6-3") << "1::" << QDir::currentPath() << QUrl("http://[1::]") << QUrl("http://[1::]");
+    QTest::newRow("ipv6-4") << "c::" << QDir::currentPath() << QUrl("http://[c::]") << QUrl("http://[c::]");
+    QTest::newRow("ipv6-5") << "c:f00:ba4::" << QDir::currentPath() << QUrl("http://[c:f00:ba4::]") << QUrl("http://[c:f00:ba4::]");
+}
+
+void tst_QUrl::fromUserInputWithCwd()
+{
+    QFETCH(QString, string);
+    QFETCH(QString, directory);
+    QFETCH(QUrl, guessedUrlDefault);
+    QFETCH(QUrl, guessedUrlAssumeLocalFile);
+
+    QUrl url = QUrl::fromUserInput(string, directory);
+    QCOMPARE(url, guessedUrlDefault);
+
+    url = QUrl::fromUserInput(string, directory, QUrl::AssumeLocalFile);
+    QCOMPARE(url, guessedUrlAssumeLocalFile);
 }
 
 void tst_QUrl::fileName_data()
@@ -3113,6 +3193,9 @@ void tst_QUrl::effectiveTLDs_data()
     QTest::newRow("yes13") << QUrl::fromEncoded("http://mypage.betainabox.com") << ".betainabox.com";
     QTest::newRow("yes14") << QUrl::fromEncoded("http://mypage.rhcloud.com") << ".rhcloud.com";
     QTest::newRow("yes15") << QUrl::fromEncoded("http://mypage.int.az") << ".int.az";
+    QTest::newRow("yes16") << QUrl::fromEncoded("http://anything.pagespeedmobilizer.com") << ".pagespeedmobilizer.com";
+    QTest::newRow("yes17") << QUrl::fromEncoded("http://anything.eu-central-1.compute.amazonaws.com") << ".eu-central-1.compute.amazonaws.com";
+    QTest::newRow("yes18") << QUrl::fromEncoded("http://anything.ltd.hk") << ".ltd.hk";
 }
 
 void tst_QUrl::effectiveTLDs()

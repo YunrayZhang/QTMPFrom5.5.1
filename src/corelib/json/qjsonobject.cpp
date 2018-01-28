@@ -1,39 +1,31 @@
 /****************************************************************************
 **
-** Copyright (C) 2013 Digia Plc and/or its subsidiary(-ies).
-** Contact: http://www.qt-project.org/legal
+** Copyright (C) 2015 The Qt Company Ltd.
+** Contact: http://www.qt.io/licensing/
 **
 ** This file is part of the QtCore module of the Qt Toolkit.
 **
-** $QT_BEGIN_LICENSE:LGPL$
+** $QT_BEGIN_LICENSE:LGPL21$
 ** Commercial License Usage
 ** Licensees holding valid commercial Qt licenses may use this file in
 ** accordance with the commercial license agreement provided with the
 ** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and Digia.  For licensing terms and
-** conditions see http://qt.digia.com/licensing.  For further information
-** use the contact form at http://qt.digia.com/contact-us.
+** a written agreement between you and The Qt Company. For licensing terms
+** and conditions see http://www.qt.io/terms-conditions. For further
+** information use the contact form at http://www.qt.io/contact-us.
 **
 ** GNU Lesser General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 2.1 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU Lesser General Public License version 2.1 requirements
-** will be met: http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
+** General Public License version 2.1 or version 3 as published by the Free
+** Software Foundation and appearing in the file LICENSE.LGPLv21 and
+** LICENSE.LGPLv3 included in the packaging of this file. Please review the
+** following information to ensure the GNU Lesser General Public License
+** requirements will be met: https://www.gnu.org/licenses/lgpl.html and
+** http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
 **
-** In addition, as a special exception, Digia gives you certain additional
-** rights.  These rights are described in the Digia Qt LGPL Exception
+** As a special exception, The Qt Company gives you certain additional
+** rights. These rights are described in The Qt Company LGPL Exception
 ** version 1.1, included in the file LGPL_EXCEPTION.txt in this package.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3.0 as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU General Public License version 3.0 requirements will be
-** met: http://www.gnu.org/copyleft/gpl.html.
-**
 **
 ** $QT_END_LICENSE$
 **
@@ -54,6 +46,7 @@ QT_BEGIN_NAMESPACE
     \class QJsonObject
     \inmodule QtCore
     \ingroup json
+    \ingroup shared
     \reentrant
     \since 5.0
 
@@ -116,6 +109,20 @@ QJsonObject::QJsonObject()
 }
 
 /*!
+    \fn QJsonObject::QJsonObject(std::initializer_list<QPair<QString, QJsonValue> > args)
+    \since 5.4
+    Constructs a QJsonObject instance initialized from \a args initialization list.
+    For example:
+    \code
+    QJsonObject object
+    {
+        {"property1", 1},
+        {"property2", 2}
+    };
+    \endcode
+*/
+
+/*!
     \internal
  */
 QJsonObject::QJsonObject(QJsonPrivate::Data *data, QJsonPrivate::Object *object)
@@ -126,6 +133,19 @@ QJsonObject::QJsonObject(QJsonPrivate::Data *data, QJsonPrivate::Object *object)
     d->ref.ref();
 }
 
+/*!
+    This method replaces part of the QJsonObject(std::initializer_list<QPair<QString, QJsonValue>> args) body.
+    The constructor needs to be inline, but we do not want to leak implementation details
+    of this class.
+    \note this method is called for an uninitialized object
+    \internal
+ */
+
+void QJsonObject::initialize()
+{
+    d = 0;
+    o = 0;
+}
 
 /*!
     Destroys the object.
@@ -173,7 +193,7 @@ QJsonObject &QJsonObject::operator =(const QJsonObject &other)
     The keys in \a map will be used as the keys in the JSON object,
     and the QVariant values will be converted to JSON values.
 
-    \sa toVariantMap(), QJsonValue::fromVariant()
+    \sa fromVariantHash(), toVariantMap(), QJsonValue::fromVariant()
  */
 QJsonObject QJsonObject::fromVariantMap(const QVariantMap &map)
 {
@@ -189,6 +209,8 @@ QJsonObject QJsonObject::fromVariantMap(const QVariantMap &map)
     Converts this object to a QVariantMap.
 
     Returns the created map.
+
+    \sa toVariantHash()
  */
 QVariantMap QJsonObject::toVariantMap() const
 {
@@ -203,7 +225,48 @@ QVariantMap QJsonObject::toVariantMap() const
 }
 
 /*!
+    Converts the variant hash \a hash to a QJsonObject.
+    \since 5.5
+
+    The keys in \a hash will be used as the keys in the JSON object,
+    and the QVariant values will be converted to JSON values.
+
+    \sa fromVariantMap(), toVariantHash(), QJsonValue::fromVariant()
+ */
+QJsonObject QJsonObject::fromVariantHash(const QVariantHash &hash)
+{
+    // ### this is implemented the trivial way, not the most efficient way
+
+    QJsonObject object;
+    for (QVariantHash::const_iterator it = hash.constBegin(); it != hash.constEnd(); ++it)
+        object.insert(it.key(), QJsonValue::fromVariant(it.value()));
+    return object;
+}
+
+/*!
+    Converts this object to a QVariantHash.
+    \since 5.5
+
+    Returns the created hash.
+
+    \sa toVariantMap()
+ */
+QVariantHash QJsonObject::toVariantHash() const
+{
+    QVariantHash hash;
+    if (o) {
+        for (uint i = 0; i < o->length; ++i) {
+            QJsonPrivate::Entry *e = o->entryAt(i);
+            hash.insert(e->key(), QJsonValue(d, o, e->value).toVariant());
+        }
+    }
+    return hash;
+}
+
+/*!
     Returns a list of all keys in this object.
+
+    The list is sorted lexographically.
  */
 QStringList QJsonObject::keys() const
 {
@@ -254,7 +317,7 @@ bool QJsonObject::isEmpty() const
 QJsonValue QJsonObject::value(const QString &key) const
 {
     if (!d)
-        return QJsonValue();
+        return QJsonValue(QJsonValue::Undefined);
 
     bool keyExists;
     int i = o->indexOf(key, &keyExists);
@@ -687,6 +750,11 @@ QJsonObject::const_iterator QJsonObject::constFind(const QString &key) const
     \sa key()
 */
 
+/*! \fn QJsonValueRef *QJsonObject::iterator::operator->() const
+
+    Returns a pointer to a modifiable reference to the current item.
+*/
+
 /*!
     \fn bool QJsonObject::iterator::operator==(const iterator &other) const
     \fn bool QJsonObject::iterator::operator==(const const_iterator &other) const
@@ -870,6 +938,11 @@ QJsonObject::const_iterator QJsonObject::constFind(const QString &key) const
     \sa key()
 */
 
+/*! \fn QJsonValue *QJsonObject::const_iterator::operator->() const
+
+    Returns a pointer to the current item.
+*/
+
 /*! \fn bool QJsonObject::const_iterator::operator==(const const_iterator &other) const
     \fn bool QJsonObject::const_iterator::operator==(const iterator &other) const
 
@@ -1041,6 +1114,7 @@ void QJsonObject::setValueAt(int i, const QJsonValue &val)
 #if !defined(QT_NO_DEBUG_STREAM) && !defined(QT_JSON_READONLY)
 QDebug operator<<(QDebug dbg, const QJsonObject &o)
 {
+    QDebugStateSaver saver(dbg);
     if (!o.o) {
         dbg << "QJsonObject()";
         return dbg;
@@ -1050,7 +1124,7 @@ QDebug operator<<(QDebug dbg, const QJsonObject &o)
     dbg.nospace() << "QJsonObject("
                   << json.constData() // print as utf-8 string without extra quotation marks
                   << ")";
-    return dbg.space();
+    return dbg;
 }
 #endif
 

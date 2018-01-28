@@ -1,39 +1,31 @@
 /****************************************************************************
 **
-** Copyright (C) 2013 Digia Plc and/or its subsidiary(-ies).
-** Contact: http://www.qt-project.org/legal
+** Copyright (C) 2015 The Qt Company Ltd.
+** Contact: http://www.qt.io/licensing/
 **
 ** This file is part of the QtGui module of the Qt Toolkit.
 **
-** $QT_BEGIN_LICENSE:LGPL$
+** $QT_BEGIN_LICENSE:LGPL21$
 ** Commercial License Usage
 ** Licensees holding valid commercial Qt licenses may use this file in
 ** accordance with the commercial license agreement provided with the
 ** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and Digia.  For licensing terms and
-** conditions see http://qt.digia.com/licensing.  For further information
-** use the contact form at http://qt.digia.com/contact-us.
+** a written agreement between you and The Qt Company. For licensing terms
+** and conditions see http://www.qt.io/terms-conditions. For further
+** information use the contact form at http://www.qt.io/contact-us.
 **
 ** GNU Lesser General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 2.1 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU Lesser General Public License version 2.1 requirements
-** will be met: http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
+** General Public License version 2.1 or version 3 as published by the Free
+** Software Foundation and appearing in the file LICENSE.LGPLv21 and
+** LICENSE.LGPLv3 included in the packaging of this file. Please review the
+** following information to ensure the GNU Lesser General Public License
+** requirements will be met: https://www.gnu.org/licenses/lgpl.html and
+** http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
 **
-** In addition, as a special exception, Digia gives you certain additional
-** rights.  These rights are described in the Digia Qt LGPL Exception
+** As a special exception, The Qt Company gives you certain additional
+** rights. These rights are described in The Qt Company LGPL Exception
 ** version 1.1, included in the file LGPL_EXCEPTION.txt in this package.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3.0 as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU General Public License version 3.0 requirements will be
-** met: http://www.gnu.org/copyleft/gpl.html.
-**
 **
 ** $QT_END_LICENSE$
 **
@@ -43,14 +35,14 @@
 
 #include <QStringList>
 #include <QCoreApplication>
+#include <QLoggingCategory>
 
-//#define QT_QPA_KEYMAP_DEBUG
-
-#ifdef QT_QPA_KEYMAP_DEBUG
-#include <QDebug>
-#endif
+#include <private/qguiapplication_p.h>
+#include <private/qinputdevicemanager_p_p.h>
 
 QT_BEGIN_NAMESPACE
+
+Q_DECLARE_LOGGING_CATEGORY(qLcEvdevKey)
 
 QEvdevKeyboardManager::QEvdevKeyboardManager(const QString &key, const QString &specification, QObject *parent)
     : QObject(parent)
@@ -82,10 +74,7 @@ QEvdevKeyboardManager::QEvdevKeyboardManager(const QString &key, const QString &
         addKeyboard(device);
 
     if (devices.isEmpty()) {
-#ifdef QT_QPA_KEYMAP_DEBUG
-        qWarning() << "Use device discovery";
-#endif
-
+        qCDebug(qLcEvdevKey) << "evdevkeyboard: Using device discovery";
         m_deviceDiscovery = QDeviceDiscovery::create(QDeviceDiscovery::Device_Keyboard, this);
         if (m_deviceDiscovery) {
             // scan and add already connected keyboards
@@ -108,27 +97,51 @@ QEvdevKeyboardManager::~QEvdevKeyboardManager()
 
 void QEvdevKeyboardManager::addKeyboard(const QString &deviceNode)
 {
-#ifdef QT_QPA_KEYMAP_DEBUG
-    qWarning() << "Adding keyboard at" << deviceNode;
-#endif
-
+    qCDebug(qLcEvdevKey) << "Adding keyboard at" << deviceNode;
     QEvdevKeyboardHandler *keyboard;
-    keyboard = QEvdevKeyboardHandler::create(deviceNode, m_spec);
-    if (keyboard)
+    keyboard = QEvdevKeyboardHandler::create(deviceNode, m_spec, m_defaultKeymapFile);
+    if (keyboard) {
         m_keyboards.insert(deviceNode, keyboard);
-    else
-        qWarning("Failed to open keyboard");
+        QInputDeviceManagerPrivate::get(QGuiApplicationPrivate::inputDeviceManager())->setDeviceCount(
+            QInputDeviceManager::DeviceTypeKeyboard, m_keyboards.count());
+    } else {
+        qWarning("Failed to open keyboard device %s", qPrintable(deviceNode));
+    }
 }
 
 void QEvdevKeyboardManager::removeKeyboard(const QString &deviceNode)
 {
     if (m_keyboards.contains(deviceNode)) {
-#ifdef QT_QPA_KEYMAP_DEBUG
-        qWarning() << "Removing keyboard at" << deviceNode;
-#endif
+        qCDebug(qLcEvdevKey) << "Removing keyboard at" << deviceNode;
         QEvdevKeyboardHandler *keyboard = m_keyboards.value(deviceNode);
         m_keyboards.remove(deviceNode);
+        QInputDeviceManagerPrivate::get(QGuiApplicationPrivate::inputDeviceManager())->setDeviceCount(
+            QInputDeviceManager::DeviceTypeKeyboard, m_keyboards.count());
         delete keyboard;
+    }
+}
+
+void QEvdevKeyboardManager::loadKeymap(const QString &file)
+{
+    m_defaultKeymapFile = file;
+
+    if (file.isEmpty()) {
+        // Restore the default, which is either the built-in keymap or
+        // the one given in the plugin spec.
+        QString keymapFromSpec;
+        foreach (const QString &arg, m_spec.split(QLatin1Char(':'))) {
+            if (arg.startsWith(QLatin1String("keymap=")))
+                keymapFromSpec = arg.mid(7);
+        }
+        foreach (QEvdevKeyboardHandler *handler, m_keyboards) {
+            if (keymapFromSpec.isEmpty())
+                handler->unloadKeymap();
+            else
+                handler->loadKeymap(keymapFromSpec);
+        }
+    } else {
+        foreach (QEvdevKeyboardHandler *handler, m_keyboards)
+            handler->loadKeymap(file);
     }
 }
 

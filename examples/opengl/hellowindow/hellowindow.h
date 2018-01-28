@@ -1,7 +1,7 @@
 /****************************************************************************
 **
-** Copyright (C) 2013 Digia Plc and/or its subsidiary(-ies).
-** Contact: http://www.qt-project.org/legal
+** Copyright (C) 2015 The Qt Company Ltd.
+** Contact: http://www.qt.io/licensing/
 **
 ** This file is part of the examples of the Qt Toolkit.
 **
@@ -17,8 +17,8 @@
 **     notice, this list of conditions and the following disclaimer in
 **     the documentation and/or other materials provided with the
 **     distribution.
-**   * Neither the name of Digia Plc and its Subsidiary(-ies) nor the names
-**     of its contributors may be used to endorse or promote products derived
+**   * Neither the name of The Qt Company Ltd nor the names of its
+**     contributors may be used to endorse or promote products derived
 **     from this software without specific prior written permission.
 **
 **
@@ -43,6 +43,7 @@
 #include <QColor>
 #include <QMutex>
 #include <QOpenGLShaderProgram>
+#include <QOpenGLBuffer>
 #include <QSharedPointer>
 #include <QTimer>
 
@@ -65,13 +66,13 @@ private slots:
 private:
     void initialize();
 
-    qreal m_fAngle;
-    bool m_showBubbles;
-    void paintQtLogo();
     void createGeometry();
     void createBubbles(int number);
     void quad(qreal x1, qreal y1, qreal x2, qreal y2, qreal x3, qreal y3, qreal x4, qreal y4);
     void extrude(qreal x1, qreal y1, qreal x2, qreal y2);
+
+    qreal m_fAngle;
+
     QVector<QVector3D> vertices;
     QVector<QVector3D> normals;
     int vertexAttr;
@@ -83,25 +84,28 @@ private:
     QSurfaceFormat m_format;
     QOpenGLContext *m_context;
     QOpenGLShaderProgram *m_program;
+    QOpenGLBuffer m_vbo;
 
     QList<HelloWindow *> m_windows;
     int m_currentWindow;
 
     QMutex m_windowLock;
+
+    QColor m_backgroundColor;
 };
 
 class HelloWindow : public QWindow
 {
 public:
-    explicit HelloWindow(const QSharedPointer<Renderer> &renderer);
+    explicit HelloWindow(const QSharedPointer<Renderer> &renderer, QScreen *screen = 0);
 
     QColor color() const;
     void updateColor();
 
-    void exposeEvent(QExposeEvent *event);
+    void exposeEvent(QExposeEvent *event) Q_DECL_OVERRIDE;
 
 private:
-    void mousePressEvent(QMouseEvent *);
+    void mousePressEvent(QMouseEvent *) Q_DECL_OVERRIDE;
 
     int m_colorIndex;
     QColor m_color;

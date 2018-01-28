@@ -1,39 +1,31 @@
 /****************************************************************************
 **
-** Copyright (C) 2013 Digia Plc and/or its subsidiary(-ies).
-** Contact: http://www.qt-project.org/legal
+** Copyright (C) 2015 The Qt Company Ltd.
+** Contact: http://www.qt.io/licensing/
 **
 ** This file is part of the QtWidgets module of the Qt Toolkit.
 **
-** $QT_BEGIN_LICENSE:LGPL$
+** $QT_BEGIN_LICENSE:LGPL21$
 ** Commercial License Usage
 ** Licensees holding valid commercial Qt licenses may use this file in
 ** accordance with the commercial license agreement provided with the
 ** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and Digia.  For licensing terms and
-** conditions see http://qt.digia.com/licensing.  For further information
-** use the contact form at http://qt.digia.com/contact-us.
+** a written agreement between you and The Qt Company. For licensing terms
+** and conditions see http://www.qt.io/terms-conditions. For further
+** information use the contact form at http://www.qt.io/contact-us.
 **
 ** GNU Lesser General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 2.1 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU Lesser General Public License version 2.1 requirements
-** will be met: http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
+** General Public License version 2.1 or version 3 as published by the Free
+** Software Foundation and appearing in the file LICENSE.LGPLv21 and
+** LICENSE.LGPLv3 included in the packaging of this file. Please review the
+** following information to ensure the GNU Lesser General Public License
+** requirements will be met: https://www.gnu.org/licenses/lgpl.html and
+** http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
 **
-** In addition, as a special exception, Digia gives you certain additional
-** rights.  These rights are described in the Digia Qt LGPL Exception
+** As a special exception, The Qt Company gives you certain additional
+** rights. These rights are described in The Qt Company LGPL Exception
 ** version 1.1, included in the file LGPL_EXCEPTION.txt in this package.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3.0 as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU General Public License version 3.0 requirements will be
-** met: http://www.gnu.org/copyleft/gpl.html.
-**
 **
 ** $QT_END_LICENSE$
 **
@@ -47,6 +39,7 @@
 #include <qpixmapcache.h>
 #include <private/qfunctions_p.h>
 #include <private/qguiapplication_p.h>
+#include <private/qicon_p.h>
 #include <qpa/qplatformintegration.h>
 #include <qpa/qplatformservices.h>
 #include <qpa/qplatformtheme.h>
@@ -64,6 +57,105 @@
 #endif
 
 QT_BEGIN_NAMESPACE
+
+static bool isCacheable(const QFileInfo &fi);
+
+class QFileIconEngine : public QPixmapIconEngine
+{
+public:
+    QFileIconEngine(const QFileInfo &info, QFileIconProvider::Options opts)
+        : QPixmapIconEngine(), m_fileInfo(info), m_fipOpts(opts)
+    { }
+
+    QPixmap pixmap(const QSize &size, QIcon::Mode mode, QIcon::State state) Q_DECL_OVERRIDE
+    {
+        Q_UNUSED(mode);
+        Q_UNUSED(state);
+        QPixmap pixmap;
+
+        if (!size.isValid())
+            return pixmap;
+
+        const QPlatformTheme *theme = QGuiApplicationPrivate::platformTheme();
+        if (!theme)
+            return pixmap;
+
+        const QString &keyBase = QLatin1String("qt_.") + m_fileInfo.suffix().toUpper();
+
+        bool cacheable = isCacheable(m_fileInfo);
+        if (cacheable) {
+            QPixmapCache::find(keyBase + QString::number(size.width()), pixmap);
+            if (!pixmap.isNull())
+                return pixmap;
+        }
+
+        QPlatformTheme::IconOptions iconOptions;
+        if (m_fipOpts & QFileIconProvider::DontUseCustomDirectoryIcons)
+            iconOptions |= QPlatformTheme::DontUseCustomDirectoryIcons;
+
+        pixmap = theme->fileIconPixmap(m_fileInfo, size, iconOptions);
+        if (!pixmap.isNull()) {
+            if (cacheable)
+                QPixmapCache::insert(keyBase + QString::number(size.width()), pixmap);
+        }
+
+        return pixmap;
+    }
+
+    QList<QSize> availableSizes(QIcon::Mode mode = QIcon::Normal, QIcon::State state = QIcon::Off) const Q_DECL_OVERRIDE
+    {
+        Q_UNUSED(mode);
+        Q_UNUSED(state);
+        static QList<QSize> sizes;
+        static QPlatformTheme *theme = 0;
+        if (!theme) {
+            theme = QGuiApplicationPrivate::platformTheme();
+            if (!theme)
+                return sizes;
+
+            QList<int> themeSizes = theme->themeHint(QPlatformTheme::IconPixmapSizes).value<QList<int> >();
+            if (themeSizes.isEmpty())
+                return sizes;
+
+            foreach (int size, themeSizes)
+                sizes << QSize(size, size);
+        }
+        return sizes;
+    }
+
+    QSize actualSize(const QSize &size, QIcon::Mode mode, QIcon::State state) Q_DECL_OVERRIDE
+    {
+        const QList<QSize> &sizes = availableSizes(mode, state);
+        const int numberSizes = sizes.length();
+        if (numberSizes == 0)
+            return QSize();
+
+        // Find the smallest available size whose area is still larger than the input
+        // size. Otherwise, use the largest area available size. (We don't assume the
+        // platform theme sizes are sorted, hence the extra logic.)
+        const int sizeArea = size.width() * size.height();
+        QSize actualSize = sizes.first();
+        int actualArea = actualSize.width() * actualSize.height();
+        for (int i = 1; i < numberSizes; ++i) {
+            const QSize &s = sizes.at(i);
+            const int a = s.width() * s.height();
+            if ((sizeArea <= a && a < actualArea) || (actualArea < sizeArea && actualArea < a)) {
+                actualSize = s;
+                actualArea = a;
+            }
+        }
+
+        if (!actualSize.isNull() && (actualSize.width() > size.width() || actualSize.height() > size.height()))
+            actualSize.scale(size, Qt::KeepAspectRatio);
+
+        return actualSize;
+    }
+
+private:
+    QFileInfo m_fileInfo;
+    QFileIconProvider::Options m_fipOpts;
+};
+
 
 /*!
   \class QFileIconProvider
@@ -94,8 +186,8 @@ QT_BEGIN_NAMESPACE
     cause a big performance impact over network or removable drives.
 */
 
-QFileIconProviderPrivate::QFileIconProviderPrivate() :
-    homePath(QDir::home().absolutePath())
+QFileIconProviderPrivate::QFileIconProviderPrivate(QFileIconProvider *q) :
+    q_ptr(q), homePath(QDir::home().absolutePath())
 {
 }
 
@@ -161,7 +253,7 @@ QIcon QFileIconProviderPrivate::getIcon(QStyle::StandardPixmap name) const
 */
 
 QFileIconProvider::QFileIconProvider()
-    : d_ptr(new QFileIconProviderPrivate)
+    : d_ptr(new QFileIconProviderPrivate(this))
 {
 }
 
@@ -246,52 +338,16 @@ static bool isCacheable(const QFileInfo &fi)
 
 QIcon QFileIconProviderPrivate::getIcon(const QFileInfo &fi) const
 {
-    QIcon retIcon;
     const QPlatformTheme *theme = QGuiApplicationPrivate::platformTheme();
     if (!theme)
-        return retIcon;
+        return QIcon();
 
     QList<int> sizes = theme->themeHint(QPlatformTheme::IconPixmapSizes).value<QList<int> >();
     if (sizes.isEmpty())
-        return retIcon;
+        return QIcon();
 
-    const QString keyBase = QLatin1String("qt_.") + fi.suffix().toUpper();
-
-    bool cacheable = isCacheable(fi);
-    if (cacheable) {
-        QPixmap pixmap;
-        QPixmapCache::find(keyBase + QString::number(sizes.at(0)), pixmap);
-        if (!pixmap.isNull()) {
-            bool iconIsComplete = true;
-            retIcon.addPixmap(pixmap);
-            for (int i = 1; i < sizes.count(); i++)
-                if (QPixmapCache::find(keyBase + QString::number(sizes.at(i)), pixmap)) {
-                    retIcon.addPixmap(pixmap);
-                } else {
-                    iconIsComplete = false;
-                    break;
-                }
-            if (iconIsComplete)
-                return retIcon;
-        }
-    }
-
-    QPlatformTheme::IconOptions iconOptions;
-    if (options & QFileIconProvider::DontUseCustomDirectoryIcons)
-        iconOptions |= QPlatformTheme::DontUseCustomDirectoryIcons;
-
-    Q_FOREACH (int size, sizes) {
-        QPixmap pixmap = theme->fileIconPixmap(fi, QSizeF(size, size), iconOptions);
-        if (!pixmap.isNull()) {
-            retIcon.addPixmap(pixmap);
-            if (cacheable)
-                QPixmapCache::insert(keyBase + QString::number(size), pixmap);
-        }
-    }
-
-    return retIcon;
+    return QIcon(new QFileIconEngine(fi, options));
 }
-
 
 /*!
   Returns an icon for the file described by \a info.
@@ -368,8 +424,10 @@ QString QFileIconProvider::type(const QFileInfo &info) const
     if (info.isRoot())
         return QApplication::translate("QFileDialog", "Drive");
     if (info.isFile()) {
-        if (!info.suffix().isEmpty())
-            return info.suffix() + QLatin1Char(' ') + QApplication::translate("QFileDialog", "File");
+        if (!info.suffix().isEmpty()) {
+            //: %1 is a file name suffix, for example txt
+            return QApplication::translate("QFileDialog", "%1 File").arg(info.suffix());
+        }
         return QApplication::translate("QFileDialog", "File");
     }
 
@@ -386,7 +444,7 @@ QString QFileIconProvider::type(const QFileInfo &info) const
 
     if (info.isSymLink())
 #ifdef Q_OS_MAC
-        return QApplication::translate("QFileDialog", "Alias", "Mac OS X Finder");
+        return QApplication::translate("QFileDialog", "Alias", "OS X Finder");
 #else
         return QApplication::translate("QFileDialog", "Shortcut", "All other platforms");
 #endif

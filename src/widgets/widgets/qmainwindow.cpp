@@ -1,39 +1,31 @@
 /****************************************************************************
 **
-** Copyright (C) 2013 Digia Plc and/or its subsidiary(-ies).
-** Contact: http://www.qt-project.org/legal
+** Copyright (C) 2015 The Qt Company Ltd.
+** Contact: http://www.qt.io/licensing/
 **
 ** This file is part of the QtWidgets module of the Qt Toolkit.
 **
-** $QT_BEGIN_LICENSE:LGPL$
+** $QT_BEGIN_LICENSE:LGPL21$
 ** Commercial License Usage
 ** Licensees holding valid commercial Qt licenses may use this file in
 ** accordance with the commercial license agreement provided with the
 ** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and Digia.  For licensing terms and
-** conditions see http://qt.digia.com/licensing.  For further information
-** use the contact form at http://qt.digia.com/contact-us.
+** a written agreement between you and The Qt Company. For licensing terms
+** and conditions see http://www.qt.io/terms-conditions. For further
+** information use the contact form at http://www.qt.io/contact-us.
 **
 ** GNU Lesser General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 2.1 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU Lesser General Public License version 2.1 requirements
-** will be met: http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
+** General Public License version 2.1 or version 3 as published by the Free
+** Software Foundation and appearing in the file LICENSE.LGPLv21 and
+** LICENSE.LGPLv3 included in the packaging of this file. Please review the
+** following information to ensure the GNU Lesser General Public License
+** requirements will be met: https://www.gnu.org/licenses/lgpl.html and
+** http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
 **
-** In addition, as a special exception, Digia gives you certain additional
-** rights.  These rights are described in the Digia Qt LGPL Exception
+** As a special exception, The Qt Company gives you certain additional
+** rights. These rights are described in The Qt Company LGPL Exception
 ** version 1.1, included in the file LGPL_EXCEPTION.txt in this package.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3.0 as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU General Public License version 3.0 requirements will be
-** met: http://www.gnu.org/copyleft/gpl.html.
-**
 **
 ** $QT_END_LICENSE$
 **
@@ -63,7 +55,7 @@
 #ifdef Q_OS_OSX
 #include <qpa/qplatformnativeinterface.h>
 #endif
-#ifdef Q_WS_MAC
+#ifdef Q_DEAD_CODE_FROM_QT4_MAC
 #include <private/qt_mac_p.h>
 #include <private/qt_cocoa_helpers_mac_p.h>
 QT_BEGIN_NAMESPACE
@@ -82,7 +74,7 @@ public:
 #ifdef Q_OS_OSX
             , useUnifiedToolBar(false)
 #endif
-#ifdef Q_WS_MAC
+#ifdef Q_DEAD_CODE_FROM_QT4_MAC
             , useHIToolBar(false)
             , activateUnifiedToolbarAfterFullScreen(false)
 #endif
@@ -97,7 +89,7 @@ public:
 #ifdef Q_OS_OSX
     bool useUnifiedToolBar;
 #endif
-#ifdef Q_WS_MAC
+#ifdef Q_DEAD_CODE_FROM_QT4_MAC
     bool useHIToolBar;
     bool activateUnifiedToolbarAfterFullScreen;
 #endif
@@ -467,6 +459,10 @@ void QMainWindow::setIconSize(const QSize &iconSize)
 
 /*! \property QMainWindow::toolButtonStyle
     \brief style of toolbar buttons in this mainwindow.
+
+    To have the style of toolbuttons follow the system settings, set this property to Qt::ToolButtonFollowStyle.
+    On Unix, the user settings from the desktop environment will be used.
+    On other platforms, Qt::ToolButtonFollowStyle means icon only.
 
     The default is Qt::ToolButtonIconOnly.
 */
@@ -1083,7 +1079,7 @@ void QMainWindow::addDockWidget(Qt::DockWidgetArea area, QDockWidget *dockwidget
     d_func()->layout->removeWidget(dockwidget); // in case it was already in here
     addDockWidget(area, dockwidget, orientation);
 
-#ifdef Q_WS_MAC     //drawer support
+#ifdef Q_DEAD_CODE_FROM_QT4_MAC     //drawer support
     QMacCocoaAutoReleasePool pool;
     extern bool qt_mac_is_macdrawer(const QWidget *); //qwidget_mac.cpp
     if (qt_mac_is_macdrawer(dockwidget)) {
@@ -1458,7 +1454,7 @@ bool QMainWindow::event(QEvent *event)
             if (!d->explicitIconSize)
                 setIconSize(QSize());
             break;
-#ifdef Q_WS_MAC
+#ifdef Q_DEAD_CODE_FROM_QT4_MAC
         case QEvent::Show:
             if (unifiedTitleAndToolBarOnMac())
                 d->layout->syncUnifiedToolbarVisibility();
@@ -1477,7 +1473,7 @@ bool QMainWindow::event(QEvent *event)
                 }
             }
             break;
-#endif // Q_WS_MAC
+#endif // Q_DEAD_CODE_FROM_QT4_MAC
 #if !defined(QT_NO_DOCKWIDGET) && !defined(QT_NO_CURSOR)
        case QEvent::CursorChange:
            // CursorChange events are triggered as mouse moves to new widgets even
@@ -1503,7 +1499,14 @@ bool QMainWindow::event(QEvent *event)
 
 /*!
     \property QMainWindow::unifiedTitleAndToolBarOnMac
-    \brief whether the window uses the unified title and toolbar look on Mac OS X
+    \brief whether the window uses the unified title and toolbar look on OS X
+
+    Note that the Qt 5 implementation has several limitations compared to Qt 4:
+    \list
+        \li Use in windows with OpenGL content is not supported. This includes QGLWidget and QOpenGLWidget.
+        \li Using dockable or movable toolbars may result in painting errors and is not recommended
+    \endlist
+
     \since 5.2
 */
 void QMainWindow::setUnifiedTitleAndToolBarOnMac(bool set)
@@ -1526,7 +1529,7 @@ void QMainWindow::setUnifiedTitleAndToolBarOnMac(bool set)
     }
 #endif
 
-#ifdef Q_WS_MAC
+#ifdef Q_DEAD_CODE_FROM_QT4_MAC
     Q_D(QMainWindow);
     if (!isWindow() || d->useHIToolBar == set || QSysInfo::MacintoshVersion < QSysInfo::MV_10_3)
         return;
@@ -1561,7 +1564,7 @@ bool QMainWindow::unifiedTitleAndToolBarOnMac() const
 #ifdef Q_OS_OSX
     return d_func()->useUnifiedToolBar;
 #endif
-#ifdef Q_WS_MAC
+#ifdef Q_DEAD_CODE_FROM_QT4_MAC
     return d_func()->useHIToolBar && !testAttribute(Qt::WA_MacBrushedMetal) && !(windowFlags() & Qt::FramelessWindowHint);
 #endif
     return false;

@@ -1,39 +1,32 @@
 /****************************************************************************
 **
-** Copyright (C) 2013 Digia Plc and/or its subsidiary(-ies).
-** Contact: http://www.qt-project.org/legal
+** Copyright (C) 2015 The Qt Company Ltd.
+** Copyright (C) 2015 Intel Corporation.
+** Contact: http://www.qt.io/licensing/
 **
 ** This file is part of the test suite of the Qt Toolkit.
 **
-** $QT_BEGIN_LICENSE:LGPL$
+** $QT_BEGIN_LICENSE:LGPL21$
 ** Commercial License Usage
 ** Licensees holding valid commercial Qt licenses may use this file in
 ** accordance with the commercial license agreement provided with the
 ** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and Digia.  For licensing terms and
-** conditions see http://qt.digia.com/licensing.  For further information
-** use the contact form at http://qt.digia.com/contact-us.
+** a written agreement between you and The Qt Company. For licensing terms
+** and conditions see http://www.qt.io/terms-conditions. For further
+** information use the contact form at http://www.qt.io/contact-us.
 **
 ** GNU Lesser General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 2.1 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU Lesser General Public License version 2.1 requirements
-** will be met: http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
+** General Public License version 2.1 or version 3 as published by the Free
+** Software Foundation and appearing in the file LICENSE.LGPLv21 and
+** LICENSE.LGPLv3 included in the packaging of this file. Please review the
+** following information to ensure the GNU Lesser General Public License
+** requirements will be met: https://www.gnu.org/licenses/lgpl.html and
+** http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
 **
-** In addition, as a special exception, Digia gives you certain additional
-** rights.  These rights are described in the Digia Qt LGPL Exception
+** As a special exception, The Qt Company gives you certain additional
+** rights. These rights are described in The Qt Company LGPL Exception
 ** version 1.1, included in the file LGPL_EXCEPTION.txt in this package.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3.0 as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU General Public License version 3.0 requirements will be
-** met: http://www.gnu.org/copyleft/gpl.html.
-**
 **
 ** $QT_END_LICENSE$
 **
@@ -48,12 +41,7 @@
 #include <private/qeventloop_p.h>
 #include <private/qthread_p.h>
 
-#ifdef QT_GUI_LIB
-#include <QtGui/QGuiApplication>
-typedef QGuiApplication TestApplication;
-#else
 typedef QCoreApplication TestApplication;
-#endif
 
 class EventSpy : public QObject
 {
@@ -65,6 +53,23 @@ public:
     {
         recordedEvents.append(event->type());
         return false;
+    }
+};
+
+class ThreadedEventReceiver : public QObject
+{
+    Q_OBJECT
+public:
+    QList<int> recordedEvents;
+    bool event(QEvent *event) Q_DECL_OVERRIDE
+    {
+        if (event->type() != QEvent::Type(QEvent::User + 1))
+            return QObject::event(event);
+        recordedEvents.append(event->type());
+        QThread::currentThread()->quit();
+        QCoreApplication::quit();
+        moveToThread(0);
+        return true;
     }
 };
 
@@ -110,18 +115,39 @@ void tst_QCoreApplication::qAppName()
     const char* appName = "tst_qcoreapplication";
 #endif
 
-    int argc = 1;
-    char *argv[] = { const_cast<char*>(appName) };
-    TestApplication app(argc, argv);
-    QCOMPARE(::qAppName(), QString::fromLatin1(appName));
+    {
+        int argc = 1;
+        char *argv[] = { const_cast<char*>(appName) };
+        TestApplication app(argc, argv);
+        QCOMPARE(::qAppName(), QString::fromLatin1(appName));
+        QCOMPARE(QCoreApplication::applicationName(), QString::fromLatin1(appName));
+    }
+    // The application name should still be available after destruction;
+    // global statics often rely on this.
     QCOMPARE(QCoreApplication::applicationName(), QString::fromLatin1(appName));
+
+    // Setting the appname before creating the application should work (QTBUG-45283)
+    const QString wantedAppName("my app name");
+    {
+        int argc = 1;
+        char *argv[] = { const_cast<char*>(appName) };
+        QCoreApplication::setApplicationName(wantedAppName);
+        TestApplication app(argc, argv);
+        QCOMPARE(::qAppName(), QString::fromLatin1(appName));
+        QCOMPARE(QCoreApplication::applicationName(), wantedAppName);
+    }
+    QCOMPARE(QCoreApplication::applicationName(), wantedAppName);
+
+    // Restore to initial value
+    QCoreApplication::setApplicationName(QString());
+    QCOMPARE(QCoreApplication::applicationName(), QString());
 }
 
-// "QCoreApplication::arguments() always parses arguments from actual command line on Windows
-// making this test invalid."
-#ifndef Q_OS_WIN
 void tst_QCoreApplication::argc()
 {
+#if defined(Q_OS_WINCE) || defined(Q_OS_WINRT)
+    QSKIP("QCoreApplication::arguments() parses arguments from actual command line on this platform.");
+#endif
     {
         int argc = 1;
         char *argv[] = { const_cast<char*>(QTest::currentAppName()) };
@@ -158,7 +184,6 @@ void tst_QCoreApplication::argc()
         QCOMPARE(app.arguments().count(), 1);
     }
 }
-#endif
 
 class EventGenerator : public QObject
 {
@@ -785,6 +810,43 @@ void tst_QCoreApplication::QTBUG31606_QEventDestructorDeadLock()
     QVERIFY(spy.recordedEvents.contains(QEvent::User + 2));
 }
 
+// this is almost identical to sendEventsOnProcessEvents
+void tst_QCoreApplication::applicationEventFilters_mainThread()
+{
+    int argc = 1;
+    char *argv[] = { const_cast<char*>(QTest::currentAppName()) };
+    TestApplication app(argc, argv);
+
+    EventSpy spy;
+    app.installEventFilter(&spy);
+
+    QCoreApplication::postEvent(&app,  new QEvent(QEvent::Type(QEvent::User + 1)));
+    QTimer::singleShot(10, &app, SLOT(quit()));
+    app.exec();
+    QVERIFY(spy.recordedEvents.contains(QEvent::User + 1));
+}
+
+void tst_QCoreApplication::applicationEventFilters_auxThread()
+{
+    int argc = 1;
+    char *argv[] = { const_cast<char*>(QTest::currentAppName()) };
+    TestApplication app(argc, argv);
+    QThread thread;
+    ThreadedEventReceiver receiver;
+    receiver.moveToThread(&thread);
+
+    EventSpy spy;
+    app.installEventFilter(&spy);
+
+    // this is very similar to sendEventsOnProcessEvents
+    QCoreApplication::postEvent(&receiver,  new QEvent(QEvent::Type(QEvent::User + 1)));
+    QTimer::singleShot(1000, &app, SLOT(quit()));
+    thread.start();
+    app.exec();
+    QVERIFY(thread.wait(1000));
+    QVERIFY(receiver.recordedEvents.contains(QEvent::User + 1));
+    QVERIFY(!spy.recordedEvents.contains(QEvent::User + 1));
+}
 
 static void createQObjectOnDestruction()
 {

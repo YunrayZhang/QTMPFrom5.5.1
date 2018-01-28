@@ -1,7 +1,7 @@
 /****************************************************************************
 **
-** Copyright (C) 2012 Digia Plc and/or its subsidiary(-ies).
-** Contact: http://www.qt-project.org/legal
+** Copyright (C) 2015 The Qt Company Ltd.
+** Contact: http://www.qt.io/licensing/
 **
 ** This file is part of the examples of the Qt Toolkit.
 **
@@ -17,8 +17,8 @@
 **     notice, this list of conditions and the following disclaimer in
 **     the documentation and/or other materials provided with the
 **     distribution.
-**   * Neither the name of Digia Plc and its Subsidiary(-ies) nor the names
-**     of its contributors may be used to endorse or promote products derived
+**   * Neither the name of The Qt Company Ltd nor the names of its
+**     contributors may be used to endorse or promote products derived
 **     from this software without specific prior written permission.
 **
 **
@@ -63,7 +63,7 @@ public:
     {
     }
 
-    void render(QPainter *p) {
+    void render(QPainter *p) Q_DECL_OVERRIDE {
         QLinearGradient g(0, 0, 0, height());
         g.setColorAt(0, QColor("lightsteelblue"));
         g.setColorAt(1, Qt::black);
@@ -91,43 +91,47 @@ public:
         p->drawPolyline(m_polygon);
     }
 
-    void mousePressEvent(QMouseEvent *e) {
-        m_mouseDown = true;
-        m_polygon.clear();
-        m_polygon.append(e->pos());
-        renderLater();
+    void mousePressEvent(QMouseEvent *e) Q_DECL_OVERRIDE {
+        if (!m_mouseDown) {
+            m_mouseDown = true;
+            m_polygon.clear();
+            m_polygon.append(e->pos());
+            renderLater();
+        }
     }
 
-    void mouseMoveEvent(QMouseEvent *e) {
+    void mouseMoveEvent(QMouseEvent *e) Q_DECL_OVERRIDE {
         if (m_mouseDown) {
             m_polygon.append(e->pos());
             renderLater();
         }
     }
 
-    void mouseReleaseEvent(QMouseEvent *e) {
-        m_mouseDown = false;
-        m_polygon.append(e->pos());
-        renderLater();
+    void mouseReleaseEvent(QMouseEvent *e) Q_DECL_OVERRIDE {
+        if (m_mouseDown) {
+            m_mouseDown = false;
+            m_polygon.append(e->pos());
+            renderLater();
+        }
     }
 
-    void focusInEvent(QFocusEvent *) {
+    void focusInEvent(QFocusEvent *) Q_DECL_OVERRIDE {
         m_focus = true;
         renderLater();
     }
 
-    void focusOutEvent(QFocusEvent *) {
+    void focusOutEvent(QFocusEvent *) Q_DECL_OVERRIDE {
         m_focus = false;
         m_polygon.clear();
         renderLater();
     }
 
-    void keyPressEvent(QKeyEvent *e) {
+    void keyPressEvent(QKeyEvent *e) Q_DECL_OVERRIDE {
         m_key = e->text();
         renderLater();
     }
 
-    void keyReleaseEvent(QKeyEvent *) {
+    void keyReleaseEvent(QKeyEvent *) Q_DECL_OVERRIDE {
         m_key = QString();
         renderLater();
     }

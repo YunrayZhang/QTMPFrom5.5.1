@@ -1,39 +1,31 @@
 /****************************************************************************
 **
-** Copyright (C) 2013 Digia Plc and/or its subsidiary(-ies).
-** Contact: http://www.qt-project.org/legal
+** Copyright (C) 2015 The Qt Company Ltd.
+** Contact: http://www.qt.io/licensing/
 **
 ** This file is part of the QtWidgets module of the Qt Toolkit.
 **
-** $QT_BEGIN_LICENSE:LGPL$
+** $QT_BEGIN_LICENSE:LGPL21$
 ** Commercial License Usage
 ** Licensees holding valid commercial Qt licenses may use this file in
 ** accordance with the commercial license agreement provided with the
 ** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and Digia.  For licensing terms and
-** conditions see http://qt.digia.com/licensing.  For further information
-** use the contact form at http://qt.digia.com/contact-us.
+** a written agreement between you and The Qt Company. For licensing terms
+** and conditions see http://www.qt.io/terms-conditions. For further
+** information use the contact form at http://www.qt.io/contact-us.
 **
 ** GNU Lesser General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 2.1 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU Lesser General Public License version 2.1 requirements
-** will be met: http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
+** General Public License version 2.1 or version 3 as published by the Free
+** Software Foundation and appearing in the file LICENSE.LGPLv21 and
+** LICENSE.LGPLv3 included in the packaging of this file. Please review the
+** following information to ensure the GNU Lesser General Public License
+** requirements will be met: https://www.gnu.org/licenses/lgpl.html and
+** http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
 **
-** In addition, as a special exception, Digia gives you certain additional
-** rights.  These rights are described in the Digia Qt LGPL Exception
+** As a special exception, The Qt Company gives you certain additional
+** rights. These rights are described in The Qt Company LGPL Exception
 ** version 1.1, included in the file LGPL_EXCEPTION.txt in this package.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3.0 as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU General Public License version 3.0 requirements will be
-** met: http://www.gnu.org/copyleft/gpl.html.
-**
 **
 ** $QT_END_LICENSE$
 **
@@ -44,6 +36,7 @@
 #include "QtWidgets/qtabbar.h"
 #include "QtWidgets/qstyle.h"
 #include "QtWidgets/qdesktopwidget.h"
+#include "QtWidgets/qapplication.h"
 #include "QtCore/qvariant.h"
 #include "qdockarealayout_p.h"
 #include "qdockwidget.h"
@@ -1941,7 +1934,7 @@ bool QDockAreaLayoutInfo::restoreState(QDataStream &stream, QList<QDockWidget*> 
                 QDockAreaLayoutItem item(new QDockWidgetItem(widget));
                 if (flags & StateFlagFloating) {
                     bool drawer = false;
-#ifdef Q_WS_MAC // drawer support
+#ifdef Q_DEAD_CODE_FROM_QT4_MAC // drawer support
                     extern bool qt_mac_is_macdrawer(const QWidget *); //qwidget_mac.cpp
                     extern bool qt_mac_set_drawer_preferred_edge(QWidget *, Qt::DockWidgetArea); //qwidget_mac.cpp
                     drawer = qt_mac_is_macdrawer(widget);
@@ -1956,7 +1949,7 @@ bool QDockAreaLayoutInfo::restoreState(QDataStream &stream, QList<QDockWidget*> 
                     int x, y, w, h;
                     stream >> x >> y >> w >> h;
 
-#ifdef Q_WS_MAC // drawer support
+#ifdef Q_DEAD_CODE_FROM_QT4_MAC // drawer support
                     if (drawer) {
                         mainWindow->window()->createWinId();
                         widget->window()->createWinId();
@@ -2064,7 +2057,7 @@ void QDockAreaLayoutInfo::updateSeparatorWidgets() const
         }
         j++;
 
-#ifndef Q_WS_MAC
+#ifndef Q_DEAD_CODE_FROM_QT4_MAC
         sepWidget->raise();
 #endif
         QRect sepRect = separatorRect(i).adjusted(-2, -2, 2, 2);
@@ -2582,12 +2575,14 @@ void QDockAreaLayout::getGrid(QVector<QLayoutStruct> *_ver_struct_list,
 {
     QSize center_hint(0, 0);
     QSize center_min(0, 0);
+    QSize center_max(0, 0);
     const bool have_central = centralWidgetItem != 0 && !centralWidgetItem->isEmpty();
     if (have_central) {
         center_hint = centralWidgetRect.size();
         if (!center_hint.isValid())
             center_hint = centralWidgetItem->sizeHint();
         center_min = centralWidgetItem->minimumSize();
+        center_max = centralWidgetItem->maximumSize();
     }
 
     QRect center_rect = rect;
@@ -2663,7 +2658,7 @@ void QDockAreaLayout::getGrid(QVector<QLayoutStruct> *_ver_struct_list,
         left = (tl_significant && bl_significant) ? left_min.height() : 0;
         right = (tr_significant && br_significant) ? right_min.height() : 0;
         ver_struct_list[1].minimumSize = qMax(left, center_min.height(), right);
-        ver_struct_list[1].maximumSize = have_central ? QWIDGETSIZE_MAX : 0;
+        ver_struct_list[1].maximumSize = center_max.height();
         ver_struct_list[1].expansive = have_central;
         ver_struct_list[1].empty = docks[QInternal::LeftDock].isEmpty()
                                         && !have_central
@@ -2686,6 +2681,8 @@ void QDockAreaLayout::getGrid(QVector<QLayoutStruct> *_ver_struct_list,
             ver_struct_list[i].sizeHint
                 = qMax(ver_struct_list[i].sizeHint, ver_struct_list[i].minimumSize);
         }
+        if (have_central && ver_struct_list[0].empty && ver_struct_list[2].empty)
+            ver_struct_list[1].maximumSize = QWIDGETSIZE_MAX;
     }
 
     if (_hor_struct_list != 0) {
@@ -2724,7 +2721,7 @@ void QDockAreaLayout::getGrid(QVector<QLayoutStruct> *_ver_struct_list,
         bottom = (bl_significant && br_significant) ? bottom_min.width() : 0;
         hor_struct_list[1].minimumSize = qMax(top, center_min.width(), bottom);
 
-        hor_struct_list[1].maximumSize = have_central ? QWIDGETSIZE_MAX : 0;
+        hor_struct_list[1].maximumSize = center_max.width();
         hor_struct_list[1].expansive = have_central;
         hor_struct_list[1].empty = !have_central;
         hor_struct_list[1].pos = center_rect.left();
@@ -2745,6 +2742,9 @@ void QDockAreaLayout::getGrid(QVector<QLayoutStruct> *_ver_struct_list,
             hor_struct_list[i].sizeHint
                 = qMax(hor_struct_list[i].sizeHint, hor_struct_list[i].minimumSize);
         }
+        if (have_central && hor_struct_list[0].empty && hor_struct_list[2].empty)
+            hor_struct_list[1].maximumSize = QWIDGETSIZE_MAX;
+
     }
 }
 
@@ -2978,12 +2978,13 @@ bool QDockAreaLayout::restoreDockWidget(QDockWidget *dockWidget)
     item.widgetItem = new QDockWidgetItem(dockWidget);
 
     if (placeHolder->window) {
-        QDesktopWidget desktop;
-        QRect r = constrainedRect(placeHolder->topLevelRect, desktop.screenGeometry(dockWidget));
+        const QRect screenGeometry =
+            QApplication::desktop()->screenGeometry(placeHolder->topLevelRect.center());
+        const QRect r = constrainedRect(placeHolder->topLevelRect, screenGeometry);
         dockWidget->d_func()->setWindowState(true, true, r);
     }
     dockWidget->setVisible(!placeHolder->hidden);
-#ifdef Q_WS_X11
+#ifdef Q_DEAD_CODE_FROM_QT4_X11
     if (placeHolder->window) // gets rid of the X11BypassWindowManager window flag
         dockWidget->d_func()->setWindowState(true);
 #endif
@@ -3173,7 +3174,7 @@ void QDockAreaLayout::updateSeparatorWidgets() const
         }
         j++;
 
-#ifndef Q_WS_MAC
+#ifndef Q_DEAD_CODE_FROM_QT4_MAC
         sepWidget->raise();
 #endif
         QRect sepRect = separatorRect(i).adjusted(-2, -2, 2, 2);

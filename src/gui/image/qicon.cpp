@@ -1,39 +1,31 @@
 /****************************************************************************
 **
-** Copyright (C) 2013 Digia Plc and/or its subsidiary(-ies).
-** Contact: http://www.qt-project.org/legal
+** Copyright (C) 2015 The Qt Company Ltd.
+** Contact: http://www.qt.io/licensing/
 **
 ** This file is part of the QtGui module of the Qt Toolkit.
 **
-** $QT_BEGIN_LICENSE:LGPL$
+** $QT_BEGIN_LICENSE:LGPL21$
 ** Commercial License Usage
 ** Licensees holding valid commercial Qt licenses may use this file in
 ** accordance with the commercial license agreement provided with the
 ** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and Digia.  For licensing terms and
-** conditions see http://qt.digia.com/licensing.  For further information
-** use the contact form at http://qt.digia.com/contact-us.
+** a written agreement between you and The Qt Company. For licensing terms
+** and conditions see http://www.qt.io/terms-conditions. For further
+** information use the contact form at http://www.qt.io/contact-us.
 **
 ** GNU Lesser General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 2.1 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU Lesser General Public License version 2.1 requirements
-** will be met: http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
+** General Public License version 2.1 or version 3 as published by the Free
+** Software Foundation and appearing in the file LICENSE.LGPLv21 and
+** LICENSE.LGPLv3 included in the packaging of this file. Please review the
+** following information to ensure the GNU Lesser General Public License
+** requirements will be met: https://www.gnu.org/licenses/lgpl.html and
+** http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
 **
-** In addition, as a special exception, Digia gives you certain additional
-** rights.  These rights are described in the Digia Qt LGPL Exception
+** As a special exception, The Qt Company gives you certain additional
+** rights. These rights are described in The Qt Company LGPL Exception
 ** version 1.1, included in the file LGPL_EXCEPTION.txt in this package.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3.0 as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU General Public License version 3.0 requirements will be
-** met: http://www.gnu.org/copyleft/gpl.html.
-**
 **
 ** $QT_END_LICENSE$
 **
@@ -54,7 +46,7 @@
 #include "qdebug.h"
 #include "qpalette.h"
 
-#ifdef Q_WS_MAC
+#ifdef Q_DEAD_CODE_FROM_QT4_MAC
 #include <private/qt_mac_p.h>
 #include <private/qt_cocoa_helpers_mac_p.h>
 #endif
@@ -614,7 +606,7 @@ QFactoryLoader *qt_iconEngineFactoryLoader()
 /*!
   Constructs a null icon.
 */
-QIcon::QIcon()
+QIcon::QIcon() Q_DECL_NOEXCEPT
     : d(0)
 {
 }
@@ -637,6 +629,13 @@ QIcon::QIcon(const QIcon &other)
     if (d)
         d->ref.ref();
 }
+
+/*!
+  \fn QIcon::QIcon(QIcon &&other)
+
+  Move-constructs a QIcon instance, making it point to the same object
+  that \a other was pointing to.
+*/
 
 /*!
     Constructs an icon from the file with the given \a fileName. The
@@ -989,10 +988,16 @@ void QIcon::addPixmap(const QPixmap &pixmap, Mode mode, State state)
     QImageWriter::supportedImageFormats() functions to retrieve a
     complete list of the supported file formats.
 
-    Note: When you add a non-empty filename to a QIcon, the icon becomes
+    If a high resolution version of the image exists (identified by
+    the suffix \c @2x on the base name), it is automatically loaded
+    and added with the \e{device pixel ratio} set to a value of 2.
+    This can be disabled by setting the environment variable
+    \c QT_HIGHDPI_DISABLE_2X_IMAGE_LOADING (see QImageReader).
+
+    \note When you add a non-empty filename to a QIcon, the icon becomes
     non-null, even if the file doesn't exist or points to a corrupt file.
 
-    \sa addPixmap()
+    \sa addPixmap(), QPixmap::devicePixelRatio()
  */
 void QIcon::addFile(const QString &fileName, const QSize &size, Mode mode, State state)
 {
@@ -1026,15 +1031,15 @@ void QIcon::addFile(const QString &fileName, const QSize &size, Mode mode, State
     d->engine->addFile(fileName, size, mode, state);
 
     // Check if a "@2x" file exists and add it.
-    static bool disable2xImageLoading = !qgetenv("QT_HIGHDPI_DISABLE_2X_IMAGE_LOADING").isEmpty();
+    static bool disable2xImageLoading = !qEnvironmentVariableIsEmpty("QT_HIGHDPI_DISABLE_2X_IMAGE_LOADING");
     if (!disable2xImageLoading && qApp->devicePixelRatio() > 1.0) {
+        QString at2xfileName = fileName;
         int dotIndex = fileName.lastIndexOf(QLatin1Char('.'));
-        if (dotIndex != -1) {
-            QString at2xfileName = fileName;
-            at2xfileName.insert(dotIndex, QStringLiteral("@2x"));
-            if (QFile::exists(at2xfileName))
-                d->engine->addFile(at2xfileName, size, mode, state);
-        }
+        if (dotIndex == -1) /* no dot */
+            dotIndex = fileName.size(); /* append */
+        at2xfileName.insert(dotIndex, QStringLiteral("@2x"));
+        if (QFile::exists(at2xfileName))
+            d->engine->addFile(at2xfileName, size, mode, state);
     }
 }
 
@@ -1172,11 +1177,12 @@ QIcon QIcon::fromTheme(const QString &name, const QIcon &fallback)
         icon = *qtIconCache()->object(name);
     } else {
         QPlatformTheme * const platformTheme = QGuiApplicationPrivate::platformTheme();
-        QIconEngine * const engine = platformTheme ? platformTheme->createIconEngine(name)
+        bool hasUserTheme = QIconLoader::instance()->hasUserTheme();
+        QIconEngine * const engine = (platformTheme && !hasUserTheme) ? platformTheme->createIconEngine(name)
                                                    : new QIconLoaderEngine(name);
         QIcon *cachedIcon  = new QIcon(engine);
-        qtIconCache()->insert(name, cachedIcon);
         icon = *cachedIcon;
+        qtIconCache()->insert(name, cachedIcon);
     }
 
     // Note the qapp check is to allow lazy loading of static icons
@@ -1199,7 +1205,7 @@ bool QIcon::hasThemeIcon(const QString &name)
 {
     QIcon icon = fromTheme(name);
 
-    return !icon.isNull();
+    return icon.name() == name;
 }
 
 
@@ -1321,8 +1327,20 @@ QDataStream &operator>>(QDataStream &s, QIcon &icon)
 #ifndef QT_NO_DEBUG_STREAM
 QDebug operator<<(QDebug dbg, const QIcon &i)
 {
-    dbg.nospace() << "QIcon(" << i.name() << ')';
-    return dbg.space();
+    QDebugStateSaver saver(dbg);
+    dbg.resetFormat();
+    dbg.nospace();
+    dbg << "QIcon(";
+    if (i.isNull()) {
+        dbg << "null";
+    } else {
+        if (!i.name().isEmpty())
+            dbg << i.name() << ',';
+        dbg << "availableSizes[normal,Off]=" << i.availableSizes()
+            << ",cacheKey=" << showbase << hex << i.cacheKey() << dec << noshowbase;
+    }
+    dbg << ')';
+    return dbg;
 }
 #endif
 

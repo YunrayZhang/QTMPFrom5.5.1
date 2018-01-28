@@ -1,39 +1,31 @@
 /****************************************************************************
 **
-** Copyright (C) 2013 Digia Plc and/or its subsidiary(-ies).
-** Contact: http://www.qt-project.org/legal
+** Copyright (C) 2015 The Qt Company Ltd.
+** Contact: http://www.qt.io/licensing/
 **
 ** This file is part of the test suite of the Qt Toolkit.
 **
-** $QT_BEGIN_LICENSE:LGPL$
+** $QT_BEGIN_LICENSE:LGPL21$
 ** Commercial License Usage
 ** Licensees holding valid commercial Qt licenses may use this file in
 ** accordance with the commercial license agreement provided with the
 ** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and Digia.  For licensing terms and
-** conditions see http://qt.digia.com/licensing.  For further information
-** use the contact form at http://qt.digia.com/contact-us.
+** a written agreement between you and The Qt Company. For licensing terms
+** and conditions see http://www.qt.io/terms-conditions. For further
+** information use the contact form at http://www.qt.io/contact-us.
 **
 ** GNU Lesser General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 2.1 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU Lesser General Public License version 2.1 requirements
-** will be met: http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
+** General Public License version 2.1 or version 3 as published by the Free
+** Software Foundation and appearing in the file LICENSE.LGPLv21 and
+** LICENSE.LGPLv3 included in the packaging of this file. Please review the
+** following information to ensure the GNU Lesser General Public License
+** requirements will be met: https://www.gnu.org/licenses/lgpl.html and
+** http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
 **
-** In addition, as a special exception, Digia gives you certain additional
-** rights.  These rights are described in the Digia Qt LGPL Exception
+** As a special exception, The Qt Company gives you certain additional
+** rights. These rights are described in The Qt Company LGPL Exception
 ** version 1.1, included in the file LGPL_EXCEPTION.txt in this package.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3.0 as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU General Public License version 3.0 requirements will be
-** met: http://www.gnu.org/copyleft/gpl.html.
-**
 **
 ** $QT_END_LICENSE$
 **
@@ -75,9 +67,7 @@ private slots:
     void sessionClosing_data();
     void sessionClosing();
 
-#ifndef QT_NO_PROCESS
     void outOfProcessSession();
-#endif
     void invalidSession();
 
     void repeatedOpenClose_data();
@@ -279,7 +269,11 @@ void tst_QNetworkSession::sessionProperties()
                                                  << QLatin1String("WCDMA")
                                                  << QLatin1String("HSPA")
                                                  << QLatin1String("Bluetooth")
-                                                 << QLatin1String("WiMAX");
+                                                 << QLatin1String("WiMAX")
+                                                 << QLatin1String("BearerEVDO")
+                                                 << QLatin1String("BearerLTE")
+                                                 << QLatin1String("Bearer3G")
+                                                 << QLatin1String("Bearer4G");
 
     if (!configuration.isValid()) {
         QVERIFY(configuration.bearerTypeName().isEmpty());
@@ -903,9 +897,11 @@ QDebug operator<<(QDebug debug, const QList<QNetworkConfiguration> &list)
 
 // Note: outOfProcessSession requires that at least one configuration is
 // at Discovered -state.
-#ifndef QT_NO_PROCESS
 void tst_QNetworkSession::outOfProcessSession()
 {
+#ifdef QT_NO_PROCESS
+    QSKIP("No qprocess support", SkipAll);
+#else
     updateConfigurations();
     QTest::qWait(2000);
 
@@ -1000,8 +996,8 @@ void tst_QNetworkSession::outOfProcessSession()
     default:
         QSKIP("Lackey failed");
     }
-}
 #endif
+}
 
 // A convenience / helper function for testcases. Return the first matching configuration.
 // Ignores configurations in other than 'discovered' -state. Returns invalid (QNetworkConfiguration())
@@ -1030,7 +1026,11 @@ QNetworkConfiguration suitableConfiguration(QString bearerType, QNetworkConfigur
             if (config.bearerTypeName() != "2G" &&
                 config.bearerTypeName() != "CDMA2000" &&
                 config.bearerTypeName() != "WCDMA" &&
-                config.bearerTypeName() != "HSPA") {
+                config.bearerTypeName() != "HSPA" &&
+                config.bearerTypeName() != "EVDO" &&
+                config.bearerTypeName() != "LTE" &&
+                config.bearerTypeName() != "3G" &&
+                config.bearerTypeName() != "4G") {
                 // qDebug() << "Dumping config because bearer mismatches (cellular): " << config.name();
                 discoveredConfigs.removeOne(config);
             }

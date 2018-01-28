@@ -1,39 +1,31 @@
 /****************************************************************************
 **
-** Copyright (C) 2013 Digia Plc and/or its subsidiary(-ies).
-** Contact: http://www.qt-project.org/legal
+** Copyright (C) 2015 The Qt Company Ltd.
+** Contact: http://www.qt.io/licensing/
 **
 ** This file is part of the QtWidgets module of the Qt Toolkit.
 **
-** $QT_BEGIN_LICENSE:LGPL$
+** $QT_BEGIN_LICENSE:LGPL21$
 ** Commercial License Usage
 ** Licensees holding valid commercial Qt licenses may use this file in
 ** accordance with the commercial license agreement provided with the
 ** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and Digia.  For licensing terms and
-** conditions see http://qt.digia.com/licensing.  For further information
-** use the contact form at http://qt.digia.com/contact-us.
+** a written agreement between you and The Qt Company. For licensing terms
+** and conditions see http://www.qt.io/terms-conditions. For further
+** information use the contact form at http://www.qt.io/contact-us.
 **
 ** GNU Lesser General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 2.1 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU Lesser General Public License version 2.1 requirements
-** will be met: http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
+** General Public License version 2.1 or version 3 as published by the Free
+** Software Foundation and appearing in the file LICENSE.LGPLv21 and
+** LICENSE.LGPLv3 included in the packaging of this file. Please review the
+** following information to ensure the GNU Lesser General Public License
+** requirements will be met: https://www.gnu.org/licenses/lgpl.html and
+** http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
 **
-** In addition, as a special exception, Digia gives you certain additional
-** rights.  These rights are described in the Digia Qt LGPL Exception
+** As a special exception, The Qt Company gives you certain additional
+** rights. These rights are described in The Qt Company LGPL Exception
 ** version 1.1, included in the file LGPL_EXCEPTION.txt in this package.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3.0 as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU General Public License version 3.0 requirements will be
-** met: http://www.gnu.org/copyleft/gpl.html.
-**
 **
 ** $QT_END_LICENSE$
 **
@@ -116,13 +108,13 @@ public:
     QApplicationPrivate(int &argc, char **argv, int flags);
     ~QApplicationPrivate();
 
-    virtual void notifyLayoutDirectionChange();
-    virtual void notifyActiveWindowChange(QWindow *);
+    virtual void notifyLayoutDirectionChange() Q_DECL_OVERRIDE;
+    virtual void notifyActiveWindowChange(QWindow *) Q_DECL_OVERRIDE;
 
-    virtual bool shouldQuit();
+    virtual bool shouldQuit() Q_DECL_OVERRIDE;
     bool tryCloseAllWindows() Q_DECL_OVERRIDE;
 
-#if defined(Q_WS_X11)
+#if defined(Q_DEAD_CODE_FROM_QT4_X11)
 #ifndef QT_NO_SETTINGS
     static bool x11_apply_settings();
 #endif
@@ -135,7 +127,7 @@ public:
     static QString desktopStyleKey();
 
 
-    void createEventDispatcher();
+    void createEventDispatcher() Q_DECL_OVERRIDE;
     static void dispatchEnterLeave(QWidget *enter, QWidget *leave, const QPointF &globalPosF);
 
     void notifyWindowIconChanged() Q_DECL_OVERRIDE;
@@ -145,7 +137,7 @@ public:
     static bool isBlockedByModal(QWidget *widget);
     static bool modalState();
     static bool tryModalHelper(QWidget *widget, QWidget **rettop = 0);
-#ifdef Q_WS_MAC
+#ifdef Q_DEAD_CODE_FROM_QT4_MAC
     static QWidget *tryModalHelper_sys(QWidget *top);
     bool canQuit();
 #endif
@@ -159,14 +151,14 @@ public:
     bool notify_helper(QObject *receiver, QEvent * e);
 
     void construct(
-#ifdef Q_WS_X11
+#ifdef Q_DEAD_CODE_FROM_QT4_X11
                    Display *dpy = 0, Qt::HANDLE visual = 0, Qt::HANDLE cmap = 0
 #endif
                    );
     void initialize();
     void process_cmdline();
 
-#if defined(Q_WS_X11)
+#if defined(Q_DEAD_CODE_FROM_QT4_X11)
     static void x11_initialize_style();
 #endif
 
@@ -196,9 +188,9 @@ public:
     static QPalette *set_pal;
 
 protected:
-    void notifyThemeChanged();
+    void notifyThemeChanged() Q_DECL_OVERRIDE;
 #ifndef QT_NO_DRAGANDDROP
-    void notifyDragStarted(const QDrag *);
+    void notifyDragStarted(const QDrag *) Q_DECL_OVERRIDE;
 #endif // QT_NO_DRAGANDDROP
 
 public:
@@ -221,7 +213,7 @@ public:
     static void initializeWidgetFontHash();
     static void setSystemFont(const QFont &font);
 
-#if defined(Q_WS_X11)
+#if defined(Q_DEAD_CODE_FROM_QT4_X11)
     static void applyX11SpecificCommandLineArguments(QWidget *main_widget);
 #endif
 
@@ -234,7 +226,7 @@ public:
     static Qt::NavigationMode navigationMode;
 #endif
 
-#if defined(Q_WS_MAC) || defined(Q_WS_X11)
+#if defined(Q_DEAD_CODE_FROM_QT4_MAC) || defined(Q_DEAD_CODE_FROM_QT4_X11)
     void _q_alertTimeOut();
     QHash<QWidget *, QTimer *> alertTimerHash;
 #endif
@@ -274,21 +266,21 @@ public:
     QGestureManager *gestureManager;
     QWidget *gestureWidget;
 #endif
-#if defined(Q_WS_X11) || defined(Q_WS_WIN)
+#if defined(Q_DEAD_CODE_FROM_QT4_X11) || defined(Q_DEAD_CODE_FROM_QT4_WIN)
     QPixmap *move_cursor;
     QPixmap *copy_cursor;
     QPixmap *link_cursor;
 #endif
-#if defined(Q_WS_WIN)
+#if defined(Q_DEAD_CODE_FROM_QT4_WIN)
     QPixmap *ignore_cursor;
 #endif
 
-    static void updateTouchPointsForWidget(QWidget *widget, QTouchEvent *touchEvent);
+    static bool updateTouchPointsForWidget(QWidget *widget, QTouchEvent *touchEvent);
     void initializeMultitouch();
     void initializeMultitouch_sys();
     void cleanupMultitouch();
     void cleanupMultitouch_sys();
-    QWidget *findClosestTouchPointTarget(QTouchDevice *device, const QPointF &screenPos);
+    QWidget *findClosestTouchPointTarget(QTouchDevice *device, const QTouchEvent::TouchPoint &touchPoint);
     void appendTouchPoint(const QTouchEvent::TouchPoint &touchPoint);
     void removeTouchPoint(int touchPointId);
     static bool translateRawTouchEvent(QWidget *widget,
@@ -297,7 +289,7 @@ public:
                                        ulong timestamp);
     static void translateTouchCancel(QTouchDevice *device, ulong timestamp);
 
-    QPixmap applyQIconStyleHelper(QIcon::Mode mode, const QPixmap& base) const;
+    QPixmap applyQIconStyleHelper(QIcon::Mode mode, const QPixmap& base) const Q_DECL_OVERRIDE;
 private:
     static QApplicationPrivate *self;
     static bool tryCloseAllWidgetWindows(QWindowList *processedWindows);
@@ -309,9 +301,9 @@ private:
     static bool isAlien(QWidget *);
 };
 
-#if defined(Q_WS_WIN)
+#if defined(Q_DEAD_CODE_FROM_QT4_WIN)
   extern void qt_win_set_cursor(QWidget *, bool);
-#elif defined(Q_WS_X11)
+#elif defined(Q_DEAD_CODE_FROM_QT4_X11)
   extern void qt_x11_enforce_cursor(QWidget *, bool);
   extern void qt_x11_enforce_cursor(QWidget *);
 #else

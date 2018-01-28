@@ -1,39 +1,31 @@
 /****************************************************************************
 **
-** Copyright (C) 2013 Digia Plc and/or its subsidiary(-ies).
-** Contact: http://www.qt-project.org/legal
+** Copyright (C) 2015 The Qt Company Ltd.
+** Contact: http://www.qt.io/licensing/
 **
 ** This file is part of the test suite of the Qt Toolkit.
 **
-** $QT_BEGIN_LICENSE:LGPL$
+** $QT_BEGIN_LICENSE:LGPL21$
 ** Commercial License Usage
 ** Licensees holding valid commercial Qt licenses may use this file in
 ** accordance with the commercial license agreement provided with the
 ** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and Digia.  For licensing terms and
-** conditions see http://qt.digia.com/licensing.  For further information
-** use the contact form at http://qt.digia.com/contact-us.
+** a written agreement between you and The Qt Company. For licensing terms
+** and conditions see http://www.qt.io/terms-conditions. For further
+** information use the contact form at http://www.qt.io/contact-us.
 **
 ** GNU Lesser General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 2.1 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU Lesser General Public License version 2.1 requirements
-** will be met: http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
+** General Public License version 2.1 or version 3 as published by the Free
+** Software Foundation and appearing in the file LICENSE.LGPLv21 and
+** LICENSE.LGPLv3 included in the packaging of this file. Please review the
+** following information to ensure the GNU Lesser General Public License
+** requirements will be met: https://www.gnu.org/licenses/lgpl.html and
+** http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
 **
-** In addition, as a special exception, Digia gives you certain additional
-** rights.  These rights are described in the Digia Qt LGPL Exception
+** As a special exception, The Qt Company gives you certain additional
+** rights. These rights are described in The Qt Company LGPL Exception
 ** version 1.1, included in the file LGPL_EXCEPTION.txt in this package.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3.0 as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU General Public License version 3.0 requirements will be
-** met: http://www.gnu.org/copyleft/gpl.html.
-**
 **
 ** $QT_END_LICENSE$
 **
@@ -55,6 +47,7 @@
 #include <QtWidgets/QScrollBar>
 #include <QtWidgets/QDialog>
 #include <QtWidgets/QStyledItemDelegate>
+#include <QtWidgets/QStyleFactory>
 
 #if defined(Q_OS_WIN) || defined(Q_OS_WINCE)
 #  include <windows.h>
@@ -155,6 +148,8 @@ private slots:
     void spacing();
     void testScrollToWithHidden();
     void testViewOptions();
+    void taskQTBUG_39902_mutualScrollBars_data();
+    void taskQTBUG_39902_mutualScrollBars();
 };
 
 // Testing get/set functions
@@ -310,6 +305,7 @@ void tst_QListView::init()
 
 void tst_QListView::cleanup()
 {
+    QVERIFY(QApplication::topLevelWidgets().isEmpty());
 }
 
 
@@ -795,14 +791,31 @@ void tst_QListView::hideFirstRow()
     QTest::qWait(10);
 }
 
+static int modelIndexCount(const QAbstractItemView *view)
+{
+    QBitArray ba;
+    for (int y = 0, height = view->height(); y < height; ++y) {
+        const QModelIndex idx = view->indexAt( QPoint(1, y) );
+        if (!idx.isValid())
+            break;
+        if (idx.row() >= ba.size())
+            ba.resize(idx.row() + 1);
+        ba.setBit(idx.row(), true);
+    }
+    return ba.size();
+}
+
 void tst_QListView::batchedMode()
 {
+    const int rowCount = 3;
+
     QStringList items;
-    for (int i=0; i <3; ++i)
-        items << "item";
+    for (int i = 0; i < rowCount; ++i)
+        items << QLatin1String("item ") + QString::number(i);
     QStringListModel model(items);
 
     QListView view;
+    view.setWindowTitle(QTest::currentTestFunction());
     view.setModel(&model);
     view.setUniformItemSizes(true);
     view.setViewMode(QListView::ListMode);
@@ -811,22 +824,8 @@ void tst_QListView::batchedMode()
     view.resize(200,400);
     view.show();
     QVERIFY(QTest::qWaitForWindowExposed(&view));
-    QTest::qWait(100);
 
-#if defined(Q_OS_WINCE)
-    QTest::qWait(2000);
-#endif
-    QBitArray ba;
-    for (int y = 0; y < view.height(); ++y) {
-        QModelIndex idx = view.indexAt( QPoint(1, y) );
-        if (!idx.isValid())
-            break;
-        if (idx.row() >= ba.size())
-            ba.resize(idx.row() + 1);
-        ba.setBit(idx.row(), true);
-    }
-    QCOMPARE(ba.size(), 3);
-
+    QTRY_COMPARE(modelIndexCount(&view), rowCount);
 
     // Test the dynamic listview too.
     view.setViewMode(QListView::IconMode);
@@ -834,22 +833,7 @@ void tst_QListView::batchedMode()
     view.setFlow(QListView::TopToBottom);
     view.setBatchSize(2);
 
-#if !defined(Q_OS_WINCE)
-    QTest::qWait(100);
-#else
-    QTest::qWait(2000);
-#endif
-
-    ba.clear();
-    for (int y = 0; y < view.height(); ++y) {
-        QModelIndex idx = view.indexAt( QPoint(1, y) );
-        if (!idx.isValid())
-            break;
-        if (idx.row() >= ba.size())
-            ba.resize(idx.row() + 1);
-        ba.setBit(idx.row(), true);
-    }
-    QCOMPARE(ba.size(), 3);
+    QTRY_COMPARE(modelIndexCount(&view), rowCount);
 }
 
 void tst_QListView::setCurrentIndex()
@@ -2011,7 +1995,7 @@ void tst_QListView::taskQTBUG_9455_wrongScrollbarRanges()
     QStringList list;
     const int nrItems = 8;
     for (int i = 0; i < nrItems; i++)
-        list << QString().sprintf("item %d", i);
+        list << QString::asprintf("item %d", i);
 
     QStringListModel model(list);
     ListView_9455 w;
@@ -2235,8 +2219,7 @@ void tst_QListView::taskQTBUG_21804_hiddenItemsAndScrollingWithKeys()
             QTest::keyClick(&lv, Qt::Key_Down);
         else
             QTest::keyClick(&lv, Qt::Key_Right);
-        QTest::qWait(100);
-        QVERIFY(lv.rect().contains(lv.visualRect(lv.currentIndex())));
+        QTRY_VERIFY(lv.rect().contains(lv.visualRect(lv.currentIndex())));
     }
 
     // scroll backward
@@ -2245,8 +2228,7 @@ void tst_QListView::taskQTBUG_21804_hiddenItemsAndScrollingWithKeys()
             QTest::keyClick(&lv, Qt::Key_Up);
         else
             QTest::keyClick(&lv, Qt::Key_Left);
-        QTest::qWait(100);
-        QVERIFY(lv.rect().contains(lv.visualRect(lv.currentIndex())));
+        QTRY_VERIFY(lv.rect().contains(lv.visualRect(lv.currentIndex())));
     }
 
     // scroll forward only half way
@@ -2255,8 +2237,7 @@ void tst_QListView::taskQTBUG_21804_hiddenItemsAndScrollingWithKeys()
             QTest::keyClick(&lv, Qt::Key_Down);
         else
             QTest::keyClick(&lv, Qt::Key_Right);
-        QTest::qWait(100);
-        QVERIFY(lv.rect().contains(lv.visualRect(lv.currentIndex())));
+        QTRY_VERIFY(lv.rect().contains(lv.visualRect(lv.currentIndex())));
     }
 
     // scroll backward again
@@ -2265,8 +2246,7 @@ void tst_QListView::taskQTBUG_21804_hiddenItemsAndScrollingWithKeys()
             QTest::keyClick(&lv, Qt::Key_Up);
         else
             QTest::keyClick(&lv, Qt::Key_Left);
-        QTest::qWait(100);
-        QVERIFY(lv.rect().contains(lv.visualRect(lv.currentIndex())));
+        QTRY_VERIFY(lv.rect().contains(lv.visualRect(lv.currentIndex())));
     }
 }
 
@@ -2357,6 +2337,112 @@ void tst_QListView::testViewOptions()
     view.setViewMode(QListView::IconMode);
     options = view.viewOptions();
     QCOMPARE(options.decorationPosition, QStyleOptionViewItem::Top);
+}
+
+// make sure we have no transient scroll bars
+class TempStyleSetter
+{
+public:
+    TempStyleSetter()
+        : m_oldStyle(qApp->style())
+    {
+        m_oldStyle->setParent(0);
+        QListView tempView;
+        if (QApplication::style()->styleHint(QStyle::SH_ScrollBar_Transient, 0, tempView.horizontalScrollBar()))
+            QApplication::setStyle(QStyleFactory::create("Fusion"));
+    }
+
+    ~TempStyleSetter()
+    {
+        QApplication::setStyle(m_oldStyle);
+    }
+private:
+    QStyle* m_oldStyle;
+};
+
+void tst_QListView::taskQTBUG_39902_mutualScrollBars_data()
+{
+    QTest::addColumn<QAbstractItemView::ScrollMode>("horizontalScrollMode");
+    QTest::addColumn<QAbstractItemView::ScrollMode>("verticalScrollMode");
+    QTest::newRow("per item / per item") << QAbstractItemView::ScrollPerItem << QAbstractItemView::ScrollPerItem;
+    QTest::newRow("per pixel / per item") << QAbstractItemView::ScrollPerPixel << QAbstractItemView::ScrollPerItem;
+    QTest::newRow("per item / per pixel") << QAbstractItemView::ScrollPerItem << QAbstractItemView::ScrollPerPixel;
+    QTest::newRow("per pixel / per pixel") << QAbstractItemView::ScrollPerPixel << QAbstractItemView::ScrollPerPixel;
+}
+
+void tst_QListView::taskQTBUG_39902_mutualScrollBars()
+{
+    QFETCH(QAbstractItemView::ScrollMode, horizontalScrollMode);
+    QFETCH(QAbstractItemView::ScrollMode, verticalScrollMode);
+
+    QWidget window;
+    window.resize(400, 300);
+    QListView *view = new QListView(&window);
+    // make sure we have no transient scroll bars
+    TempStyleSetter styleSetter;
+    QStandardItemModel model(200, 1);
+    const QSize itemSize(100, 20);
+    for (int i = 0; i < model.rowCount(); ++i)
+        model.setData(model.index(i, 0), itemSize, Qt::SizeHintRole);
+    view->setModel(&model);
+
+    view->setVerticalScrollMode(verticalScrollMode);
+    view->setHorizontalScrollMode(horizontalScrollMode);
+
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+    // make sure QListView is done with layouting the items (1/10 sec, like QListView)
+    QTest::qWait(100);
+
+    model.setRowCount(2);
+    for (int i = 0; i < model.rowCount(); ++i)
+        model.setData(model.index(i, 0), itemSize, Qt::SizeHintRole);
+    view->resize(itemSize.width() + view->frameWidth() * 2, model.rowCount() * itemSize.height() + view->frameWidth() * 2);
+    // this will end up in a stack overflow, if QTBUG-39902 is not fixed
+    QTest::qWait(100);
+
+    // these tests do not apply with transient scroll bars enabled
+    QVERIFY (!view->style()->styleHint(QStyle::SH_ScrollBar_Transient, 0, view->horizontalScrollBar()));
+
+    // make it double as large, no scroll bars should be visible
+    view->resize((itemSize.width() + view->frameWidth() * 2) * 2, (model.rowCount() * itemSize.height() + view->frameWidth() * 2) * 2);
+    QTRY_VERIFY(!view->horizontalScrollBar()->isVisible());
+    QTRY_VERIFY(!view->verticalScrollBar()->isVisible());
+
+    // make it half the size, both scroll bars should be visible
+    view->resize((itemSize.width() + view->frameWidth() * 2) / 2, (model.rowCount() * itemSize.height() + view->frameWidth() * 2) / 2);
+    QTRY_VERIFY(view->horizontalScrollBar()->isVisible());
+    QTRY_VERIFY(view->verticalScrollBar()->isVisible());
+
+    // make it double as large, no scroll bars should be visible
+    view->resize((itemSize.width() + view->frameWidth() * 2) * 2, (model.rowCount() * itemSize.height() + view->frameWidth() * 2) * 2);
+    QTRY_VERIFY(!view->horizontalScrollBar()->isVisible());
+    QTRY_VERIFY(!view->verticalScrollBar()->isVisible());
+
+    // now, coming from the double size, resize it to the exactly matching size, still no scroll bars should be visible again
+    view->resize(itemSize.width() + view->frameWidth() * 2, model.rowCount() * itemSize.height() + view->frameWidth() * 2);
+    QTRY_VERIFY(!view->horizontalScrollBar()->isVisible());
+    QTRY_VERIFY(!view->verticalScrollBar()->isVisible());
+
+    // now remove just one single pixel in height -> both scroll bars will show up since they depend on each other
+    view->resize(itemSize.width() + view->frameWidth() * 2, model.rowCount() * itemSize.height() + view->frameWidth() * 2 - 1);
+    QTRY_VERIFY(view->horizontalScrollBar()->isVisible());
+    QTRY_VERIFY(view->verticalScrollBar()->isVisible());
+
+    // now remove just one single pixel in width -> both scroll bars will show up since they depend on each other
+    view->resize(itemSize.width() + view->frameWidth() * 2 - 1, model.rowCount() * itemSize.height() + view->frameWidth() * 2);
+    QTRY_VERIFY(view->horizontalScrollBar()->isVisible());
+    QTRY_VERIFY(view->verticalScrollBar()->isVisible());
+
+    // finally, coming from a size being to small, resize back to the exactly matching size -> both scroll bars should disappear again
+    view->resize(itemSize.width() + view->frameWidth() * 2, model.rowCount() * itemSize.height() + view->frameWidth() * 2);
+    QTRY_VERIFY(!view->horizontalScrollBar()->isVisible());
+    QTRY_VERIFY(!view->verticalScrollBar()->isVisible());
+
+   // now remove just one single pixel in height -> both scroll bars will show up since they depend on each other
+    view->resize(itemSize.width() + view->frameWidth() * 2, model.rowCount() * itemSize.height() + view->frameWidth() * 2 - 1);
+    QTRY_VERIFY(view->horizontalScrollBar()->isVisible());
+    QTRY_VERIFY(view->verticalScrollBar()->isVisible());
 }
 
 QTEST_MAIN(tst_QListView)

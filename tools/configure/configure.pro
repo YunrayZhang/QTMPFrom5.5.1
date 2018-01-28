@@ -109,6 +109,7 @@ SOURCES  = main.cpp configureapp.cpp environment.cpp tools.cpp \
            $$QT_SOURCE_TREE/src/corelib/io/qfsfileengine_win.cpp \
            $$QT_SOURCE_TREE/src/corelib/io/qfsfileengine_iterator.cpp \
            $$QT_SOURCE_TREE/src/corelib/io/qiodevice.cpp \
+           $$QT_SOURCE_TREE/src/corelib/io/qdebug.cpp \
            $$QT_SOURCE_TREE/src/corelib/io/qtextstream.cpp \
            $$QT_SOURCE_TREE/src/corelib/io/qtemporaryfile.cpp \
            $$QT_SOURCE_TREE/src/corelib/io/qstandardpaths.cpp \
@@ -131,5 +132,3 @@ SOURCES  = main.cpp configureapp.cpp environment.cpp tools.cpp \
            $$QT_SOURCE_TREE/src/corelib/plugin/quuid.cpp \
            $$QT_SOURCE_TREE/src/corelib/tools/qcryptographichash.cpp \
            $$QT_SOURCE_TREE/tools/shared/windows/registry.cpp
-
-DEFINES += COMMERCIAL_VERSION

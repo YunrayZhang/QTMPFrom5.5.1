@@ -1,39 +1,31 @@
 /****************************************************************************
 **
-** Copyright (C) 2013 Digia Plc and/or its subsidiary(-ies).
-** Contact: http://www.qt-project.org/legal
+** Copyright (C) 2015 The Qt Company Ltd.
+** Contact: http://www.qt.io/licensing/
 **
 ** This file is part of the test suite of the Qt Toolkit.
 **
-** $QT_BEGIN_LICENSE:LGPL$
+** $QT_BEGIN_LICENSE:LGPL21$
 ** Commercial License Usage
 ** Licensees holding valid commercial Qt licenses may use this file in
 ** accordance with the commercial license agreement provided with the
 ** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and Digia.  For licensing terms and
-** conditions see http://qt.digia.com/licensing.  For further information
-** use the contact form at http://qt.digia.com/contact-us.
+** a written agreement between you and The Qt Company. For licensing terms
+** and conditions see http://www.qt.io/terms-conditions. For further
+** information use the contact form at http://www.qt.io/contact-us.
 **
 ** GNU Lesser General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 2.1 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU Lesser General Public License version 2.1 requirements
-** will be met: http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
+** General Public License version 2.1 or version 3 as published by the Free
+** Software Foundation and appearing in the file LICENSE.LGPLv21 and
+** LICENSE.LGPLv3 included in the packaging of this file. Please review the
+** following information to ensure the GNU Lesser General Public License
+** requirements will be met: https://www.gnu.org/licenses/lgpl.html and
+** http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
 **
-** In addition, as a special exception, Digia gives you certain additional
-** rights.  These rights are described in the Digia Qt LGPL Exception
+** As a special exception, The Qt Company gives you certain additional
+** rights. These rights are described in The Qt Company LGPL Exception
 ** version 1.1, included in the file LGPL_EXCEPTION.txt in this package.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3.0 as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU General Public License version 3.0 requirements will be
-** met: http://www.gnu.org/copyleft/gpl.html.
-**
 **
 ** $QT_END_LICENSE$
 **
@@ -157,7 +149,9 @@ private slots:
 
     void execAfterExit();
 
+#ifndef QT_NO_WHEELEVENT
     void wheelScrollLines();
+#endif
 
     void task109149();
 
@@ -180,7 +174,16 @@ private slots:
 
     void abortQuitOnShow();
 
+    void staticFunctions();
+
+    void settableStyleHints_data();
     void settableStyleHints();  // Needs to run last as it changes style hints.
+
+protected slots:
+    void quitApplication();
+
+private:
+    bool quitApplicationTriggered;
 };
 
 class EventSpy : public QObject
@@ -238,6 +241,7 @@ public:
 static  char *argv0;
 
 tst_QApplication::tst_QApplication()
+    : quitApplicationTriggered(false)
 {
 #ifdef Q_OS_WINCE
     // Clean up environment previously to launching test
@@ -260,6 +264,7 @@ void tst_QApplication::cleanup()
 {
 // TODO: Add cleanup code here.
 // This will be executed immediately after each test is run.
+    QVERIFY(QApplication::topLevelWidgets().isEmpty());
 }
 
 void tst_QApplication::staticSetup()
@@ -721,11 +726,8 @@ void tst_QApplication::quitOnLastWindowClosed()
     {
         int argc = 0;
         QApplication app(argc, 0);
-        QTimer timer;
-        timer.setInterval(100);
 
         QSignalSpy spy(&app, SIGNAL(aboutToQuit()));
-        QSignalSpy spy2(&timer, SIGNAL(timeout()));
 
         CloseEventTestWindow mainWindow;
 
@@ -735,14 +737,14 @@ void tst_QApplication::quitOnLastWindowClosed()
         mainWindow.show();
         QVERIFY(QTest::qWaitForWindowExposed(&mainWindow));
 
-        timer.start();
-        QTimer::singleShot(1000, &mainWindow, SLOT(close())); // This should quit the application
-        QTimer::singleShot(2000, &app, SLOT(quit()));        // This makes sure we quit even if it didn't
+        QTimer::singleShot(1000, &mainWindow, SLOT(close())); // This should NOT quit the application (see CloseEventTestWindow)
+        quitApplicationTriggered = false;
+        QTimer::singleShot(2000, this, SLOT(quitApplication())); // This actually quits the application.
 
         app.exec();
 
         QCOMPARE(spy.count(), 1);
-        QVERIFY(spy2.count() > 15);      // Should be around 20 if closing did not caused the quit
+        QVERIFY(quitApplicationTriggered);
     }
     {
         int argc = 0;
@@ -770,24 +772,20 @@ void tst_QApplication::quitOnLastWindowClosed()
         QApplication app(argc, 0);
         QVERIFY(app.quitOnLastWindowClosed());
 
-        QTimer timer;
-        timer.setInterval(100);
-        QSignalSpy timerSpy(&timer, SIGNAL(timeout()));
-
         QWindow w;
         w.show();
 
         QWidget wid;
         wid.show();
 
-        timer.start();
         QTimer::singleShot(1000, &wid, SLOT(close())); // This should NOT quit the application because the
                                                        // QWindow is still there.
-        QTimer::singleShot(2000, &app, SLOT(quit()));  // This causes the quit.
+        quitApplicationTriggered = false;
+        QTimer::singleShot(2000, this, SLOT(quitApplication()));  // This causes the quit.
 
         app.exec();
 
-        QVERIFY(timerSpy.count() > 15);      // Should be around 20 if closing did not caused the quit
+        QVERIFY(quitApplicationTriggered);      // Should be around 20 if closing did not caused the quit
     }
     {   // QTBUG-31569: If the last widget with Qt::WA_QuitOnClose set is closed, other
         // widgets that don't have the attribute set should be closed automatically.
@@ -916,10 +914,10 @@ bool isPathListIncluded(const QStringList &l, const QStringList &r)
 #define QT_TST_QAPP_DEBUG
 void tst_QApplication::libraryPaths()
 {
-    {
 #ifndef Q_OS_WINCE
-        QString testDir = QFileInfo(QFINDTESTDATA("test/test.pro")).absolutePath();
-#else
+        const QString testDir = QFileInfo(QFINDTESTDATA("test/test.pro")).absolutePath();
+        QVERIFY(!testDir.isEmpty());
+#else // !Q_OS_WINCE
         // On Windows CE we need QApplication object to have valid
         // current Path. Therefore we need to identify it ourselves
         // here for the test.
@@ -927,8 +925,9 @@ void tst_QApplication::libraryPaths()
         wchar_t module_name[MAX_PATH];
         GetModuleFileName(0, module_name, MAX_PATH);
         filePath = QString::fromWCharArray(module_name);
-        QString testDir = filePath.path() + "/test";
-#endif
+        const QString testDir = filePath.path() + "/test";
+#endif // Q_OS_WINCE
+    {
         QApplication::setLibraryPaths(QStringList() << testDir);
         QCOMPARE(QApplication::libraryPaths(), (QStringList() << testDir));
 
@@ -964,8 +963,7 @@ void tst_QApplication::libraryPaths()
                             "\nexpected:\n - " + expected.join("\n - ")));
 
         // setting the library paths overrides everything
-        QString testDir = QFileInfo(QFINDTESTDATA("test/test.pro")).absolutePath();
-        QApplication::setLibraryPaths(QStringList() << testDir);
+         QApplication::setLibraryPaths(QStringList() << testDir);
         QVERIFY2(isPathListIncluded(QApplication::libraryPaths(), (QStringList() << testDir)),
                  qPrintable("actual:\n - " + QApplication::libraryPaths().join("\n - ") +
                             "\nexpected:\n - " + testDir));
@@ -987,7 +985,6 @@ void tst_QApplication::libraryPaths()
         qDebug() << "After adding plugins path:" << QApplication::libraryPaths();
 #endif
         QCOMPARE(QApplication::libraryPaths().count(), count);
-        QString testDir = QFileInfo(QFINDTESTDATA("test/test.pro")).absolutePath();
         QApplication::addLibraryPath(testDir);
         QCOMPARE(QApplication::libraryPaths().count(), count + 1);
 
@@ -1305,7 +1302,7 @@ void DeleteLaterWidget::checkDeleteLater()
 void tst_QApplication::testDeleteLater()
 {
 #ifdef Q_OS_MAC
-    QSKIP("This test fails and then hangs on Mac OS X, see QTBUG-24318");
+    QSKIP("This test fails and then hangs on OS X, see QTBUG-24318");
 #endif
     int argc = 0;
     QApplication app(argc, 0);
@@ -1849,6 +1846,7 @@ void tst_QApplication::execAfterExit()
     QCOMPARE(exitCode, 0);
 }
 
+#ifndef QT_NO_WHEELEVENT
 void tst_QApplication::wheelScrollLines()
 {
     int argc = 1;
@@ -1856,6 +1854,7 @@ void tst_QApplication::wheelScrollLines()
     // If wheelScrollLines returns 0, the mose wheel will be disabled.
     QVERIFY(app.wheelScrollLines() > 0);
 }
+#endif // !QT_NO_WHEELEVENT
 
 void tst_QApplication::style()
 {
@@ -1976,7 +1975,9 @@ public:
 
     TouchEventPropagationTestWidget(QWidget *parent = 0)
         : QWidget(parent), seenTouchEvent(false), acceptTouchEvent(false), seenMouseEvent(false), acceptMouseEvent(false)
-    { }
+    {
+        setAttribute(Qt::WA_TouchPadAcceptSingleTouchEvents);
+    }
 
     void reset()
     {
@@ -2011,9 +2012,6 @@ void tst_QApplication::touchEventPropagation()
 {
     int argc = 1;
     QApplication app(argc, &argv0);
-
-    const bool mouseEventSynthesizing = QGuiApplicationPrivate::platformIntegration()
-        ->styleHint(QPlatformIntegration::SynthesizeMouseFromTouchEvents).toBool();
 
     QList<QTouchEvent::TouchPoint> pressedTouchPoints;
     QTouchEvent::TouchPoint press(0);
@@ -2053,7 +2051,7 @@ void tst_QApplication::touchEventPropagation()
                                                  touchPointList(releasedTouchPoints));
         QCoreApplication::processEvents();
         QVERIFY(!window.seenTouchEvent);
-        QCOMPARE(window.seenMouseEvent, mouseEventSynthesizing); // QApplication may transform ignored touch events in mouse events
+        QVERIFY(window.seenMouseEvent); // QApplication may transform ignored touch events in mouse events
 
         window.reset();
         window.setAttribute(Qt::WA_AcceptTouchEvents);
@@ -2067,7 +2065,7 @@ void tst_QApplication::touchEventPropagation()
                                                  touchPointList(releasedTouchPoints));
         QCoreApplication::processEvents();
         QVERIFY(window.seenTouchEvent);
-        QCOMPARE(window.seenMouseEvent, mouseEventSynthesizing);
+        QVERIFY(window.seenMouseEvent);
 
         window.reset();
         window.acceptTouchEvent = true;
@@ -2090,11 +2088,12 @@ void tst_QApplication::touchEventPropagation()
         window.resize(200, 200);
         window.setObjectName("2. window");
         TouchEventPropagationTestWidget widget(&window);
+        widget.resize(200, 200);
         widget.setObjectName("2. widget");
         window.show();
         QVERIFY(QTest::qWaitForWindowExposed(&window));
-        pressedTouchPoints[0].setScreenPos(window.mapToGlobal(QPoint(0, 0)));
-        releasedTouchPoints[0].setScreenPos(window.mapToGlobal(QPoint(0, 0)));
+        pressedTouchPoints[0].setScreenPos(window.mapToGlobal(QPoint(50, 50)));
+        releasedTouchPoints[0].setScreenPos(window.mapToGlobal(QPoint(50, 50)));
 
         QWindowSystemInterface::handleTouchEvent(window.windowHandle(),
                                                  0,
@@ -2104,11 +2103,10 @@ void tst_QApplication::touchEventPropagation()
                                                  0,
                                                  device,
                                                  touchPointList(releasedTouchPoints));
-        QCoreApplication::processEvents();
+        QTRY_VERIFY(widget.seenMouseEvent);
         QVERIFY(!widget.seenTouchEvent);
-        QCOMPARE(widget.seenMouseEvent, mouseEventSynthesizing);
         QVERIFY(!window.seenTouchEvent);
-        QCOMPARE(window.seenMouseEvent, mouseEventSynthesizing);
+        QVERIFY(window.seenMouseEvent);
 
         window.reset();
         widget.reset();
@@ -2123,9 +2121,9 @@ void tst_QApplication::touchEventPropagation()
                                                  touchPointList(releasedTouchPoints));
         QCoreApplication::processEvents();
         QVERIFY(widget.seenTouchEvent);
-        QCOMPARE(widget.seenMouseEvent, mouseEventSynthesizing);
+        QVERIFY(widget.seenMouseEvent);
         QVERIFY(!window.seenTouchEvent);
-        QCOMPARE(window.seenMouseEvent, mouseEventSynthesizing);
+        QVERIFY(window.seenMouseEvent);
 
         window.reset();
         widget.reset();
@@ -2140,7 +2138,7 @@ void tst_QApplication::touchEventPropagation()
                                                  touchPointList(releasedTouchPoints));
         QCoreApplication::processEvents();
         QVERIFY(widget.seenTouchEvent);
-        QCOMPARE(widget.seenMouseEvent, mouseEventSynthesizing);
+        QVERIFY(widget.seenMouseEvent);
         QVERIFY(!window.seenTouchEvent);
         QVERIFY(!window.seenMouseEvent);
 
@@ -2175,9 +2173,9 @@ void tst_QApplication::touchEventPropagation()
                                                  touchPointList(releasedTouchPoints));
         QCoreApplication::processEvents();
         QVERIFY(!widget.seenTouchEvent);
-        QCOMPARE(widget.seenMouseEvent, mouseEventSynthesizing);
+        QVERIFY(widget.seenMouseEvent);
         QVERIFY(window.seenTouchEvent);
-        QCOMPARE(window.seenMouseEvent, mouseEventSynthesizing);
+        QVERIFY(window.seenMouseEvent);
 
         window.reset();
         widget.reset();
@@ -2192,13 +2190,13 @@ void tst_QApplication::touchEventPropagation()
                                                  touchPointList(releasedTouchPoints));
         QCoreApplication::processEvents();
         QVERIFY(!widget.seenTouchEvent);
-        QCOMPARE(widget.seenMouseEvent, mouseEventSynthesizing);
+        QVERIFY(!widget.seenMouseEvent);
         QVERIFY(window.seenTouchEvent);
         QVERIFY(!window.seenMouseEvent);
 
         window.reset();
         widget.reset();
-        widget.acceptMouseEvent = true; // it matters, touch events are propagated in parallel to synthesized mouse events
+        widget.acceptMouseEvent = true; // doesn't matter, touch events are propagated first
         window.acceptTouchEvent = true;
         QWindowSystemInterface::handleTouchEvent(window.windowHandle(),
                                                  0,
@@ -2210,8 +2208,8 @@ void tst_QApplication::touchEventPropagation()
                                                  touchPointList(releasedTouchPoints));
         QCoreApplication::processEvents();
         QVERIFY(!widget.seenTouchEvent);
-        QCOMPARE(widget.seenMouseEvent, mouseEventSynthesizing);
-        QCOMPARE(!window.seenTouchEvent, mouseEventSynthesizing);
+        QVERIFY(!widget.seenMouseEvent);
+        QVERIFY(window.seenTouchEvent);
         QVERIFY(!window.seenMouseEvent);
     }
 }
@@ -2307,10 +2305,43 @@ void tst_QApplication::abortQuitOnShow()
     QCOMPARE(app.exec(), 1);
 }
 
+// Test that static functions do not crash if there is no application instance.
+void tst_QApplication::staticFunctions()
+{
+    QApplication::setStyle(QStringLiteral("blub"));
+    QApplication::colorSpec();
+    QApplication::setColorSpec(42);
+    QApplication::allWidgets();
+    QApplication::topLevelWidgets();
+    QApplication::desktop();
+    QApplication::activePopupWidget();
+    QApplication::activeModalWidget();
+    QApplication::focusWidget();
+    QApplication::activeWindow();
+    QApplication::setActiveWindow(Q_NULLPTR);
+    QApplication::widgetAt(QPoint(0, 0));
+    QApplication::topLevelAt(QPoint(0, 0));
+    QApplication::setGlobalStrut(QSize(0, 0));
+    QApplication::globalStrut();
+    QApplication::isEffectEnabled(Qt::UI_General);
+    QApplication::setEffectEnabled(Qt::UI_General, false);
+}
+
+void tst_QApplication::settableStyleHints_data()
+{
+    QTest::addColumn<bool>("appInstance");
+    QTest::newRow("app") << true;
+    QTest::newRow("no-app") << false;
+}
+
 void tst_QApplication::settableStyleHints()
 {
+    QFETCH(bool, appInstance);
     int argc = 0;
-    QApplication app(argc, 0);
+    QScopedPointer<QApplication> app;
+    if (appInstance)
+        app.reset(new QApplication(argc, 0));
+
     QApplication::setCursorFlashTime(437);
     QCOMPARE(QApplication::cursorFlashTime(), 437);
     QApplication::setDoubleClickInterval(128);
@@ -2373,6 +2404,12 @@ void tst_QApplication::globalStaticObjectDestruction()
 #ifndef QTEST_NO_CURSOR
     QVERIFY(tst_qapp_cursor());
 #endif
+}
+
+void tst_QApplication::quitApplication()
+{
+    quitApplicationTriggered = true;
+    qApp->quit();
 }
 
 //QTEST_APPLESS_MAIN(tst_QApplication)

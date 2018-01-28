@@ -1,39 +1,31 @@
 /****************************************************************************
 **
-** Copyright (C) 2013 Digia Plc and/or its subsidiary(-ies).
-** Contact: http://www.qt-project.org/legal
+** Copyright (C) 2015 The Qt Company Ltd.
+** Contact: http://www.qt.io/licensing/
 **
 ** This file is part of the QtCore module of the Qt Toolkit.
 **
-** $QT_BEGIN_LICENSE:LGPL$
+** $QT_BEGIN_LICENSE:LGPL21$
 ** Commercial License Usage
 ** Licensees holding valid commercial Qt licenses may use this file in
 ** accordance with the commercial license agreement provided with the
 ** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and Digia.  For licensing terms and
-** conditions see http://qt.digia.com/licensing.  For further information
-** use the contact form at http://qt.digia.com/contact-us.
+** a written agreement between you and The Qt Company. For licensing terms
+** and conditions see http://www.qt.io/terms-conditions. For further
+** information use the contact form at http://www.qt.io/contact-us.
 **
 ** GNU Lesser General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 2.1 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU Lesser General Public License version 2.1 requirements
-** will be met: http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
+** General Public License version 2.1 or version 3 as published by the Free
+** Software Foundation and appearing in the file LICENSE.LGPLv21 and
+** LICENSE.LGPLv3 included in the packaging of this file. Please review the
+** following information to ensure the GNU Lesser General Public License
+** requirements will be met: https://www.gnu.org/licenses/lgpl.html and
+** http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
 **
-** In addition, as a special exception, Digia gives you certain additional
-** rights.  These rights are described in the Digia Qt LGPL Exception
+** As a special exception, The Qt Company gives you certain additional
+** rights. These rights are described in The Qt Company LGPL Exception
 ** version 1.1, included in the file LGPL_EXCEPTION.txt in this package.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3.0 as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU General Public License version 3.0 requirements will be
-** met: http://www.gnu.org/copyleft/gpl.html.
-**
 **
 ** $QT_END_LICENSE$
 **
@@ -56,6 +48,7 @@
 #include "qplatformdefs.h"
 #include "QtCore/qatomic.h"
 #include "QtCore/qdatetime.h"
+#include "QtCore/qpair.h"
 
 #include "qtimezone.h"
 
@@ -87,10 +80,9 @@ public:
     enum StatusFlag {
         NullDate            = 0x01,
         NullTime            = 0x02,
-        ValidDate           = 0x04,
-        ValidTime           = 0x08,
-        ValidDateTime       = 0x10,
-        TimeZoneCached      = 0x20,
+        ValidDate           = 0x04, // just the date field
+        ValidTime           = 0x08, // just the time field
+        ValidDateTime       = 0x10, // the whole object (including timezone)
         SetToStandardTime   = 0x40,
         SetToDaylightTime   = 0x80
     };
@@ -109,15 +101,8 @@ public:
     QDateTimePrivate(const QDate &toDate, const QTime &toTime, const QTimeZone & timeZone);
 #endif // QT_BOOTSTRAPPED
 
-    QDateTimePrivate(const QDateTimePrivate &other) : QSharedData(other),
-                                                      m_msecs(other.m_msecs),
-                                                      m_spec(other.m_spec),
-                                                      m_offsetFromUtc(other.m_offsetFromUtc),
-#ifndef QT_BOOTSTRAPPED
-                                                      m_timeZone(other.m_timeZone),
-#endif // QT_BOOTSTRAPPED
-                                                      m_status(other.m_status)
-    {}
+    // ### XXX: when the tooling situation improves, look at fixing the padding.
+    // 4 bytes padding
 
     qint64 m_msecs;
     Qt::TimeSpec m_spec;
@@ -129,33 +114,30 @@ public:
 
     void setTimeSpec(Qt::TimeSpec spec, int offsetSeconds);
     void setDateTime(const QDate &date, const QTime &time);
-    void getDateTime(QDate *date, QTime *time) const;
+    QPair<QDate, QTime> getDateTime() const;
 
     void setDaylightStatus(DaylightStatus status);
     DaylightStatus daylightStatus() const;
 
     // Returns msecs since epoch, assumes offset value is current
-    inline qint64 toMSecsSinceEpoch() const { return (m_msecs - (m_offsetFromUtc * 1000)); }
+    inline qint64 toMSecsSinceEpoch() const;
 
     void checkValidDateTime();
     void refreshDateTime();
 
     // Get/set date and time status
-    inline bool isNullDate() const { return (m_status & NullDate) == NullDate; }
-    inline bool isNullTime() const { return (m_status & NullTime) == NullTime; }
-    inline bool isValidDate() const { return (m_status & ValidDate) == ValidDate; }
-    inline bool isValidTime() const { return (m_status & ValidTime) == ValidTime; }
-    inline bool isValidDateTime() const { return (m_status & ValidDateTime) == ValidDateTime; }
-    inline void setValidDateTime() { m_status = m_status | ValidDateTime; }
-    inline void clearValidDateTime() { m_status = m_status & ~ValidDateTime; }
-    inline bool isTimeZoneCached() const { return (m_status & TimeZoneCached) == TimeZoneCached; }
-    inline void setTimeZoneCached() { m_status = m_status | TimeZoneCached; }
-    inline void clearTimeZoneCached() { m_status = m_status & ~TimeZoneCached; }
-    inline void clearSetToDaylightStatus() { m_status = m_status & ~SetToStandardTime & ~SetToDaylightTime; }
+    inline bool isNullDate() const { return m_status & NullDate; }
+    inline bool isNullTime() const { return m_status & NullTime; }
+    inline bool isValidDate() const { return m_status & ValidDate; }
+    inline bool isValidTime() const { return m_status & ValidTime; }
+    inline bool isValidDateTime() const { return m_status & ValidDateTime; }
+    inline void setValidDateTime() { m_status |= ValidDateTime; }
+    inline void clearValidDateTime() { m_status &= ~ValidDateTime; }
+    inline void clearSetToDaylightStatus() { m_status &= ~(SetToStandardTime | SetToDaylightTime); }
 
 #ifndef QT_BOOTSTRAPPED
     static qint64 zoneMSecsToEpochMSecs(qint64 msecs, const QTimeZone &zone,
-                                        QDate *localDate, QTime *localTime);
+                                        QDate *localDate = 0, QTime *localTime = 0);
 #endif // QT_BOOTSTRAPPED
 
     static inline qint64 minJd() { return QDate::minJd(); }

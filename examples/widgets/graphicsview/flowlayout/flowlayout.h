@@ -1,7 +1,7 @@
 /****************************************************************************
 **
-** Copyright (C) 2013 Digia Plc and/or its subsidiary(-ies).
-** Contact: http://www.qt-project.org/legal
+** Copyright (C) 2015 The Qt Company Ltd.
+** Contact: http://www.qt.io/licensing/
 **
 ** This file is part of the examples of the Qt Toolkit.
 **
@@ -17,8 +17,8 @@
 **     notice, this list of conditions and the following disclaimer in
 **     the documentation and/or other materials provided with the
 **     distribution.
-**   * Neither the name of Digia Plc and its Subsidiary(-ies) nor the names
-**     of its contributors may be used to endorse or promote products derived
+**   * Neither the name of The Qt Company Ltd nor the names of its
+**     contributors may be used to endorse or promote products derived
 **     from this software without specific prior written permission.
 **
 **
@@ -50,14 +50,14 @@ public:
     qreal spacing(Qt::Orientation o) const;
 
     // inherited functions
-    void setGeometry(const QRectF &geom);
+    void setGeometry(const QRectF &geom) Q_DECL_OVERRIDE;
 
-    int count() const;
-    QGraphicsLayoutItem *itemAt(int index) const;
-    void removeAt(int index);
+    int count() const Q_DECL_OVERRIDE;
+    QGraphicsLayoutItem *itemAt(int index) const Q_DECL_OVERRIDE;
+    void removeAt(int index) Q_DECL_OVERRIDE;
 
 protected:
-    QSizeF sizeHint(Qt::SizeHint which, const QSizeF &constraint = QSizeF()) const;
+    QSizeF sizeHint(Qt::SizeHint which, const QSizeF &constraint = QSizeF()) const Q_DECL_OVERRIDE;
 
 private:
     qreal doLayout(const QRectF &geom, bool applyNewGeometry) const;

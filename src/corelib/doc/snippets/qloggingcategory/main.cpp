@@ -1,7 +1,7 @@
 /****************************************************************************
 **
-** Copyright (C) 2013 Digia Plc and/or its subsidiary(-ies).
-** Contact: http://www.qt-project.org/legal
+** Copyright (C) 2015 The Qt Company Ltd.
+** Contact: http://www.qt.io/licensing/
 **
 ** This file is part of the examples of the Qt Toolkit.
 **
@@ -17,8 +17,8 @@
 **     notice, this list of conditions and the following disclaimer in
 **     the documentation and/or other materials provided with the
 **     distribution.
-**   * Neither the name of Digia Plc and its Subsidiary(-ies) nor the names
-**     of its contributors may be used to endorse or promote products derived
+**   * Neither the name of The Qt Company Ltd nor the names of its
+**     contributors may be used to endorse or promote products derived
 **     from this software without specific prior written permission.
 **
 **
@@ -43,12 +43,15 @@
 
 //![1]
 // in a header
-Q_DECLARE_LOGGING_CATEGORY(QT_DRIVER_USB)
+Q_DECLARE_LOGGING_CATEGORY(driverUsb)
 
 // in one source file
-Q_LOGGING_CATEGORY(QT_DRIVER_USB, "qt.driver.usb")
+Q_LOGGING_CATEGORY(driverUsb, "driver.usb")
 //![1]
 
+//![5]
+Q_LOGGING_CATEGORY(driverUsbEvents, "driver.usb.events", QtWarningMsg)
+//![5]
 
 // Completely made up example, inspired by en.wikipedia.org/wiki/USB :)
 struct UsbEntry {
@@ -56,10 +59,11 @@ struct UsbEntry {
     int classtype;
 };
 
-QDebug operator<<(QDebug &dbg, const UsbEntry &entry)
+QDebug operator<<(QDebug &debug, const UsbEntry &entry)
 {
-    dbg.nospace() << "" << entry.id << " (" << entry.classtype << ")";
-    return dbg.space();
+    QDebugStateSaver saver(debug);
+    debug.nospace() << "" << entry.id << " (" << entry.classtype << ')';
+    return debug;
 }
 
 QList<UsbEntry> usbEntries() {
@@ -76,8 +80,8 @@ QLoggingCategory::CategoryFilter oldCategoryFilter;
 
 void myCategoryFilter(QLoggingCategory *category)
 {
-    // configure qt.driver.usb category here, otherwise forward to to default filter.
-    if (qstrcmp(category->categoryName(), "qt.driver.usb") == 0)
+    // configure driver.usb category here, otherwise forward to to default filter.
+    if (qstrcmp(category->categoryName(), "driver.usb") == 0)
         category->setEnabled(QtDebugMsg, true);
     else
         oldCategoryFilter(category);
@@ -89,7 +93,7 @@ int main(int argc, char *argv[])
     QCoreApplication a(argc, argv);
 
 //![2]
-    QLoggingCategory::setFilterRules(QStringLiteral("qt.driver.usb.debug=true"));
+    QLoggingCategory::setFilterRules(QStringLiteral("driver.usb.debug=true"));
 //![2]
 
 //![22]
@@ -103,48 +107,60 @@ oldCategoryFilter = QLoggingCategory::installFilter(myCategoryFilter);
 //![3]
 
 //![4]
-    // usbEntries() will only be called if QT_DRIVER_USB category is enabled
-    qCDebug(QT_DRIVER_USB) << "devices: " << usbEntries();
+    // usbEntries() will only be called if driverUsb category is enabled
+    qCDebug(driverUsb) << "devices: " << usbEntries();
 //![4]
 
     {
 //![10]
-    QLoggingCategory category("qt.driver.usb");
+    QLoggingCategory category("driver.usb");
     qCDebug(category) << "a debug message";
 //![10]
     }
 
+//![qcinfo_stream]
+    QLoggingCategory category("driver.usb");
+    qCInfo(category) << "an informational message";
+//![qcinfo_stream]
+
     {
 //![11]
-    QLoggingCategory category("qt.driver.usb");
+    QLoggingCategory category("driver.usb");
     qCWarning(category) << "a warning message";
 //![11]
     }
 
     {
 //![12]
-    QLoggingCategory category("qt.driver.usb");
+    QLoggingCategory category("driver.usb");
     qCCritical(category) << "a critical message";
 //![12]
     }
 
     {
 //![13]
-    QLoggingCategory category("qt.driver.usb");
+    QLoggingCategory category("driver.usb");
     qCDebug(category, "a debug message logged into category %s", category.categoryName());
 //![13]
     }
 
     {
+//![qcinfo_printf]
+    QLoggingCategory category("driver.usb");
+    qCInfo(category, "an informational message logged into category %s", category.categoryName());
+//![qcinfo_printf]
+    }
+
+    {
 //![14]
-    QLoggingCategory category("qt.driver.usb");
+    QLoggingCategory category("driver.usb");
     qCWarning(category, "a warning message logged into category %s", category.categoryName());
 //![14]
     }
 
     {
 //![15]
-    QLoggingCategory category("qt.driver.usb");
+    QLoggingCategory category("driver.usb");
     qCCritical(category, "a critical message logged into category %s", category.categoryName());
 //![15]
     }

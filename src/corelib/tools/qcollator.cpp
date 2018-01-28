@@ -1,40 +1,32 @@
 /****************************************************************************
 **
-** Copyright (C) 2013 Digia Plc and/or its subsidiary(-ies).
+** Copyright (C) 2015 The Qt Company Ltd.
 ** Copyright (C) 2013 Aleix Pol Gonzalez <aleixpol@kde.org>
-** Contact: http://www.qt-project.org/legal
+** Contact: http://www.qt.io/licensing/
 **
 ** This file is part of the QtCore module of the Qt Toolkit.
 **
-** $QT_BEGIN_LICENSE:LGPL$
+** $QT_BEGIN_LICENSE:LGPL21$
 ** Commercial License Usage
 ** Licensees holding valid commercial Qt licenses may use this file in
 ** accordance with the commercial license agreement provided with the
 ** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and Digia.  For licensing terms and
-** conditions see http://qt.digia.com/licensing.  For further information
-** use the contact form at http://qt.digia.com/contact-us.
+** a written agreement between you and The Qt Company. For licensing terms
+** and conditions see http://www.qt.io/terms-conditions. For further
+** information use the contact form at http://www.qt.io/contact-us.
 **
 ** GNU Lesser General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 2.1 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU Lesser General Public License version 2.1 requirements
-** will be met: http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
+** General Public License version 2.1 or version 3 as published by the Free
+** Software Foundation and appearing in the file LICENSE.LGPLv21 and
+** LICENSE.LGPLv3 included in the packaging of this file. Please review the
+** following information to ensure the GNU Lesser General Public License
+** requirements will be met: https://www.gnu.org/licenses/lgpl.html and
+** http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
 **
-** In addition, as a special exception, Digia gives you certain additional
-** rights.  These rights are described in the Digia Qt LGPL Exception
+** As a special exception, The Qt Company gives you certain additional
+** rights. These rights are described in The Qt Company LGPL Exception
 ** version 1.1, included in the file LGPL_EXCEPTION.txt in this package.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3.0 as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU General Public License version 3.0 requirements will be
-** met: http://www.gnu.org/copyleft/gpl.html.
-**
 **
 ** $QT_END_LICENSE$
 **
@@ -74,7 +66,7 @@ QT_BEGIN_NAMESPACE
 
 /*!
     Constructs a QCollator from \a locale. If \a locale is not specified
-    QLocale::default() will be used.
+    the system's default locale is used.
 
     \sa setLocale()
  */
@@ -117,8 +109,8 @@ QCollator &QCollator::operator=(const QCollator &other)
     return *this;
 }
 
-/*
-    \fn void QCollator::QCollator(QCollator &&other)
+/*!
+    \fn QCollator::QCollator(QCollator &&other)
 
     Move constructor. Moves from \a other into this collator.
 
@@ -127,8 +119,8 @@ QCollator &QCollator::operator=(const QCollator &other)
     one of the assignment operators is undefined.
 */
 
-/*
-    \fn QCollator &QCollator::operator=(QCollator &&other)
+/*!
+    \fn QCollator & QCollator::operator=(QCollator && other)
 
     Move-assigns from \a other to this collator.
 
@@ -166,10 +158,12 @@ void QCollator::detach()
  */
 void QCollator::setLocale(const QLocale &locale)
 {
+    if (locale == d->locale)
+        return;
+
     detach();
-    d->clear();
     d->locale = locale;
-    d->init();
+    d->dirty = true;
 }
 
 /*!
@@ -187,6 +181,15 @@ QLocale QCollator::locale() const
 
     \sa caseSensitivity()
  */
+void QCollator::setCaseSensitivity(Qt::CaseSensitivity cs)
+{
+    if (d->caseSensitivity == cs)
+        return;
+
+    detach();
+    d->caseSensitivity = cs;
+    d->dirty = true;
+}
 
 /*!
     \fn Qt::CaseSensitivity QCollator::caseSensitivity() const
@@ -195,6 +198,10 @@ QLocale QCollator::locale() const
 
     \sa setCaseSensitivity()
  */
+Qt::CaseSensitivity QCollator::caseSensitivity() const
+{
+    return d->caseSensitivity;
+}
 
 /*!
     \fn void QCollator::setNumericMode(bool on)
@@ -212,6 +219,15 @@ QLocale QCollator::locale() const
 
     \sa numericMode()
  */
+void QCollator::setNumericMode(bool on)
+{
+    if (d->numericMode == on)
+        return;
+
+    detach();
+    d->numericMode = on;
+    d->dirty = true;
+}
 
 /*!
     \fn bool QCollator::numericMode() const
@@ -220,6 +236,10 @@ QLocale QCollator::locale() const
 
     \sa setNumericMode()
  */
+bool QCollator::numericMode() const
+{
+    return d->numericMode;
+}
 
 /*!
     \fn void QCollator::setIgnorePunctuation(bool on)
@@ -230,6 +250,15 @@ QLocale QCollator::locale() const
 
     \sa ignorePunctuation()
  */
+void QCollator::setIgnorePunctuation(bool on)
+{
+    if (d->ignorePunctuation == on)
+        return;
+
+    detach();
+    d->ignorePunctuation = on;
+    d->dirty = true;
+}
 
 /*!
     \fn bool QCollator::ignorePunctuation() const
@@ -238,12 +267,16 @@ QLocale QCollator::locale() const
 
     \sa setIgnorePunctuation()
  */
+bool QCollator::ignorePunctuation() const
+{
+    return d->ignorePunctuation;
+}
 
 /*!
     \fn int QCollator::compare(const QString &s1, const QString &s2) const
 
-    Compares \a s1 with \a s2. Returns -1, 0 or 1 depending on whether \a s1 is
-    smaller, equal or larger than \a s2.
+    Compares \a s1 with \a s2. Returns an integer less than, equal to, or greater than zero
+    depending on whether \a s1 is smaller, equal or larger than \a s2.
  */
 
 /*!
@@ -255,8 +288,8 @@ QLocale QCollator::locale() const
     \fn int QCollator::compare(const QStringRef &s1, const QStringRef &s2) const
     \overload
 
-    Compares \a s1 with \a s2. Returns -1, 0 or 1 depending on whether \a s1 is
-    smaller, equal or larger than \a s2.
+    Compares \a s1 with \a s2. Returns an integer less than, equal to, or greater than zero
+    depending on whether \a s1 is smaller, equal or larger than \a s2.
  */
 
 /*!
@@ -266,8 +299,9 @@ QLocale QCollator::locale() const
     Compares \a s1 with \a s2. \a len1 and \a len2 specify the length of the
     QChar arrays pointer to by \a s1 and \a s2.
 
-    Returns -1, 0 or 1 depending on whether \a s1 is smaller, equal or larger than \a s2.
- */
+    Returns an integer less than, equal to, or greater than zero
+    depending on whether \a s1 is smaller, equal or larger than \a s2.
+*/
 
 /*!
     \fn QCollatorSortKey QCollator::sortKey(const QString &string) const
@@ -333,6 +367,12 @@ QCollatorSortKey& QCollatorSortKey::operator=(const QCollatorSortKey &other)
 }
 
 /*!
+    \fn QCollatorSortKey &QCollatorSortKey::operator=(QCollatorSortKey && other)
+
+    Move-assigns \a other to this collator key.
+*/
+
+/*!
     \fn bool operator<(const QCollatorSortKey &lhs, const QCollatorSortKey &rhs)
     \relates QCollatorSortKey
 
@@ -341,6 +381,12 @@ QCollatorSortKey& QCollatorSortKey::operator=(const QCollatorSortKey &other)
 
     \sa QCollatorSortKey::compare()
  */
+
+/*!
+    \fn void QCollatorSortKey::swap(QCollatorSortKey & other)
+
+    Swaps this collator key with \a other.
+*/
 
 /*!
     \fn int QCollatorSortKey::compare(const QCollatorSortKey &otherKey) const

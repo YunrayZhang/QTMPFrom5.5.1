@@ -1,7 +1,7 @@
 /****************************************************************************
 **
-** Copyright (C) 2013 Digia Plc and/or its subsidiary(-ies).
-** Contact: http://www.qt-project.org/legal
+** Copyright (C) 2015 The Qt Company Ltd.
+** Contact: http://www.qt.io/licensing/
 **
 ** This file is part of the examples of the Qt Toolkit.
 **
@@ -17,8 +17,8 @@
 **     notice, this list of conditions and the following disclaimer in
 **     the documentation and/or other materials provided with the
 **     distribution.
-**   * Neither the name of Digia Plc and its Subsidiary(-ies) nor the names
-**     of its contributors may be used to endorse or promote products derived
+**   * Neither the name of The Qt Company Ltd nor the names of its
+**     contributors may be used to endorse or promote products derived
 **     from this software without specific prior written permission.
 **
 **
@@ -56,9 +56,14 @@ Renderer::Renderer(const QSurfaceFormat &format, Renderer *share, QScreen *scree
     if (share)
         m_context->setShareContext(share->m_context);
     m_context->create();
+
+    m_backgroundColor = QColor::fromRgbF(0.1f, 0.1f, 0.2f, 1.0f);
+    m_backgroundColor.setRed(qrand() % 64);
+    m_backgroundColor.setGreen(qrand() % 128);
+    m_backgroundColor.setBlue(qrand() % 256);
 }
 
-HelloWindow::HelloWindow(const QSharedPointer<Renderer> &renderer)
+HelloWindow::HelloWindow(const QSharedPointer<Renderer> &renderer, QScreen *screen)
     : m_colorIndex(0), m_renderer(renderer)
 {
     setSurfaceType(QWindow::OpenGLSurface);
@@ -67,6 +72,8 @@ HelloWindow::HelloWindow(const QSharedPointer<Renderer> &renderer)
     setGeometry(QRect(10, 10, 640, 480));
 
     setFormat(renderer->format());
+    if (screen)
+        setScreen(screen);
 
     create();
 
@@ -145,14 +152,22 @@ void Renderer::render()
 
     QOpenGLFunctions *f = m_context->functions();
     f->glViewport(0, 0, viewSize.width() * surface->devicePixelRatio(), viewSize.height() * surface->devicePixelRatio());
-
-    f->glClearColor(0.1f, 0.1f, 0.2f, 1.0f);
     f->glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
+    f->glClearColor(m_backgroundColor.redF(), m_backgroundColor.greenF(), m_backgroundColor.blueF(), m_backgroundColor.alphaF());
     f->glFrontFace(GL_CW);
     f->glCullFace(GL_FRONT);
     f->glEnable(GL_CULL_FACE);
     f->glEnable(GL_DEPTH_TEST);
+
+    m_program->bind();
+    m_vbo.bind();
+
+    m_program->enableAttributeArray(vertexAttr);
+    m_program->enableAttributeArray(normalAttr);
+    m_program->setAttributeBuffer(vertexAttr, GL_FLOAT, 0, 3);
+    const int verticesSize = vertices.count() * 3 * sizeof(GLfloat);
+    m_program->setAttributeBuffer(normalAttr, GL_FLOAT, verticesSize, 3);
 
     QMatrix4x4 modelview;
     modelview.rotate(m_fAngle, 0.0f, 1.0f, 0.0f);
@@ -160,14 +175,10 @@ void Renderer::render()
     modelview.rotate(m_fAngle, 0.0f, 0.0f, 1.0f);
     modelview.translate(0.0f, -0.2f, 0.0f);
 
-    m_program->bind();
     m_program->setUniformValue(matrixUniform, modelview);
     m_program->setUniformValue(colorUniform, color);
-    paintQtLogo();
-    m_program->release();
 
-    f->glDisable(GL_DEPTH_TEST);
-    f->glDisable(GL_CULL_FACE);
+    m_context->functions()->glDrawArrays(GL_TRIANGLES, 0, vertices.size());
 
     m_context->swapBuffers(surface);
 
@@ -176,19 +187,13 @@ void Renderer::render()
     QTimer::singleShot(0, this, SLOT(render()));
 }
 
-void Renderer::paintQtLogo()
-{
-    m_program->enableAttributeArray(normalAttr);
-    m_program->enableAttributeArray(vertexAttr);
-    m_program->setAttributeArray(vertexAttr, vertices.constData());
-    m_program->setAttributeArray(normalAttr, normals.constData());
-    glDrawArrays(GL_TRIANGLES, 0, vertices.size());
-    m_program->disableAttributeArray(normalAttr);
-    m_program->disableAttributeArray(vertexAttr);
-}
+Q_GLOBAL_STATIC(QMutex, initMutex)
 
 void Renderer::initialize()
 {
+    // Threaded shader compilation can confuse some drivers. Avoid it.
+    QMutexLocker lock(initMutex());
+
     QOpenGLShader *vshader = new QOpenGLShader(QOpenGLShader::Vertex, this);
     vshader->compileSourceCode(
         "attribute highp vec4 vertex;"
@@ -218,6 +223,7 @@ void Renderer::initialize()
     m_program->addShader(vshader);
     m_program->addShader(fshader);
     m_program->link();
+    m_program->bind();
 
     vertexAttr = m_program->attributeLocation("vertex");
     normalAttr = m_program->attributeLocation("normal");
@@ -226,6 +232,13 @@ void Renderer::initialize()
 
     m_fAngle = 0;
     createGeometry();
+
+    m_vbo.create();
+    m_vbo.bind();
+    const int verticesSize = vertices.count() * 3 * sizeof(GLfloat);
+    m_vbo.allocate(verticesSize * 2);
+    m_vbo.write(0, vertices.constData(), verticesSize);
+    m_vbo.write(verticesSize, normals.constData(), verticesSize);
 }
 
 void Renderer::createGeometry()

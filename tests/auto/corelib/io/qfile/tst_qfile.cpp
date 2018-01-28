@@ -1,39 +1,31 @@
 /****************************************************************************
 **
-** Copyright (C) 2013 Digia Plc and/or its subsidiary(-ies).
-** Contact: http://www.qt-project.org/legal
+** Copyright (C) 2015 The Qt Company Ltd.
+** Contact: http://www.qt.io/licensing/
 **
 ** This file is part of the test suite of the Qt Toolkit.
 **
-** $QT_BEGIN_LICENSE:LGPL$
+** $QT_BEGIN_LICENSE:LGPL21$
 ** Commercial License Usage
 ** Licensees holding valid commercial Qt licenses may use this file in
 ** accordance with the commercial license agreement provided with the
 ** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and Digia.  For licensing terms and
-** conditions see http://qt.digia.com/licensing.  For further information
-** use the contact form at http://qt.digia.com/contact-us.
+** a written agreement between you and The Qt Company. For licensing terms
+** and conditions see http://www.qt.io/terms-conditions. For further
+** information use the contact form at http://www.qt.io/contact-us.
 **
 ** GNU Lesser General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 2.1 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU Lesser General Public License version 2.1 requirements
-** will be met: http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
+** General Public License version 2.1 or version 3 as published by the Free
+** Software Foundation and appearing in the file LICENSE.LGPLv21 and
+** LICENSE.LGPLv3 included in the packaging of this file. Please review the
+** following information to ensure the GNU Lesser General Public License
+** requirements will be met: https://www.gnu.org/licenses/lgpl.html and
+** http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
 **
-** In addition, as a special exception, Digia gives you certain additional
-** rights.  These rights are described in the Digia Qt LGPL Exception
+** As a special exception, The Qt Company gives you certain additional
+** rights. These rights are described in The Qt Company LGPL Exception
 ** version 1.1, included in the file LGPL_EXCEPTION.txt in this package.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3.0 as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU General Public License version 3.0 requirements will be
-** met: http://www.gnu.org/copyleft/gpl.html.
-**
 **
 ** $QT_END_LICENSE$
 **
@@ -147,7 +139,7 @@ private slots:
     void readAll_data();
     void readAll();
     void readAllBuffer();
-#if !defined(Q_OS_WINCE) && !defined(QT_NO_PROCESS)
+#if !defined(Q_OS_WINCE)
     void readAllStdin();
     void readLineStdin();
     void readLineStdin_lineByLine();
@@ -876,9 +868,12 @@ void tst_QFile::readAllBuffer()
     QFile::remove(fileName);
 }
 
-#if !defined(Q_OS_WINCE) && !defined(QT_NO_PROCESS)
+#if !defined(Q_OS_WINCE)
 void tst_QFile::readAllStdin()
 {
+#ifdef QT_NO_PROCESS
+    QSKIP("No qprocess support", SkipAll);
+#else
     QByteArray lotsOfData(1024, '@'); // 10 megs
 
     QProcess process;
@@ -895,11 +890,14 @@ void tst_QFile::readAllStdin()
     process.closeWriteChannel();
     process.waitForFinished();
     QCOMPARE(process.readAll().size(), lotsOfData.size() * 5);
+#endif
 }
 
 void tst_QFile::readLineStdin()
 {
-
+#ifdef QT_NO_PROCESS
+    QSKIP("No qprocess support", SkipAll);
+#else
     QByteArray lotsOfData(1024, '@'); // 10 megs
     for (int i = 0; i < lotsOfData.size(); ++i) {
         if ((i % 32) == 31)
@@ -934,10 +932,14 @@ void tst_QFile::readLineStdin()
                 QCOMPARE(char(array[i]), char('0' + i % 32));
         }
     }
+#endif
 }
 
 void tst_QFile::readLineStdin_lineByLine()
 {
+#ifdef QT_NO_PROCESS
+    QSKIP("No qprocess support", SkipAll);
+#else
     for (int i = 0; i < 2; ++i) {
         QProcess process;
         process.start(m_stdinProcessDir + QStringLiteral("/stdinprocess"),
@@ -957,6 +959,7 @@ void tst_QFile::readLineStdin_lineByLine()
         process.closeWriteChannel();
         QVERIFY(process.waitForFinished(5000));
     }
+#endif
 }
 #endif
 
@@ -2189,7 +2192,7 @@ void tst_QFile::removeOpenFile()
         bool opened = f.open(QIODevice::ReadOnly);
         QVERIFY(opened);
         f.readAll();
-        // this used to only fail on FreeBSD (and Mac OS X)
+        // this used to only fail on FreeBSD (and OS X)
         QVERIFY(f.flush());
         bool removed = f.remove(); // remove should both close and remove the file
         QVERIFY(removed);
@@ -2331,7 +2334,7 @@ void tst_QFile::readFromWriteOnlyFile()
     QFile file("writeonlyfile");
     QVERIFY(file.open(QFile::WriteOnly));
     char c;
-    QTest::ignoreMessage(QtWarningMsg, "QIODevice::read: WriteOnly device");
+    QTest::ignoreMessage(QtWarningMsg, "QIODevice::read (QFile, \"writeonlyfile\"): WriteOnly device");
     QCOMPARE(file.read(&c, 1), qint64(-1));
 }
 
@@ -2340,7 +2343,7 @@ void tst_QFile::writeToReadOnlyFile()
     QFile file("readonlyfile");
     QVERIFY(file.open(QFile::ReadOnly));
     char c = 0;
-    QTest::ignoreMessage(QtWarningMsg, "QIODevice::write: ReadOnly device");
+    QTest::ignoreMessage(QtWarningMsg, "QIODevice::write (QFile, \"readonlyfile\"): ReadOnly device");
     QCOMPARE(file.write(&c, 1), qint64(-1));
 }
 
@@ -3030,17 +3033,21 @@ void tst_QFile::mapResource()
 void tst_QFile::mapOpenMode_data()
 {
     QTest::addColumn<int>("openMode");
+    QTest::addColumn<int>("flags");
 
-    QTest::newRow("ReadOnly") << int(QIODevice::ReadOnly);
+    QTest::newRow("ReadOnly") << int(QIODevice::ReadOnly) << int(QFileDevice::NoOptions);
     //QTest::newRow("WriteOnly") << int(QIODevice::WriteOnly); // this doesn't make sense
-    QTest::newRow("ReadWrite") << int(QIODevice::ReadWrite);
-    QTest::newRow("ReadOnly,Unbuffered") << int(QIODevice::ReadOnly | QIODevice::Unbuffered);
-    QTest::newRow("ReadWrite,Unbuffered") << int(QIODevice::ReadWrite | QIODevice::Unbuffered);
+    QTest::newRow("ReadWrite") << int(QIODevice::ReadWrite) << int(QFileDevice::NoOptions);
+    QTest::newRow("ReadOnly,Unbuffered") << int(QIODevice::ReadOnly | QIODevice::Unbuffered) << int(QFileDevice::NoOptions);
+    QTest::newRow("ReadWrite,Unbuffered") << int(QIODevice::ReadWrite | QIODevice::Unbuffered) << int(QFileDevice::NoOptions);
+    QTest::newRow("ReadOnly + MapPrivate") << int(QIODevice::ReadOnly) << int(QFileDevice::MapPrivateOption);
+    QTest::newRow("ReadWrite + MapPrivate") << int(QIODevice::ReadWrite) << int(QFileDevice::MapPrivateOption);
 }
 
 void tst_QFile::mapOpenMode()
 {
     QFETCH(int, openMode);
+    QFETCH(int, flags);
     static const qint64 fileSize = 4096;
 
     QByteArray pattern(fileSize, 'A');
@@ -3062,11 +3069,15 @@ void tst_QFile::mapOpenMode()
     // open according to our mode
     QVERIFY(file.open(QIODevice::OpenMode(openMode)));
 
-    uchar *memory = file.map(0, fileSize);
+    uchar *memory = file.map(0, fileSize, QFileDevice::MemoryMapFlags(flags));
+#if defined(Q_OS_WINCE)
+    QEXPECT_FAIL("ReadOnly + MapPrivate" , "Windows CE does not support MapPrivateOption.", Abort);
+    QEXPECT_FAIL("ReadWrite + MapPrivate", "Windows CE does not support MapPrivateOption.", Abort);
+#endif
     QVERIFY(memory);
     QVERIFY(memcmp(memory, pattern, fileSize) == 0);
 
-    if (openMode & QIODevice::WriteOnly) {
+    if ((openMode & QIODevice::WriteOnly) || (flags & QFileDevice::MapPrivateOption)) {
         // try to write to the file
         *memory = 'a';
         file.unmap(memory);
@@ -3075,7 +3086,7 @@ void tst_QFile::mapOpenMode()
         file.seek(0);
         char c;
         QVERIFY(file.getChar(&c));
-        QCOMPARE(c, 'a');
+        QCOMPARE(c, (flags & QFileDevice::MapPrivateOption) ? 'A' : 'a');
     }
 
     file.close();

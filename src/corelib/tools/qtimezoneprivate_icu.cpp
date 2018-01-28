@@ -1,39 +1,31 @@
 /****************************************************************************
 **
 ** Copyright (C) 2013 John Layt <jlayt@kde.org>
-** Contact: http://www.qt-project.org/legal
+** Contact: http://www.qt.io/licensing/
 **
 ** This file is part of the QtCore module of the Qt Toolkit.
 **
-** $QT_BEGIN_LICENSE:LGPL$
+** $QT_BEGIN_LICENSE:LGPL21$
 ** Commercial License Usage
 ** Licensees holding valid commercial Qt licenses may use this file in
 ** accordance with the commercial license agreement provided with the
 ** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and Digia.  For licensing terms and
-** conditions see http://qt.digia.com/licensing.  For further information
-** use the contact form at http://qt.digia.com/contact-us.
+** a written agreement between you and The Qt Company. For licensing terms
+** and conditions see http://www.qt.io/terms-conditions. For further
+** information use the contact form at http://www.qt.io/contact-us.
 **
 ** GNU Lesser General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 2.1 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU Lesser General Public License version 2.1 requirements
-** will be met: http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
+** General Public License version 2.1 or version 3 as published by the Free
+** Software Foundation and appearing in the file LICENSE.LGPLv21 and
+** LICENSE.LGPLv3 included in the packaging of this file. Please review the
+** following information to ensure the GNU Lesser General Public License
+** requirements will be met: https://www.gnu.org/licenses/lgpl.html and
+** http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
 **
-** In addition, as a special exception, Digia gives you certain additional
-** rights.  These rights are described in the Digia Qt LGPL Exception
+** As a special exception, The Qt Company gives you certain additional
+** rights. These rights are described in The Qt Company LGPL Exception
 ** version 1.1, included in the file LGPL_EXCEPTION.txt in this package.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3.0 as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU General Public License version 3.0 requirements will be
-** met: http://www.gnu.org/copyleft/gpl.html.
-**
 **
 ** $QT_END_LICENSE$
 **
@@ -45,6 +37,9 @@
 #include <unicode/ucal.h>
 
 #include <qdebug.h>
+#include <qlist.h>
+
+#include <algorithm>
 
 QT_BEGIN_NAMESPACE
 
@@ -242,19 +237,21 @@ static QTimeZonePrivate::Data ucalTimeZoneTransition(UCalendar *m_ucal,
 #endif // U_ICU_VERSION_SHORT
 
 // Convert a uenum to a QList<QByteArray>
-static QSet<QByteArray> uenumToIdSet(UEnumeration *uenum)
+static QList<QByteArray> uenumToIdList(UEnumeration *uenum)
 {
-    QSet<QByteArray> set;
+    QList<QByteArray> list;
     int32_t size = 0;
     UErrorCode status = U_ZERO_ERROR;
     // TODO Perhaps use uenum_unext instead?
     QByteArray result = uenum_next(uenum, &size, &status);
     while (U_SUCCESS(status) && !result.isEmpty()) {
-        set << result;
+        list << result;
         status = U_ZERO_ERROR;
         result = uenum_next(uenum, &size, &status);
     }
-    return set;
+    std::sort(list.begin(), list.end());
+    list.erase(std::unique(list.begin(), list.end()), list.end());
+    return list;
 }
 
 // Qt wrapper around ucal_getDSTSavings()
@@ -461,41 +458,41 @@ QByteArray QIcuTimeZonePrivate::systemTimeZoneId() const
     return ucalDefaultTimeZoneId();
 }
 
-QSet<QByteArray> QIcuTimeZonePrivate::availableTimeZoneIds() const
+QList<QByteArray> QIcuTimeZonePrivate::availableTimeZoneIds() const
 {
     UErrorCode status = U_ZERO_ERROR;
     UEnumeration *uenum = ucal_openTimeZones(&status);
-    QSet<QByteArray> set;
+    QList<QByteArray> result;
     if (U_SUCCESS(status))
-        set = uenumToIdSet(uenum);
+        result = uenumToIdList(uenum);
     uenum_close(uenum);
-    return set;
+    return result;
 }
 
-QSet<QByteArray> QIcuTimeZonePrivate::availableTimeZoneIds(QLocale::Country country) const
+QList<QByteArray> QIcuTimeZonePrivate::availableTimeZoneIds(QLocale::Country country) const
 {
     QByteArray regionCode = QLocalePrivate::countryToCode(country).toUtf8();
     UErrorCode status = U_ZERO_ERROR;
     UEnumeration *uenum = ucal_openCountryTimeZones(regionCode, &status);
-    QSet<QByteArray> set;
+    QList<QByteArray> result;
     if (U_SUCCESS(status))
-        set = uenumToIdSet(uenum);
+        result = uenumToIdList(uenum);
     uenum_close(uenum);
-    return set;
+    return result;
 }
 
-QSet<QByteArray> QIcuTimeZonePrivate::availableTimeZoneIds(int offsetFromUtc) const
+QList<QByteArray> QIcuTimeZonePrivate::availableTimeZoneIds(int offsetFromUtc) const
 {
 // TODO Available directly in C++ api but not C api, from 4.8 onwards new filter method works
 #if U_ICU_VERSION_MAJOR_NUM >= 49 || (U_ICU_VERSION_MAJOR_NUM == 4 && U_ICU_VERSION_MINOR_NUM == 8)
     UErrorCode status = U_ZERO_ERROR;
     UEnumeration *uenum = ucal_openTimeZoneIDEnumeration(UCAL_ZONE_TYPE_ANY, 0,
                                                          &offsetFromUtc, &status);
-    QSet<QByteArray> set;
+    QList<QByteArray> result;
     if (U_SUCCESS(status))
-        set = uenumToIdSet(uenum);
+        result = uenumToIdList(uenum);
     uenum_close(uenum);
-    return set;
+    return result;
 #else
     return QTimeZonePrivate::availableTimeZoneIds(offsetFromUtc);
 #endif

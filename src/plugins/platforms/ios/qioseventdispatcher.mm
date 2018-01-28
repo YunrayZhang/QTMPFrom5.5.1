@@ -1,39 +1,31 @@
 /****************************************************************************
 **
-** Copyright (C) 2013 Digia Plc and/or its subsidiary(-ies).
-** Contact: http://www.qt-project.org/legal
+** Copyright (C) 2015 The Qt Company Ltd.
+** Contact: http://www.qt.io/licensing/
 **
 ** This file is part of the plugins of the Qt Toolkit.
 **
-** $QT_BEGIN_LICENSE:LGPL$
+** $QT_BEGIN_LICENSE:LGPL21$
 ** Commercial License Usage
 ** Licensees holding valid commercial Qt licenses may use this file in
 ** accordance with the commercial license agreement provided with the
 ** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and Digia.  For licensing terms and
-** conditions see http://qt.digia.com/licensing.  For further information
-** use the contact form at http://qt.digia.com/contact-us.
+** a written agreement between you and The Qt Company. For licensing terms
+** and conditions see http://www.qt.io/terms-conditions. For further
+** information use the contact form at http://www.qt.io/contact-us.
 **
 ** GNU Lesser General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 2.1 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU Lesser General Public License version 2.1 requirements
-** will be met: http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
+** General Public License version 2.1 or version 3 as published by the Free
+** Software Foundation and appearing in the file LICENSE.LGPLv21 and
+** LICENSE.LGPLv3 included in the packaging of this file. Please review the
+** following information to ensure the GNU Lesser General Public License
+** requirements will be met: https://www.gnu.org/licenses/lgpl.html and
+** http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
 **
-** In addition, as a special exception, Digia gives you certain additional
-** rights.  These rights are described in the Digia Qt LGPL Exception
+** As a special exception, The Qt Company gives you certain additional
+** rights. These rights are described in The Qt Company LGPL Exception
 ** version 1.1, included in the file LGPL_EXCEPTION.txt in this package.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3.0 as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU General Public License version 3.0 requirements will be
-** met: http://www.gnu.org/copyleft/gpl.html.
-**
 **
 ** $QT_END_LICENSE$
 **
@@ -241,11 +233,11 @@ enum SetJumpResult
     kJumpedFromUserMainTrampoline,
 };
 
-// We define qt_main so that user_main_trampoline() will not cause
+// We define qtmn so that user_main_trampoline() will not cause
 // missing symbols in the case of hybrid applications that don't
-// user our main wrapper. Since the symbol is weak, it will not
+// use our main wrapper. Since the symbol is weak, it will not
 // get used or cause a clash in the normal Qt application usecase,
-// where we rename main to qt_main.
+// where we rename main to qtmn before linking.
 extern "C" int __attribute__((weak)) qtmn(int argc, char *argv[])
 {
     Q_UNUSED(argc);
@@ -259,10 +251,16 @@ static void __attribute__((noinline, noreturn)) user_main_trampoline()
     NSArray *arguments = [[NSProcessInfo processInfo] arguments];
     int argc = arguments.count;
     char **argv = new char*[argc];
+
     for (int i = 0; i < argc; ++i) {
         NSString *arg = [arguments objectAtIndex:i];
-        argv[i] = reinterpret_cast<char *>(malloc([arg lengthOfBytesUsingEncoding:[NSString defaultCStringEncoding]]));
-        strcpy(argv[i], [arg cStringUsingEncoding:[NSString defaultCStringEncoding]]);
+
+        NSStringEncoding cStringEncoding = [NSString defaultCStringEncoding];
+        unsigned int bufferSize = [arg lengthOfBytesUsingEncoding:cStringEncoding] + 1;
+        argv[i] = reinterpret_cast<char *>(malloc(bufferSize));
+
+        if (![arg getCString:argv[i] maxLength:bufferSize encoding:cStringEncoding])
+            qFatal("Could not convert argv[%d] to C string", i);
     }
 
     int exitCode = qtmn(argc, argv);
@@ -311,11 +309,16 @@ static bool rootLevelRunLoopIntegration()
 }
 
 #if defined(Q_PROCESSOR_X86)
-#  define SET_STACK_POINTER "mov %0, %%esp"
 #  define FUNCTION_CALL_ALIGNMENT 16
+#  if defined(Q_PROCESSOR_X86_32)
+#    define SET_STACK_POINTER "mov %0, %%esp"
+#  elif defined(Q_PROCESSOR_X86_64)
+#    define SET_STACK_POINTER "movq %0, %%rsp"
+#  endif
 #elif defined(Q_PROCESSOR_ARM)
-#  define SET_STACK_POINTER "mov sp, %0"
+#  // Valid for both 32 and 64-bit ARM
 #  define FUNCTION_CALL_ALIGNMENT 4
+#  define SET_STACK_POINTER "mov sp, %0"
 #else
 #  error "Unknown processor family"
 #endif
@@ -419,7 +422,7 @@ QT_USE_NAMESPACE
 
 QIOSEventDispatcher::QIOSEventDispatcher(QObject *parent)
     : QEventDispatcherCoreFoundation(parent)
-    , m_processEventCallsAfterExec(0)
+    , m_processEventLevel(0)
     , m_runLoopExitObserver(this, &QIOSEventDispatcher::handleRunLoopExit, kCFRunLoopExit)
 {
 }
@@ -436,8 +439,8 @@ bool __attribute__((returns_twice)) QIOSEventDispatcher::processEvents(QEventLoo
         return false;
     }
 
-    if (!m_processEventCallsAfterExec && (flags & QEventLoop::EventLoopExec)) {
-        ++m_processEventCallsAfterExec;
+    if (!m_processEventLevel && (flags & QEventLoop::EventLoopExec)) {
+        ++m_processEventLevel;
 
         m_runLoopExitObserver.addToMode(kCFRunLoopCommonModes);
 
@@ -462,13 +465,9 @@ bool __attribute__((returns_twice)) QIOSEventDispatcher::processEvents(QEventLoo
         Q_UNREACHABLE();
     }
 
-    if (m_processEventCallsAfterExec)
-        ++m_processEventCallsAfterExec;
-
+    ++m_processEventLevel;
     bool processedEvents = QEventDispatcherCoreFoundation::processEvents(flags);
-
-    if (m_processEventCallsAfterExec)
-        --m_processEventCallsAfterExec;
+    --m_processEventLevel;
 
     return processedEvents;
 }
@@ -478,7 +477,7 @@ void QIOSEventDispatcher::handleRunLoopExit(CFRunLoopActivity activity)
     Q_UNUSED(activity);
     Q_ASSERT(activity == kCFRunLoopExit);
 
-    if (m_processEventCallsAfterExec == 1 && !QThreadData::current()->eventLoops.top()->isRunning()) {
+    if (m_processEventLevel == 1 && !QThreadData::current()->eventLoops.top()->isRunning()) {
         qEventDispatcherDebug() << "Root runloop level exited";
         interruptEventLoopExec();
     }
@@ -486,9 +485,9 @@ void QIOSEventDispatcher::handleRunLoopExit(CFRunLoopActivity activity)
 
 void QIOSEventDispatcher::interruptEventLoopExec()
 {
-    Q_ASSERT(m_processEventCallsAfterExec == 1);
+    Q_ASSERT(m_processEventLevel == 1);
 
-    --m_processEventCallsAfterExec;
+    --m_processEventLevel;
 
     m_runLoopExitObserver.removeFromMode(kCFRunLoopCommonModes);
 

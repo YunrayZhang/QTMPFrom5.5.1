@@ -1,39 +1,31 @@
 /****************************************************************************
 **
-** Copyright (C) 2013 Digia Plc and/or its subsidiary(-ies).
-** Contact: http://www.qt-project.org/legal
+** Copyright (C) 2015 The Qt Company Ltd.
+** Contact: http://www.qt.io/licensing/
 **
 ** This file is part of the QtGui module of the Qt Toolkit.
 **
-** $QT_BEGIN_LICENSE:LGPL$
+** $QT_BEGIN_LICENSE:LGPL21$
 ** Commercial License Usage
 ** Licensees holding valid commercial Qt licenses may use this file in
 ** accordance with the commercial license agreement provided with the
 ** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and Digia.  For licensing terms and
-** conditions see http://qt.digia.com/licensing.  For further information
-** use the contact form at http://qt.digia.com/contact-us.
+** a written agreement between you and The Qt Company. For licensing terms
+** and conditions see http://www.qt.io/terms-conditions. For further
+** information use the contact form at http://www.qt.io/contact-us.
 **
 ** GNU Lesser General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 2.1 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU Lesser General Public License version 2.1 requirements
-** will be met: http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
+** General Public License version 2.1 or version 3 as published by the Free
+** Software Foundation and appearing in the file LICENSE.LGPLv21 and
+** LICENSE.LGPLv3 included in the packaging of this file. Please review the
+** following information to ensure the GNU Lesser General Public License
+** requirements will be met: https://www.gnu.org/licenses/lgpl.html and
+** http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
 **
-** In addition, as a special exception, Digia gives you certain additional
-** rights.  These rights are described in the Digia Qt LGPL Exception
+** As a special exception, The Qt Company gives you certain additional
+** rights. These rights are described in The Qt Company LGPL Exception
 ** version 1.1, included in the file LGPL_EXCEPTION.txt in this package.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3.0 as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU General Public License version 3.0 requirements will be
-** met: http://www.gnu.org/copyleft/gpl.html.
-**
 **
 ** $QT_END_LICENSE$
 **
@@ -234,10 +226,10 @@ class QGridLayoutRowData
 {
 public:
     void reset(int count);
-    void distributeMultiCells(const QGridLayoutRowInfo &rowInfo);
+    void distributeMultiCells(const QGridLayoutRowInfo &rowInfo, bool snapToPixelGrid);
     void calculateGeometries(int start, int end, qreal targetSize, qreal *positions, qreal *sizes,
                              qreal *descents, const QGridLayoutBox &totalBox,
-                             const QGridLayoutRowInfo &rowInfo);
+                             const QGridLayoutRowInfo &rowInfo, bool snapToPixelGrid);
     QGridLayoutBox totalBox(int start, int end) const;
     void stealBox(int start, int end, int which, qreal *positions, qreal *sizes);
 
@@ -303,6 +295,7 @@ public:
 
     virtual QLayoutPolicy::Policy sizePolicy(Qt::Orientation orientation) const = 0;
     virtual QSizeF sizeHint(Qt::SizeHint which, const QSizeF &constraint) const = 0;
+    virtual bool isIgnored() const { return false; }
 
     virtual void setGeometry(const QRectF &rect) = 0;
     /*
@@ -338,7 +331,7 @@ private:
 class Q_GUI_EXPORT QGridLayoutEngine
 {
 public:
-    QGridLayoutEngine(Qt::Alignment defaultAlignment = Qt::Alignment(0));
+    QGridLayoutEngine(Qt::Alignment defaultAlignment = Qt::Alignment(0), bool snapToPixelGrid = false);
     inline ~QGridLayoutEngine() { qDeleteAll(q_items); }
 
     int rowCount(Qt::Orientation orientation) const;
@@ -443,22 +436,31 @@ private:
     QLayoutParameter<qreal> q_defaultSpacings[NOrientations];
     QGridLayoutRowInfo q_infos[NOrientations];
     Qt::LayoutDirection m_visualDirection;
+
+    // Configuration
     Qt::Alignment m_defaultAlignment;
+    unsigned m_snapToPixelGrid : 1;
 
     // Lazily computed from the above user input
     mutable int q_cachedEffectiveFirstRows[NOrientations];
     mutable int q_cachedEffectiveLastRows[NOrientations];
     mutable quint8 q_cachedConstraintOrientation : 3;
 
+    // this is useful to cache
+    mutable QGridLayoutBox q_totalBoxes[NOrientations];
+    enum {
+        NotCached = -2,             // Cache is empty. Happens when the engine is invalidated.
+        CachedWithNoConstraint = -1 // cache has a totalBox without any HFW/WFH constraints.
+        // >= 0                     // cache has a totalBox with this specific constraint.
+    };
+    mutable qreal q_totalBoxCachedConstraints[NOrientations];   // holds the constraint used for the cached totalBox
+
     // Layout item input
     mutable QGridLayoutRowData q_columnData;
     mutable QGridLayoutRowData q_rowData;
-    mutable QGridLayoutBox q_totalBoxes[NOrientations];
 
     // Output
     mutable QSizeF q_cachedSize;
-    mutable bool q_totalBoxesValid;
-    mutable bool q_sizeHintValid[NOrientations];
     mutable QVector<qreal> q_xx;
     mutable QVector<qreal> q_yy;
     mutable QVector<qreal> q_widths;

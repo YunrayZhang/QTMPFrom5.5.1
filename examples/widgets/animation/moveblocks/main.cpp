@@ -1,7 +1,7 @@
 /****************************************************************************
 **
-** Copyright (C) 2013 Digia Plc and/or its subsidiary(-ies).
-** Contact: http://www.qt-project.org/legal
+** Copyright (C) 2015 The Qt Company Ltd.
+** Contact: http://www.qt.io/licensing/
 **
 ** This file is part of the QtCore module of the Qt Toolkit.
 **
@@ -17,8 +17,8 @@
 **     notice, this list of conditions and the following disclaimer in
 **     the documentation and/or other materials provided with the
 **     distribution.
-**   * Neither the name of Digia Plc and its Subsidiary(-ies) nor the names
-**     of its contributors may be used to endorse or promote products derived
+**   * Neither the name of The Qt Company Ltd nor the names of its
+**     contributors may be used to endorse or promote products derived
 **     from this software without specific prior written permission.
 **
 **
@@ -70,7 +70,7 @@ class QGraphicsRectWidget : public QGraphicsWidget
 {
 public:
     void paint(QPainter *painter, const QStyleOptionGraphicsItem *,
-               QWidget *)
+               QWidget *) Q_DECL_OVERRIDE
     {
         painter->fillRect(rect(), Qt::blue);
     }
@@ -88,14 +88,14 @@ public:
 
 protected:
 //![14]
-    virtual bool eventTest(QEvent *event)
+    virtual bool eventTest(QEvent *event) Q_DECL_OVERRIDE
     {
         return (event->type() == QEvent::Type(StateSwitchEvent::StateSwitchType))
             && (static_cast<StateSwitchEvent *>(event)->rand() == m_rand);
     }
 //![14]
 
-    virtual void onTransition(QEvent *) {}
+    virtual void onTransition(QEvent *) Q_DECL_OVERRIDE {}
 
 private:
     int m_rand;
@@ -112,7 +112,7 @@ public:
 //![10]
 
 //![11]
-    virtual void onEntry(QEvent *)
+    virtual void onEntry(QEvent *) Q_DECL_OVERRIDE
     {
         int n;
         while ((n = (qrand() % m_stateCount + 1)) == m_lastIndex)
@@ -120,7 +120,7 @@ public:
         m_lastIndex = n;
         machine()->postEvent(new StateSwitchEvent(n));
     }
-    virtual void onExit(QEvent *) {}
+    virtual void onExit(QEvent *) Q_DECL_OVERRIDE {}
 //![11]
 
 //![12]
@@ -164,7 +164,7 @@ public:
     }
 
 protected:
-    virtual void resizeEvent(QResizeEvent *event)
+    virtual void resizeEvent(QResizeEvent *event) Q_DECL_OVERRIDE
     {
         fitInView(scene()->sceneRect());
         QGraphicsView::resizeEvent(event);

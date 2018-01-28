@@ -1,39 +1,31 @@
 /****************************************************************************
 **
-** Copyright (C) 2013 Digia Plc and/or its subsidiary(-ies).
-** Contact: http://www.qt-project.org/legal
+** Copyright (C) 2015 The Qt Company Ltd.
+** Contact: http://www.qt.io/licensing/
 **
 ** This file is part of the plugins of the Qt Toolkit.
 **
-** $QT_BEGIN_LICENSE:LGPL$
+** $QT_BEGIN_LICENSE:LGPL21$
 ** Commercial License Usage
 ** Licensees holding valid commercial Qt licenses may use this file in
 ** accordance with the commercial license agreement provided with the
 ** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and Digia.  For licensing terms and
-** conditions see http://qt.digia.com/licensing.  For further information
-** use the contact form at http://qt.digia.com/contact-us.
+** a written agreement between you and The Qt Company. For licensing terms
+** and conditions see http://www.qt.io/terms-conditions. For further
+** information use the contact form at http://www.qt.io/contact-us.
 **
 ** GNU Lesser General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 2.1 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU Lesser General Public License version 2.1 requirements
-** will be met: http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
+** General Public License version 2.1 or version 3 as published by the Free
+** Software Foundation and appearing in the file LICENSE.LGPLv21 and
+** LICENSE.LGPLv3 included in the packaging of this file. Please review the
+** following information to ensure the GNU Lesser General Public License
+** requirements will be met: https://www.gnu.org/licenses/lgpl.html and
+** http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
 **
-** In addition, as a special exception, Digia gives you certain additional
-** rights.  These rights are described in the Digia Qt LGPL Exception
+** As a special exception, The Qt Company gives you certain additional
+** rights. These rights are described in The Qt Company LGPL Exception
 ** version 1.1, included in the file LGPL_EXCEPTION.txt in this package.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3.0 as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU General Public License version 3.0 requirements will be
-** met: http://www.gnu.org/copyleft/gpl.html.
-**
 **
 ** $QT_END_LICENSE$
 **
@@ -48,6 +40,7 @@
 
 #include "qmacmime_p.h"
 #include "qguiapplication.h"
+#include "private/qcore_mac_p.h"
 
 QT_BEGIN_NAMESPACE
 
@@ -335,9 +328,9 @@ QVariant QMacPasteboardMimePlainTextFallback::convertToMime(const QString &mimet
         // Note that public.text is documented by Apple to have an undefined encoding. From
         // testing it seems that utf8 is normally used, at least by Safari on iOS.
         const QByteArray &firstData = data.first();
-        return QString::fromCFString(CFStringCreateWithBytes(kCFAllocatorDefault,
+        return QString(QCFString(CFStringCreateWithBytes(kCFAllocatorDefault,
                                              reinterpret_cast<const UInt8 *>(firstData.constData()),
-                                             firstData.size(), kCFStringEncodingUTF8, false));
+                                             firstData.size(), kCFStringEncodingUTF8, false)));
     } else {
         qWarning("QMime::convertToMime: unhandled mimetype: %s", qPrintable(mimetype));
     }
@@ -410,9 +403,9 @@ QVariant QMacPasteboardMimeUnicodeText::convertToMime(const QString &mimetype, Q
     // I can only handle two types (system and unicode) so deal with them that way
     QVariant ret;
     if (flavor == QLatin1String("public.utf8-plain-text")) {
-        ret = QString::fromCFString(CFStringCreateWithBytes(kCFAllocatorDefault,
+        ret = QString(QCFString(CFStringCreateWithBytes(kCFAllocatorDefault,
                                              reinterpret_cast<const UInt8 *>(firstData.constData()),
-                                             firstData.size(), CFStringGetSystemEncoding(), false));
+                                             firstData.size(), CFStringGetSystemEncoding(), false)));
     } else if (flavor == QLatin1String("public.utf16-plain-text")) {
         ret = QString(reinterpret_cast<const QChar *>(firstData.constData()),
                       firstData.size() / sizeof(QChar));
@@ -610,9 +603,21 @@ QVariant QMacPasteboardMimeFileUri::convertToMime(const QString &mime, QList<QBy
         return QVariant();
     QList<QVariant> ret;
     for (int i = 0; i < data.size(); ++i) {
-        QUrl url = QUrl::fromEncoded(data.at(i));
+        const QByteArray &a = data.at(i);
+        NSString *urlString = [[[NSString alloc] initWithBytesNoCopy:(void *)a.data() length:a.size()
+                                                 encoding:NSUTF8StringEncoding freeWhenDone:NO] autorelease];
+        NSURL *nsurl = [NSURL URLWithString:urlString];
+        QUrl url;
+        // OS X 10.10 sends file references instead of file paths
+        if ([nsurl isFileReferenceURL]) {
+            url = QUrl::fromNSURL([nsurl filePathURL]);
+        } else {
+            url = QUrl::fromNSURL(nsurl);
+        }
+
         if (url.host().toLower() == QLatin1String("localhost"))
             url.setHost(QString());
+
         url.setPath(url.path().normalized(QString::NormalizationForm_C));
         ret.append(url);
     }

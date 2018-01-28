@@ -1,39 +1,31 @@
 /****************************************************************************
 **
-** Copyright (C) 2013 Digia Plc and/or its subsidiary(-ies).
-** Contact: http://www.qt-project.org/legal
+** Copyright (C) 2015 The Qt Company Ltd.
+** Contact: http://www.qt.io/licensing/
 **
 ** This file is part of the QtDBus module of the Qt Toolkit.
 **
-** $QT_BEGIN_LICENSE:LGPL$
+** $QT_BEGIN_LICENSE:LGPL21$
 ** Commercial License Usage
 ** Licensees holding valid commercial Qt licenses may use this file in
 ** accordance with the commercial license agreement provided with the
 ** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and Digia.  For licensing terms and
-** conditions see http://qt.digia.com/licensing.  For further information
-** use the contact form at http://qt.digia.com/contact-us.
+** a written agreement between you and The Qt Company. For licensing terms
+** and conditions see http://www.qt.io/terms-conditions. For further
+** information use the contact form at http://www.qt.io/contact-us.
 **
 ** GNU Lesser General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 2.1 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU Lesser General Public License version 2.1 requirements
-** will be met: http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
+** General Public License version 2.1 or version 3 as published by the Free
+** Software Foundation and appearing in the file LICENSE.LGPLv21 and
+** LICENSE.LGPLv3 included in the packaging of this file. Please review the
+** following information to ensure the GNU Lesser General Public License
+** requirements will be met: https://www.gnu.org/licenses/lgpl.html and
+** http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
 **
-** In addition, as a special exception, Digia gives you certain additional
-** rights.  These rights are described in the Digia Qt LGPL Exception
+** As a special exception, The Qt Company gives you certain additional
+** rights. These rights are described in The Qt Company LGPL Exception
 ** version 1.1, included in the file LGPL_EXCEPTION.txt in this package.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3.0 as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU General Public License version 3.0 requirements will be
-** met: http://www.gnu.org/copyleft/gpl.html.
-**
 **
 ** $QT_END_LICENSE$
 **
@@ -65,18 +57,6 @@
 QT_BEGIN_NAMESPACE
 
 Q_GLOBAL_STATIC(QDBusConnectionManager, _q_manager)
-
-QDBusConnectionPrivate *QDBusConnectionManager::sender() const
-{
-    QMutexLocker locker(&senderMutex);
-    return connection(senderName);
-}
-
-void QDBusConnectionManager::setSender(const QDBusConnectionPrivate *s)
-{
-    QMutexLocker locker(&senderMutex);
-    senderName = (s ? s->name : QString());
-}
 
 QDBusConnectionPrivate *QDBusConnectionManager::connection(const QString &name) const
 {
@@ -482,7 +462,7 @@ bool QDBusConnection::send(const QDBusMessage &message) const
 {
     if (!d || !d->connection) {
         QDBusError err = QDBusError(QDBusError::Disconnected,
-                                    QLatin1String("Not connected to D-BUS server"));
+                                    QDBusUtil::disconnectedErrorMessage());
         if (d)
             d->lastError = err;
         return false;
@@ -515,7 +495,7 @@ bool QDBusConnection::callWithCallback(const QDBusMessage &message, QObject *rec
 {
     if (!d || !d->connection) {
         QDBusError err = QDBusError(QDBusError::Disconnected,
-                                    QLatin1String("Not connected to D-BUS server"));
+                                    QDBusUtil::disconnectedErrorMessage());
         if (d)
             d->lastError = err;
         return false;
@@ -573,7 +553,7 @@ QDBusMessage QDBusConnection::call(const QDBusMessage &message, QDBus::CallMode 
 {
     if (!d || !d->connection) {
         QDBusError err = QDBusError(QDBusError::Disconnected,
-                                    QLatin1String("Not connected to D-Bus server"));
+                                    QDBusUtil::disconnectedErrorMessage());
         if (d)
             d->lastError = err;
 
@@ -782,6 +762,26 @@ bool QDBusConnection::disconnect(const QString &service, const QString &path, co
 */
 bool QDBusConnection::registerObject(const QString &path, QObject *object, RegisterOptions options)
 {
+   return registerObject(path, QString(), object, options);
+}
+
+/*!
+    \overload
+    \since 5.5
+
+    Registers the object \a object at path \a path with interface name \a interface
+    and returns \c true if the registration was successful. The \a options parameter
+    specifies how much of the object \a object will be exposed through
+    D-Bus.
+
+    This function does not replace existing objects: if there is already an object registered at
+    path \a path, this function will return false. Use unregisterObject() to unregister it first.
+
+    You cannot register an object as a child object of an object that
+    was registered with QDBusConnection::ExportChildObjects.
+*/
+bool QDBusConnection::registerObject(const QString &path, const QString &interface, QObject *object, RegisterOptions options)
+{
     Q_ASSERT_X(QDBusUtil::isValidObjectPath(path), "QDBusConnection::registerObject",
                "Invalid object path given");
     if (!d || !d->connection || !object || !options || !QDBusUtil::isValidObjectPath(path))
@@ -813,6 +813,7 @@ bool QDBusConnection::registerObject(const QString &path, QObject *object, Regis
             // we can add the object here
             node->obj = object;
             node->flags = options;
+            node->interfaceName = interface;
 
             d->registerObject(node);
             //qDebug("REGISTERED FOR %s", path.toLocal8Bit().constData());
@@ -967,7 +968,7 @@ bool QDBusConnection::isConnected() const
 */
 QDBusError QDBusConnection::lastError() const
 {
-    return d ? d->lastError : QDBusError();
+    return d ? d->lastError : QDBusError(QDBusError::Disconnected, QDBusUtil::disconnectedErrorMessage());
 }
 
 /*!
@@ -1104,29 +1105,20 @@ QDBusConnection QDBusConnection::systemBus()
     return *_q_systemBus();
 }
 
+#if QT_DEPRECATED_SINCE(5,5)
 /*!
-  \nonreentrant
+  \deprecated
 
-  Returns the connection that sent the signal, if called in a slot activated
-  by QDBus; otherwise it returns 0.
+  Always returns a disconnected, invalid QDBusConnection object. For the old
+  functionality of determining the sender connection, please use QDBusContext.
 
-  \note Please avoid this function. This function is not thread-safe, so if
-  there's any other thread delivering a D-Bus call, this function may return
-  the wrong connection. In new code, please use QDBusContext::connection()
-  (see that class for a description on how to use it).
+  \sa QDBusContext
 */
 QDBusConnection QDBusConnection::sender()
 {
-    return QDBusConnection(_q_manager()->sender());
+    return QDBusConnection(QString());
 }
-
-/*!
-  \internal
-*/
-void QDBusConnectionPrivate::setSender(const QDBusConnectionPrivate *s)
-{
-    _q_manager()->setSender(s);
-}
+#endif
 
 /*!
   \internal

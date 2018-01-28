@@ -1,39 +1,31 @@
 /****************************************************************************
 **
-** Copyright (C) 2014 Digia Plc and/or its subsidiary(-ies).
-** Contact: http://www.qt-project.org/legal
+** Copyright (C) 2015 The Qt Company Ltd.
+** Contact: http://www.qt.io/licensing/
 **
 ** This file is part of the test suite of the Qt Toolkit.
 **
-** $QT_BEGIN_LICENSE:LGPL$
+** $QT_BEGIN_LICENSE:LGPL21$
 ** Commercial License Usage
 ** Licensees holding valid commercial Qt licenses may use this file in
 ** accordance with the commercial license agreement provided with the
 ** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and Digia.  For licensing terms and
-** conditions see http://qt.digia.com/licensing.  For further information
-** use the contact form at http://qt.digia.com/contact-us.
+** a written agreement between you and The Qt Company. For licensing terms
+** and conditions see http://www.qt.io/terms-conditions. For further
+** information use the contact form at http://www.qt.io/contact-us.
 **
 ** GNU Lesser General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 2.1 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU Lesser General Public License version 2.1 requirements
-** will be met: http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
+** General Public License version 2.1 or version 3 as published by the Free
+** Software Foundation and appearing in the file LICENSE.LGPLv21 and
+** LICENSE.LGPLv3 included in the packaging of this file. Please review the
+** following information to ensure the GNU Lesser General Public License
+** requirements will be met: https://www.gnu.org/licenses/lgpl.html and
+** http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
 **
-** In addition, as a special exception, Digia gives you certain additional
-** rights.  These rights are described in the Digia Qt LGPL Exception
+** As a special exception, The Qt Company gives you certain additional
+** rights. These rights are described in The Qt Company LGPL Exception
 ** version 1.1, included in the file LGPL_EXCEPTION.txt in this package.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3.0 as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU General Public License version 3.0 requirements will be
-** met: http://www.gnu.org/copyleft/gpl.html.
-**
 **
 ** $QT_END_LICENSE$
 **
@@ -212,6 +204,7 @@ private slots:
     void rowSizeHint();
     void setSortingEnabled();
     void headerHidden();
+    void indentation();
 
     void selection();
     void removeAndInsertExpandedCol0();
@@ -262,6 +255,7 @@ private slots:
     void taskQTBUG_8176_emitOnExpandAll();
     void taskQTBUG_34717_collapseAtBottom();
     void taskQTBUG_37813_crash();
+    void taskQTBUG_45697_crash();
     void testInitialFocus();
 };
 
@@ -439,7 +433,8 @@ void tst_QTreeView::getSetCheck()
 
     // int QTreeView::indentation()
     // void QTreeView::setIndentation(int)
-    QCOMPARE(obj1.indentation(), 20);
+    const int styledIndentation = obj1.style()->pixelMetric(QStyle::PM_TreeViewIndentation, 0, &obj1);
+    QCOMPARE(obj1.indentation(), styledIndentation);
     obj1.setIndentation(0);
     QCOMPARE(obj1.indentation(), 0);
     obj1.setIndentation(INT_MIN);
@@ -554,7 +549,8 @@ void tst_QTreeView::construction()
     QCOMPARE(view.columnWidth(0), 0);
     QCOMPARE(view.columnWidth(1), 0);
     QVERIFY(view.header());
-    QCOMPARE(view.indentation(), 20);
+    const int styledIndentation = view.style()->pixelMetric(QStyle::PM_TreeViewIndentation, 0, &view);
+    QCOMPARE(view.indentation(), styledIndentation);
     QCOMPARE(view.indexAbove(QModelIndex()), QModelIndex());
     QCOMPARE(view.indexBelow(QModelIndex()), QModelIndex());
     QVERIFY(!view.isAnimated());
@@ -854,7 +850,7 @@ void tst_QTreeView::editTriggers()
     case QAbstractItemView::EditKeyPressed:
         view.setFocus();
 #ifdef Q_OS_MAC
-        // Mac OS X uses Enter for editing
+        // OS X uses Enter for editing
         QTest::keyPress(&view, Qt::Key_Enter);
 #else
         // All other platforms use F2
@@ -866,9 +862,6 @@ void tst_QTreeView::editTriggers()
     }
 
     // Check if we got an editor
-#ifdef Q_OS_MAC
-    QEXPECT_FAIL("EditKeyPressed 4", "QTBUG-23696", Continue);
-#endif
     QTRY_COMPARE(view.findChild<QLineEdit *>(QString()) != 0, editorOpened);
 }
 
@@ -2372,6 +2365,9 @@ void tst_QTreeView::selectionOrderTest()
 
 void tst_QTreeView::selection()
 {
+    if (qApp->platformName().toLower() == QLatin1String("wayland"))
+        QSKIP("Wayland: This causes a crash triggered by setVisible(false)");
+
     QTreeView treeView;
     QStandardItemModel m(10, 2);
     for (int i = 0;i < 10; ++i)
@@ -2571,6 +2567,42 @@ void tst_QTreeView::headerHidden()
     view.setHeaderHidden(true);
     QCOMPARE(view.isHeaderHidden(), true);
     QCOMPARE(view.header()->isHidden(), true);
+}
+
+class TestTreeViewStyle : public QProxyStyle
+{
+public:
+    TestTreeViewStyle() : indentation(20) {}
+    int pixelMetric(PixelMetric metric, const QStyleOption *option = 0, const QWidget *widget = 0) const Q_DECL_OVERRIDE
+    {
+        if (metric == QStyle::PM_TreeViewIndentation)
+            return indentation;
+        else
+            return QProxyStyle::pixelMetric(metric, option, widget);
+    }
+    int indentation;
+};
+
+void tst_QTreeView::indentation()
+{
+    TestTreeViewStyle style1;
+    TestTreeViewStyle style2;
+    style1.indentation = 20;
+    style2.indentation = 30;
+
+    QTreeView view;
+    view.setStyle(&style1);
+    QCOMPARE(view.indentation(), style1.indentation);
+    view.setStyle(&style2);
+    QCOMPARE(view.indentation(), style2.indentation);
+    view.setIndentation(70);
+    QCOMPARE(view.indentation(), 70);
+    view.setStyle(&style1);
+    QCOMPARE(view.indentation(), 70);
+    view.resetIndentation();
+    QCOMPARE(view.indentation(), style1.indentation);
+    view.setStyle(&style2);
+    QCOMPARE(view.indentation(), style2.indentation);
 }
 
 // From Task 145199 (crash when column 0 having at least one expanded item is removed and then
@@ -4352,6 +4384,83 @@ void tst_QTreeView::taskQTBUG_37813_crash()
     const QPixmap pixmap = av->renderToPixmap(sel.indexes(), &rect);
     QVERIFY(pixmap.size().isValid());
 #endif // QT_BUILD_INTERNAL
+}
+
+// QTBUG-45697: Using a QTreeView with a multi-column model filtered by QSortFilterProxyModel,
+// when sorting the source model while the widget is not yet visible and showing the widget
+// later on, corruption occurs in QTreeView.
+class Qtbug45697TestWidget : public QWidget
+{
+   Q_OBJECT
+public:
+    static const int columnCount = 3;
+
+    explicit Qtbug45697TestWidget();
+    int timerTick() const { return m_timerTick; }
+
+public slots:
+    void slotTimer();
+
+private:
+   QTreeView *m_treeView;
+   QStandardItemModel *m_model;
+   QSortFilterProxyModel *m_sortFilterProxyModel;
+   int m_timerTick;
+};
+
+Qtbug45697TestWidget::Qtbug45697TestWidget()
+    : m_treeView(new QTreeView(this))
+    , m_model(new QStandardItemModel(0, Qtbug45697TestWidget::columnCount, this))
+    , m_sortFilterProxyModel(new QSortFilterProxyModel(this))
+    , m_timerTick(0)
+ {
+   QVBoxLayout *vBoxLayout = new QVBoxLayout(this);
+   vBoxLayout->addWidget(m_treeView);
+
+   for (char sortChar = 'z'; sortChar >= 'a' ; --sortChar) {
+       QList<QStandardItem *>  items;
+       for (int column = 0; column < Qtbug45697TestWidget::columnCount; ++column) {
+           const QString text = QLatin1Char(sortChar) + QLatin1String(" ") + QString::number(column);
+           items.append(new QStandardItem(text));
+       }
+       m_model->appendRow(items);
+   }
+
+   m_sortFilterProxyModel->setSourceModel(m_model);
+   m_treeView->setModel(m_sortFilterProxyModel);
+
+   QHeaderView *headerView = m_treeView->header();
+   for (int s = 1, lastSection = headerView->count() - 1; s < lastSection; ++s )
+       headerView->setSectionResizeMode(s, QHeaderView::ResizeToContents);
+
+   QTimer *timer = new QTimer(this);
+   timer->setInterval(50);
+   connect(timer, &QTimer::timeout, this, &Qtbug45697TestWidget::slotTimer);
+   timer->start();
+}
+
+void Qtbug45697TestWidget::slotTimer()
+{
+    switch (m_timerTick++) {
+    case 0:
+        m_model->sort(0);
+        break;
+    case 1:
+        show();
+        break;
+    default:
+        close();
+        break;
+    }
+}
+
+void tst_QTreeView::taskQTBUG_45697_crash()
+{
+    Qtbug45697TestWidget testWidget;
+    testWidget.setWindowTitle(QTest::currentTestFunction());
+    testWidget.resize(400, 400);
+    testWidget.move(QGuiApplication::primaryScreen()->availableGeometry().topLeft() + QPoint(100, 100));
+    QTRY_VERIFY(testWidget.timerTick() >= 2);
 }
 
 QTEST_MAIN(tst_QTreeView)

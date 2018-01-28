@@ -1,39 +1,31 @@
 /****************************************************************************
 **
-** Copyright (C) 2013 Digia Plc and/or its subsidiary(-ies).
-** Contact: http://www.qt-project.org/legal
+** Copyright (C) 2015 The Qt Company Ltd.
+** Contact: http://www.qt.io/licensing/
 **
 ** This file is part of the QtGui module of the Qt Toolkit.
 **
-** $QT_BEGIN_LICENSE:LGPL$
+** $QT_BEGIN_LICENSE:LGPL21$
 ** Commercial License Usage
 ** Licensees holding valid commercial Qt licenses may use this file in
 ** accordance with the commercial license agreement provided with the
 ** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and Digia.  For licensing terms and
-** conditions see http://qt.digia.com/licensing.  For further information
-** use the contact form at http://qt.digia.com/contact-us.
+** a written agreement between you and The Qt Company. For licensing terms
+** and conditions see http://www.qt.io/terms-conditions. For further
+** information use the contact form at http://www.qt.io/contact-us.
 **
 ** GNU Lesser General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 2.1 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU Lesser General Public License version 2.1 requirements
-** will be met: http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
+** General Public License version 2.1 or version 3 as published by the Free
+** Software Foundation and appearing in the file LICENSE.LGPLv21 and
+** LICENSE.LGPLv3 included in the packaging of this file. Please review the
+** following information to ensure the GNU Lesser General Public License
+** requirements will be met: https://www.gnu.org/licenses/lgpl.html and
+** http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
 **
-** In addition, as a special exception, Digia gives you certain additional
-** rights.  These rights are described in the Digia Qt LGPL Exception
+** As a special exception, The Qt Company gives you certain additional
+** rights. These rights are described in The Qt Company LGPL Exception
 ** version 1.1, included in the file LGPL_EXCEPTION.txt in this package.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3.0 as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU General Public License version 3.0 requirements will be
-** met: http://www.gnu.org/copyleft/gpl.html.
-**
 **
 ** $QT_END_LICENSE$
 **
@@ -239,6 +231,8 @@ QPlatformServices *QPlatformIntegration::services() const
     implementation for QOpenGLContext::getProcAddress() and support returning a function
     pointer also for the standard, non-extension functions. This capability is a
     prerequisite for dynamic OpenGL loading.
+
+    \value ApplicationIcon The platform supports setting the application icon. (since 5.5)
  */
 
 /*!
@@ -271,13 +265,32 @@ QPlatformPixmap *QPlatformIntegration::createPlatformPixmap(QPlatformPixmap::Pix
 }
 
 #ifndef QT_NO_OPENGL
+/*!
+    Factory function for QPlatformOpenGLContext. The \a context parameter is a pointer to
+    the context for which a platform-specific context backend needs to be
+    created. Configuration settings like the format, share context and screen have to be
+    taken from this QOpenGLContext and the resulting platform context is expected to be
+    backed by a native context that fulfills these criteria.
+
+    If the context has native handles set, no new native context is expected to be created.
+    Instead, the provided handles have to be used. In this case the ownership of the handle
+    must not be taken and the platform implementation is not allowed to destroy the native
+    context. Configuration parameters like the format are also to be ignored. Instead, the
+    platform implementation is responsible for querying the configuriation from the provided
+    native context.
+
+    Returns a pointer to a QPlatformOpenGLContext instance or \c NULL if the context could
+    not be created.
+
+    \sa QOpenGLContext
+*/
 QPlatformOpenGLContext *QPlatformIntegration::createPlatformOpenGLContext(QOpenGLContext *context) const
 {
     Q_UNUSED(context);
     qWarning("This plugin does not support createPlatformOpenGLContext!");
     return 0;
 }
-#endif
+#endif // QT_NO_OPENGL
 
 /*!
    Factory function for QPlatformSharedGraphicsCache. This function will return 0 if the platform
@@ -309,6 +322,16 @@ QPaintEngine *QPlatformIntegration::createImagePaintEngine(QPaintDevice *paintDe
   implementation does nothing.
 */
 void QPlatformIntegration::initialize()
+{
+}
+
+/*!
+  Called before the platform integration is deleted. Useful when cleanup relies on virtual
+  functions.
+
+  \since 5.5
+*/
+void QPlatformIntegration::destroy()
 {
 }
 
@@ -365,12 +388,16 @@ QVariant QPlatformIntegration::styleHint(StyleHint hint) const
         return QPlatformTheme::defaultThemeHint(QPlatformTheme::StartDragVelocity);
     case UseRtlExtensions:
         return QVariant(false);
-    case SynthesizeMouseFromTouchEvents:
-        return true;
     case SetFocusOnTouchRelease:
         return QVariant(false);
     case MousePressAndHoldInterval:
         return QPlatformTheme::defaultThemeHint(QPlatformTheme::MousePressAndHoldInterval);
+    case TabFocusBehavior:
+        return QPlatformTheme::defaultThemeHint(QPlatformTheme::TabFocusBehavior);
+    case ReplayMousePressOutsidePopup:
+        return true;
+    case ItemViewActivateItemOnSingleClick:
+        return QPlatformTheme::defaultThemeHint(QPlatformTheme::ItemViewActivateItemOnSingleClick);
     }
 
     return 0;
@@ -418,14 +445,33 @@ QList<int> QPlatformIntegration::possibleKeys(const QKeyEvent *) const
   This adds the screen to QGuiApplication::screens(), and emits the
   QGuiApplication::screenAdded() signal.
 
-  The screen is automatically removed when the QPlatformScreen is destroyed.
+  The screen should be deleted by calling QPlatformIntegration::destroyScreen().
 */
-void QPlatformIntegration::screenAdded(QPlatformScreen *ps)
+void QPlatformIntegration::screenAdded(QPlatformScreen *ps, bool isPrimary)
 {
     QScreen *screen = new QScreen(ps);
     ps->d_func()->screen = screen;
-    QGuiApplicationPrivate::screen_list << screen;
+    if (isPrimary) {
+        QGuiApplicationPrivate::screen_list.prepend(screen);
+    } else {
+        QGuiApplicationPrivate::screen_list.append(screen);
+    }
     emit qGuiApp->screenAdded(screen);
+}
+
+/*!
+  Should be called by the implementation whenever a screen is removed.
+
+  This removes the screen from QGuiApplication::screens(), and deletes it.
+
+  Failing to call this and manually deleting the QPlatformScreen instead may
+  lead to a crash due to a pure virtual call.
+*/
+void QPlatformIntegration::destroyScreen(QPlatformScreen *screen)
+{
+    QGuiApplicationPrivate::screen_list.removeOne(screen->d_func()->screen);
+    delete screen->d_func()->screen;
+    delete screen;
 }
 
 QStringList QPlatformIntegration::themeNames() const
@@ -501,5 +547,17 @@ QOpenGLContext::OpenGLModuleType QPlatformIntegration::openGLModuleType()
     return QOpenGLContext::LibGL;
 }
 #endif
+
+/*!
+    \since 5.5
+
+    Platform integration function for setting the application icon.
+
+    \sa QGuiApplication::setWindowIcon()
+*/
+void QPlatformIntegration::setApplicationIcon(const QIcon &icon) const
+{
+    Q_UNUSED(icon);
+}
 
 QT_END_NAMESPACE

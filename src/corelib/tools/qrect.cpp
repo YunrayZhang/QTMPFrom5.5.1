@@ -1,39 +1,31 @@
 /****************************************************************************
 **
-** Copyright (C) 2013 Digia Plc and/or its subsidiary(-ies).
-** Contact: http://www.qt-project.org/legal
+** Copyright (C) 2015 The Qt Company Ltd.
+** Contact: http://www.qt.io/licensing/
 **
 ** This file is part of the QtCore module of the Qt Toolkit.
 **
-** $QT_BEGIN_LICENSE:LGPL$
+** $QT_BEGIN_LICENSE:LGPL21$
 ** Commercial License Usage
 ** Licensees holding valid commercial Qt licenses may use this file in
 ** accordance with the commercial license agreement provided with the
 ** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and Digia.  For licensing terms and
-** conditions see http://qt.digia.com/licensing.  For further information
-** use the contact form at http://qt.digia.com/contact-us.
+** a written agreement between you and The Qt Company. For licensing terms
+** and conditions see http://www.qt.io/terms-conditions. For further
+** information use the contact form at http://www.qt.io/contact-us.
 **
 ** GNU Lesser General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 2.1 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU Lesser General Public License version 2.1 requirements
-** will be met: http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
+** General Public License version 2.1 or version 3 as published by the Free
+** Software Foundation and appearing in the file LICENSE.LGPLv21 and
+** LICENSE.LGPLv3 included in the packaging of this file. Please review the
+** following information to ensure the GNU Lesser General Public License
+** requirements will be met: https://www.gnu.org/licenses/lgpl.html and
+** http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
 **
-** In addition, as a special exception, Digia gives you certain additional
-** rights.  These rights are described in the Digia Qt LGPL Exception
+** As a special exception, The Qt Company gives you certain additional
+** rights. These rights are described in The Qt Company LGPL Exception
 ** version 1.1, included in the file LGPL_EXCEPTION.txt in this package.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3.0 as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU General Public License version 3.0 requirements will be
-** met: http://www.gnu.org/copyleft/gpl.html.
-**
 **
 ** $QT_END_LICENSE$
 **
@@ -41,10 +33,9 @@
 
 #include "qrect.h"
 #include "qdatastream.h"
-#include "qdebug.h"
 #include "qmath.h"
 
-#include <math.h>
+#include <private/qdebug_p.h>
 
 QT_BEGIN_NAMESPACE
 
@@ -284,7 +275,7 @@ QT_BEGIN_NAMESPACE
 
     Returns \c true if the rectangle is valid, otherwise returns \c false.
 
-    A valid rectangle has a left() < right() and top() <
+    A valid rectangle has a left() <= right() and top() <=
     bottom(). Note that non-trivial operations like intersections are
     not defined for invalid rectangles. A valid rectangle is not empty
     (i.e., isValid() == !isEmpty()).
@@ -303,7 +294,7 @@ QT_BEGIN_NAMESPACE
     \sa isValid(), isEmpty()
 */
 
-QRect QRect::normalized() const
+QRect QRect::normalized() const Q_DECL_NOTHROW
 {
     QRect r;
     if (x2 < x1 - 1) {                                // swap bad x values
@@ -812,7 +803,7 @@ QRect QRect::normalized() const
     \sa intersects()
 */
 
-bool QRect::contains(const QPoint &p, bool proper) const
+bool QRect::contains(const QPoint &p, bool proper) const Q_DECL_NOTHROW
 {
     int l, r;
     if (x2 < x1 - 1) {
@@ -876,7 +867,7 @@ bool QRect::contains(const QPoint &p, bool proper) const
     rectangle (not on the edge).
 */
 
-bool QRect::contains(const QRect &r, bool proper) const
+bool QRect::contains(const QRect &r, bool proper) const Q_DECL_NOTHROW
 {
     if (isNull() || r.isNull())
         return false;
@@ -954,7 +945,7 @@ bool QRect::contains(const QRect &r, bool proper) const
     \sa operator|=(), united()
 */
 
-QRect QRect::operator|(const QRect &r) const
+QRect QRect::operator|(const QRect &r) const Q_DECL_NOTHROW
 {
     if (isNull())
         return r;
@@ -1025,7 +1016,7 @@ QRect QRect::operator|(const QRect &r) const
     \sa operator&=(), intersected()
 */
 
-QRect QRect::operator&(const QRect &r) const
+QRect QRect::operator&(const QRect &r) const Q_DECL_NOTHROW
 {
     if (isNull() || r.isNull())
         return QRect();
@@ -1104,7 +1095,7 @@ QRect QRect::operator&(const QRect &r) const
     \sa contains()
 */
 
-bool QRect::intersects(const QRect &r) const
+bool QRect::intersects(const QRect &r) const Q_DECL_NOTHROW
 {
     if (isNull() || r.isNull())
         return false;
@@ -1286,10 +1277,14 @@ QDataStream &operator>>(QDataStream &s, QRect &r)
 
 
 #ifndef QT_NO_DEBUG_STREAM
-QDebug operator<<(QDebug dbg, const QRect &r) {
-    dbg.nospace() << "QRect(" << r.x() << ',' << r.y() << ' '
-                  << r.width() << 'x' << r.height() << ')';
-    return dbg.space();
+QDebug operator<<(QDebug dbg, const QRect &r)
+{
+    QDebugStateSaver saver(dbg);
+    dbg.nospace();
+    dbg << "QRect" << '(';
+    QtDebugUtils::formatQRect(dbg, r);
+    dbg << ')';
+    return dbg;
 }
 #endif
 
@@ -1528,7 +1523,7 @@ QDebug operator<<(QDebug dbg, const QRect &r) {
     \sa isValid(), isEmpty()
 */
 
-QRectF QRectF::normalized() const
+QRectF QRectF::normalized() const Q_DECL_NOTHROW
 {
     QRectF r = *this;
     if (r.w < 0) {
@@ -1941,7 +1936,7 @@ QRectF QRectF::normalized() const
     \sa intersects()
 */
 
-bool QRectF::contains(const QPointF &p) const
+bool QRectF::contains(const QPointF &p) const Q_DECL_NOTHROW
 {
     qreal l = xp;
     qreal r = xp;
@@ -1987,7 +1982,7 @@ bool QRectF::contains(const QPointF &p) const
     otherwise returns \c false.
 */
 
-bool QRectF::contains(const QRectF &r) const
+bool QRectF::contains(const QRectF &r) const Q_DECL_NOTHROW
 {
     qreal l1 = xp;
     qreal r1 = xp;
@@ -2125,7 +2120,7 @@ bool QRectF::contains(const QRectF &r) const
     \sa united(), operator|=()
 */
 
-QRectF QRectF::operator|(const QRectF &r) const
+QRectF QRectF::operator|(const QRectF &r) const Q_DECL_NOTHROW
 {
     if (isNull())
         return r;
@@ -2194,7 +2189,7 @@ QRectF QRectF::operator|(const QRectF &r) const
     \sa operator&=(), intersected()
 */
 
-QRectF QRectF::operator&(const QRectF &r) const
+QRectF QRectF::operator&(const QRectF &r) const Q_DECL_NOTHROW
 {
     qreal l1 = xp;
     qreal r1 = xp;
@@ -2279,7 +2274,7 @@ QRectF QRectF::operator&(const QRectF &r) const
     \sa contains()
 */
 
-bool QRectF::intersects(const QRectF &r) const
+bool QRectF::intersects(const QRectF &r) const Q_DECL_NOTHROW
 {
     qreal l1 = xp;
     qreal r1 = xp;
@@ -2346,7 +2341,7 @@ bool QRectF::intersects(const QRectF &r) const
     \sa toRect()
 */
 
-QRect QRectF::toAlignedRect() const
+QRect QRectF::toAlignedRect() const Q_DECL_NOTHROW
 {
     int xmin = int(qFloor(xp));
     int xmax = int(qCeil(xp + w));
@@ -2493,10 +2488,14 @@ QDataStream &operator>>(QDataStream &s, QRectF &r)
 
 
 #ifndef QT_NO_DEBUG_STREAM
-QDebug operator<<(QDebug dbg, const QRectF &r) {
-    dbg.nospace() << "QRectF(" << r.x() << ',' << r.y() << ' '
-                  << r.width() << 'x' << r.height() << ')';
-    return dbg.space();
+QDebug operator<<(QDebug dbg, const QRectF &r)
+{
+    QDebugStateSaver saver(dbg);
+    dbg.nospace();
+    dbg << "QRectF" << '(';
+    QtDebugUtils::formatQRect(dbg, r);
+    dbg << ')';
+    return dbg;
 }
 #endif
 

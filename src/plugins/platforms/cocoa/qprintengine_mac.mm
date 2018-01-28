@@ -1,39 +1,31 @@
 /****************************************************************************
 **
-** Copyright (C) 2013 Digia Plc and/or its subsidiary(-ies).
-** Contact: http://www.qt-project.org/legal
+** Copyright (C) 2015 The Qt Company Ltd.
+** Contact: http://www.qt.io/licensing/
 **
 ** This file is part of the plugins of the Qt Toolkit.
 **
-** $QT_BEGIN_LICENSE:LGPL$
+** $QT_BEGIN_LICENSE:LGPL21$
 ** Commercial License Usage
 ** Licensees holding valid commercial Qt licenses may use this file in
 ** accordance with the commercial license agreement provided with the
 ** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and Digia.  For licensing terms and
-** conditions see http://qt.digia.com/licensing.  For further information
-** use the contact form at http://qt.digia.com/contact-us.
+** a written agreement between you and The Qt Company. For licensing terms
+** and conditions see http://www.qt.io/terms-conditions. For further
+** information use the contact form at http://www.qt.io/contact-us.
 **
 ** GNU Lesser General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 2.1 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU Lesser General Public License version 2.1 requirements
-** will be met: http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
+** General Public License version 2.1 or version 3 as published by the Free
+** Software Foundation and appearing in the file LICENSE.LGPLv21 and
+** LICENSE.LGPLv3 included in the packaging of this file. Please review the
+** following information to ensure the GNU Lesser General Public License
+** requirements will be met: https://www.gnu.org/licenses/lgpl.html and
+** http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
 **
-** In addition, as a special exception, Digia gives you certain additional
-** rights.  These rights are described in the Digia Qt LGPL Exception
+** As a special exception, The Qt Company gives you certain additional
+** rights. These rights are described in The Qt Company LGPL Exception
 ** version 1.1, included in the file LGPL_EXCEPTION.txt in this package.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3.0 as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU General Public License version 3.0 requirements will be
-** met: http://www.gnu.org/copyleft/gpl.html.
-**
 **
 ** $QT_END_LICENSE$
 **
@@ -58,7 +50,7 @@ QMacPrintEngine::QMacPrintEngine(QPrinter::PrinterMode mode) : QPaintEngine(*(ne
 {
     Q_D(QMacPrintEngine);
     d->mode = mode;
-    d->m_printDevice = new QCocoaPrintDevice(QCocoaPrinterSupport().defaultPrintDeviceId());
+    d->m_printDevice.reset(new QCocoaPrintDevice(QCocoaPrinterSupport().defaultPrintDeviceId()));
     d->m_pageLayout.setPageSize(d->m_printDevice->defaultPageSize());
     d->initialize();
 }
@@ -412,7 +404,10 @@ void QMacPrintEngine::drawTextItem(const QPointF &p, const QTextItem &ti)
 {
     Q_D(QMacPrintEngine);
     Q_ASSERT(d->state == QPrinter::Active);
-    d->paintEngine->drawTextItem(p, ti);
+    if (!d->embedFonts)
+        QPaintEngine::drawTextItem(p, ti);
+    else
+        d->paintEngine->drawTextItem(p, ti);
 }
 
 void QMacPrintEngine::drawTiledPixmap(const QRectF &dr, const QPixmap &pixmap, const QPointF &sr)
@@ -457,11 +452,6 @@ void QMacPrintEngine::setProperty(PrintEnginePropertyKey key, const QVariant &va
         break;
     case PPK_CustomBase:
         break;
-    case PPK_Duplex:
-        // TODO Add support using PMSetDuplex / PMGetDuplex
-        break;
-    case PPK_FontEmbedding:
-        break;
     case PPK_PageOrder:
         // TODO Check if can be supported via Cups Options
         break;
@@ -474,6 +464,9 @@ void QMacPrintEngine::setProperty(PrintEnginePropertyKey key, const QVariant &va
         break;
 
     // The following keys are properties and settings that are supported by the Mac PrintEngine
+    case PPK_FontEmbedding:
+        d->embedFonts = value.toBool();
+        break;
     case PPK_Resolution:  {
         // TODO It appears the old code didn't actually set the resolution???  Can we delete all this???
         int bestResolution = 0;
@@ -503,6 +496,29 @@ void QMacPrintEngine::setProperty(PrintEnginePropertyKey key, const QVariant &va
     case PPK_DocumentName:
         PMPrintSettingsSetJobName(d->settings(), QCFString(value.toString()));
         break;
+    case PPK_Duplex: {
+        QPrint::DuplexMode mode = QPrint::DuplexMode(value.toInt());
+        if (mode == property(PPK_Duplex).toInt() || !d->m_printDevice->supportedDuplexModes().contains(mode))
+            break;
+        switch (mode) {
+        case QPrinter::DuplexNone:
+            PMSetDuplex(d->settings(), kPMDuplexNone);
+            break;
+        case QPrinter::DuplexAuto:
+            PMSetDuplex(d->settings(), d->m_pageLayout.orientation() == QPageLayout::Landscape ? kPMDuplexTumble : kPMDuplexNoTumble);
+            break;
+        case QPrinter::DuplexLongSide:
+            PMSetDuplex(d->settings(), kPMDuplexNoTumble);
+            break;
+        case QPrinter::DuplexShortSide:
+            PMSetDuplex(d->settings(), kPMDuplexTumble);
+            break;
+        default:
+            // Don't change
+            break;
+        }
+        break;
+    }
     case PPK_FullPage:
         if (value.toBool())
             d->m_pageLayout.setMode(QPageLayout::FullPageMode);
@@ -542,7 +558,7 @@ void QMacPrintEngine::setProperty(PrintEnginePropertyKey key, const QVariant &va
             id = QCocoaPrinterSupport().defaultPrintDeviceId();
         else if (!QCocoaPrinterSupport().availablePrintDeviceIds().contains(id))
             break;
-        d->m_printDevice = new QCocoaPrintDevice(id);
+        d->m_printDevice.reset(new QCocoaPrintDevice(id));
         PMPrinter printer = d->m_printDevice->macPrinter();
         PMRetain(printer);
         PMSessionSetCurrentPMPrinter(d->session(), printer);
@@ -602,13 +618,6 @@ QVariant QMacPrintEngine::property(PrintEnginePropertyKey key) const
     case PPK_CustomBase:
         // Special case, leave null
         break;
-    case PPK_Duplex:
-        // TODO Add support using PMSetDuplex / PMGetDuplex
-        ret = QPrinter::DuplexNone;
-        break;
-    case PPK_FontEmbedding:
-        ret = false;
-        break;
     case PPK_PageOrder:
         // TODO Check if can be supported via Cups Options
         ret = QPrinter::FirstPageFirst;
@@ -632,6 +641,9 @@ QVariant QMacPrintEngine::property(PrintEnginePropertyKey key) const
         break;
 
     // The following keys are properties and settings that are supported by the Mac PrintEngine
+    case PPK_FontEmbedding:
+        ret = d->embedFonts;
+        break;
     case PPK_CollateCopies: {
         Boolean status;
         PMGetCollate(d->settings(), &status);
@@ -645,6 +657,23 @@ QVariant QMacPrintEngine::property(PrintEnginePropertyKey key) const
         CFStringRef name;
         PMPrintSettingsGetJobName(d->settings(), &name);
         ret = QCFString::toQString(name);
+        break;
+    }
+    case PPK_Duplex: {
+        PMDuplexMode mode = kPMDuplexNone;
+        PMGetDuplex(d->settings(), &mode);
+        switch (mode) {
+        case kPMDuplexNoTumble:
+            ret = QPrinter::DuplexLongSide;
+            break;
+        case kPMDuplexTumble:
+            ret = QPrinter::DuplexShortSide;
+            break;
+        case kPMDuplexNone:
+        default:
+            ret = QPrinter::DuplexNone;
+            break;
+        }
         break;
     }
     case PPK_FullPage:

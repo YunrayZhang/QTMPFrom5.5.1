@@ -1,39 +1,31 @@
 /****************************************************************************
 **
-** Copyright (C) 2013 Digia Plc and/or its subsidiary(-ies).
-** Contact: http://www.qt-project.org/legal
+** Copyright (C) 2015 The Qt Company Ltd.
+** Contact: http://www.qt.io/licensing/
 **
 ** This file is part of the test suite of the Qt Toolkit.
 **
-** $QT_BEGIN_LICENSE:LGPL$
+** $QT_BEGIN_LICENSE:LGPL21$
 ** Commercial License Usage
 ** Licensees holding valid commercial Qt licenses may use this file in
 ** accordance with the commercial license agreement provided with the
 ** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and Digia.  For licensing terms and
-** conditions see http://qt.digia.com/licensing.  For further information
-** use the contact form at http://qt.digia.com/contact-us.
+** a written agreement between you and The Qt Company. For licensing terms
+** and conditions see http://www.qt.io/terms-conditions. For further
+** information use the contact form at http://www.qt.io/contact-us.
 **
 ** GNU Lesser General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 2.1 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU Lesser General Public License version 2.1 requirements
-** will be met: http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
+** General Public License version 2.1 or version 3 as published by the Free
+** Software Foundation and appearing in the file LICENSE.LGPLv21 and
+** LICENSE.LGPLv3 included in the packaging of this file. Please review the
+** following information to ensure the GNU Lesser General Public License
+** requirements will be met: https://www.gnu.org/licenses/lgpl.html and
+** http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
 **
-** In addition, as a special exception, Digia gives you certain additional
-** rights.  These rights are described in the Digia Qt LGPL Exception
+** As a special exception, The Qt Company gives you certain additional
+** rights. These rights are described in The Qt Company LGPL Exception
 ** version 1.1, included in the file LGPL_EXCEPTION.txt in this package.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3.0 as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU General Public License version 3.0 requirements will be
-** met: http://www.gnu.org/copyleft/gpl.html.
-**
 **
 ** $QT_END_LICENSE$
 **
@@ -47,8 +39,12 @@
 
 #include <private/qabstractanimation_p.h>
 
-#ifdef Q_OS_WIN
-static const char winTimerError[] = "On windows, consistent timing is not working properly due to bad timer resolution";
+#if defined(Q_OS_WIN) || defined(Q_OS_ANDROID)
+#  define BAD_TIMER_RESOLUTION
+#endif
+
+#ifdef BAD_TIMER_RESOLUTION
+static const char timerError[] = "On this platform, consistent timing is not working properly due to bad timer resolution";
 #endif
 
 class TestablePauseAnimation : public QPauseAnimation
@@ -148,17 +144,17 @@ void tst_QPauseAnimation::noTimerUpdates()
     animation.start();
     QTest::qWait(animation.totalDuration() + 100);
 
-#ifdef Q_OS_WIN
+#ifdef BAD_TIMER_RESOLUTION
     if (animation.state() != QAbstractAnimation::Stopped)
-        QEXPECT_FAIL("", winTimerError, Abort);
+        QEXPECT_FAIL("", timerError, Abort);
 #endif
 
     QVERIFY(animation.state() == QAbstractAnimation::Stopped);
     const int expectedLoopCount = 1 + loopCount;
 
-#ifdef Q_OS_WIN
+#ifdef BAD_TIMER_RESOLUTION
     if (animation.m_updateCurrentTimeCount != expectedLoopCount)
-        QEXPECT_FAIL("", winTimerError, Abort);
+        QEXPECT_FAIL("", timerError, Abort);
 #endif
     QCOMPARE(animation.m_updateCurrentTimeCount, expectedLoopCount);
 }
@@ -177,41 +173,41 @@ void tst_QPauseAnimation::multiplePauseAnimations()
     animation2.start();
     QTest::qWait(animation.totalDuration() + 100);
 
-#ifdef Q_OS_WIN
+#ifdef BAD_TIMER_RESOLUTION
     if (animation.state() != QAbstractAnimation::Stopped)
-        QEXPECT_FAIL("", winTimerError, Abort);
+        QEXPECT_FAIL("", timerError, Abort);
 #endif
     QVERIFY(animation.state() == QAbstractAnimation::Stopped);
 
-#ifdef Q_OS_WIN
+#ifdef BAD_TIMER_RESOLUTION
     if (animation2.state() != QAbstractAnimation::Running)
-        QEXPECT_FAIL("", winTimerError, Abort);
+        QEXPECT_FAIL("", timerError, Abort);
 #endif
     QVERIFY(animation2.state() == QAbstractAnimation::Running);
 
-#ifdef Q_OS_WIN
+#ifdef BAD_TIMER_RESOLUTION
     if (animation.m_updateCurrentTimeCount != 2)
-        QEXPECT_FAIL("", winTimerError, Abort);
+        QEXPECT_FAIL("", timerError, Abort);
 #endif
     QCOMPARE(animation.m_updateCurrentTimeCount, 2);
 
-#ifdef Q_OS_WIN
+#ifdef BAD_TIMER_RESOLUTION
     if (animation2.m_updateCurrentTimeCount != 2)
-        QEXPECT_FAIL("", winTimerError, Abort);
+        QEXPECT_FAIL("", timerError, Abort);
 #endif
     QCOMPARE(animation2.m_updateCurrentTimeCount, 2);
 
     QTest::qWait(550);
 
-#ifdef Q_OS_WIN
+#ifdef BAD_TIMER_RESOLUTION
     if (animation2.state() != QAbstractAnimation::Stopped)
-        QEXPECT_FAIL("", winTimerError, Abort);
+        QEXPECT_FAIL("", timerError, Abort);
 #endif
     QVERIFY(animation2.state() == QAbstractAnimation::Stopped);
 
-#ifdef Q_OS_WIN
+#ifdef BAD_TIMER_RESOLUTION
     if (animation2.m_updateCurrentTimeCount != 3)
-        QEXPECT_FAIL("", winTimerError, Abort);
+        QEXPECT_FAIL("", timerError, Abort);
 #endif
     QCOMPARE(animation2.m_updateCurrentTimeCount, 3);
 }
@@ -240,9 +236,9 @@ void tst_QPauseAnimation::pauseAndPropertyAnimations()
 
     QTest::qWait(animation.totalDuration() + 100);
 
-#ifdef Q_OS_WIN
+#ifdef BAD_TIMER_RESOLUTION
     if (animation.state() != QAbstractAnimation::Stopped)
-        QEXPECT_FAIL("", winTimerError, Abort);
+        QEXPECT_FAIL("", timerError, Abort);
 #endif
     QVERIFY(animation.state() == QAbstractAnimation::Stopped);
     QVERIFY(pause.state() == QAbstractAnimation::Stopped);
@@ -261,9 +257,9 @@ void tst_QPauseAnimation::pauseResume()
     animation.start();
     QTRY_COMPARE(animation.state(), QAbstractAnimation::Stopped);
 
-#ifdef Q_OS_WIN
+#ifdef BAD_TIMER_RESOLUTION
     if (animation.m_updateCurrentTimeCount < 3)
-        QEXPECT_FAIL("", winTimerError, Abort);
+        QEXPECT_FAIL("", timerError, Abort);
 #endif
     QVERIFY2(animation.m_updateCurrentTimeCount >= 3, qPrintable(
         QString::fromLatin1("animation.m_updateCurrentTimeCount = %1").arg(animation.m_updateCurrentTimeCount)));
@@ -416,39 +412,39 @@ void tst_QPauseAnimation::multipleSequentialGroups()
     // measure...
     QTest::qWait(group.totalDuration() + 500);
 
-#ifdef Q_OS_WIN
+#ifdef BAD_TIMER_RESOLUTION
     if (group.state() != QAbstractAnimation::Stopped)
-        QEXPECT_FAIL("", winTimerError, Abort);
+        QEXPECT_FAIL("", timerError, Abort);
 #endif
     QVERIFY(group.state() == QAbstractAnimation::Stopped);
 
-#ifdef Q_OS_WIN
+#ifdef BAD_TIMER_RESOLUTION
     if (subgroup1.state() != QAbstractAnimation::Stopped)
-        QEXPECT_FAIL("", winTimerError, Abort);
+        QEXPECT_FAIL("", timerError, Abort);
 #endif
     QVERIFY(subgroup1.state() == QAbstractAnimation::Stopped);
 
-#ifdef Q_OS_WIN
+#ifdef BAD_TIMER_RESOLUTION
     if (subgroup2.state() != QAbstractAnimation::Stopped)
-        QEXPECT_FAIL("", winTimerError, Abort);
+        QEXPECT_FAIL("", timerError, Abort);
 #endif
     QVERIFY(subgroup2.state() == QAbstractAnimation::Stopped);
 
-#ifdef Q_OS_WIN
+#ifdef BAD_TIMER_RESOLUTION
     if (subgroup3.state() != QAbstractAnimation::Stopped)
-        QEXPECT_FAIL("", winTimerError, Abort);
+        QEXPECT_FAIL("", timerError, Abort);
 #endif
     QVERIFY(subgroup3.state() == QAbstractAnimation::Stopped);
 
-#ifdef Q_OS_WIN
+#ifdef BAD_TIMER_RESOLUTION
     if (subgroup4.state() != QAbstractAnimation::Stopped)
-        QEXPECT_FAIL("", winTimerError, Abort);
+        QEXPECT_FAIL("", timerError, Abort);
 #endif
     QVERIFY(subgroup4.state() == QAbstractAnimation::Stopped);
 
-#ifdef Q_OS_WIN
+#ifdef BAD_TIMER_RESOLUTION
     if (pause5.m_updateCurrentTimeCount != 4)
-        QEXPECT_FAIL("", winTimerError, Abort);
+        QEXPECT_FAIL("", timerError, Abort);
 #endif
     QCOMPARE(pause5.m_updateCurrentTimeCount, 4);
 }

@@ -1,39 +1,31 @@
 /****************************************************************************
 **
-** Copyright (C) 2014 Digia Plc and/or its subsidiary(-ies).
-** Contact: http://www.qt-project.org/legal
+** Copyright (C) 2015 The Qt Company Ltd.
+** Contact: http://www.qt.io/licensing/
 **
 ** This file is part of the plugins of the Qt Toolkit.
 **
-** $QT_BEGIN_LICENSE:LGPL$
+** $QT_BEGIN_LICENSE:LGPL21$
 ** Commercial License Usage
 ** Licensees holding valid commercial Qt licenses may use this file in
 ** accordance with the commercial license agreement provided with the
 ** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and Digia.  For licensing terms and
-** conditions see http://qt.digia.com/licensing.  For further information
-** use the contact form at http://qt.digia.com/contact-us.
+** a written agreement between you and The Qt Company. For licensing terms
+** and conditions see http://www.qt.io/terms-conditions. For further
+** information use the contact form at http://www.qt.io/contact-us.
 **
 ** GNU Lesser General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 2.1 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU Lesser General Public License version 2.1 requirements
-** will be met: http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
+** General Public License version 2.1 or version 3 as published by the Free
+** Software Foundation and appearing in the file LICENSE.LGPLv21 and
+** LICENSE.LGPLv3 included in the packaging of this file. Please review the
+** following information to ensure the GNU Lesser General Public License
+** requirements will be met: https://www.gnu.org/licenses/lgpl.html and
+** http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
 **
-** In addition, as a special exception, Digia gives you certain additional
-** rights.  These rights are described in the Digia Qt LGPL Exception
+** As a special exception, The Qt Company gives you certain additional
+** rights. These rights are described in The Qt Company LGPL Exception
 ** version 1.1, included in the file LGPL_EXCEPTION.txt in this package.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3.0 as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU General Public License version 3.0 requirements will be
-** met: http://www.gnu.org/copyleft/gpl.html.
-**
 **
 ** $QT_END_LICENSE$
 **
@@ -51,6 +43,7 @@
 #include "qwindowsintegration.h"
 #include "qt_windows.h"
 #include "qwindowsfontdatabase.h"
+#include "qwindowsscaling.h"
 #ifdef Q_OS_WINCE
 #  include "qplatformfunctions_wince.h"
 #  include "winuser.h"
@@ -69,6 +62,7 @@
 #include <QtCore/QTextStream>
 #include <QtCore/QSysInfo>
 #include <QtCore/QCache>
+#include <QtGui/QColor>
 #include <QtGui/QPalette>
 #include <QtGui/QGuiApplication>
 #include <QtGui/QPainter>
@@ -83,6 +77,16 @@
 #endif
 
 QT_BEGIN_NAMESPACE
+
+static inline COLORREF qColorToCOLORREF(const QColor &color)
+{
+    return RGB(color.red(), color.green(), color.blue());
+}
+
+static inline QColor COLORREFToQColor(COLORREF cr)
+{
+    return QColor(GetRValue(cr), GetGValue(cr), GetBValue(cr));
+}
 
 static inline QTextStream& operator<<(QTextStream &str, const QColor &c)
 {
@@ -144,7 +148,7 @@ static inline QColor mixColors(const QColor &c1, const QColor &c2)
 
 static inline QColor getSysColor(int index)
 {
-    return qColorToCOLORREF(GetSysColor(index));
+    return COLORREFToQColor(GetSysColor(index));
 }
 
 // from QStyle::standardPalette
@@ -491,6 +495,8 @@ static QPixmap loadIconFromShell32(int resourceId, QSizeF size)
 
 QPixmap QWindowsTheme::standardPixmap(StandardPixmap sp, const QSizeF &size) const
 {
+    const int scaleFactor = QWindowsScaling::factor();
+    const QSizeF pixmapSize = size * scaleFactor;
     int resourceId = -1;
     LPCTSTR iconName = 0;
     switch (sp) {
@@ -557,9 +563,10 @@ QPixmap QWindowsTheme::standardPixmap(StandardPixmap sp, const QSizeF &size) con
             SHSTOCKICONINFO iconInfo;
             memset(&iconInfo, 0, sizeof(iconInfo));
             iconInfo.cbSize = sizeof(iconInfo);
-            const int iconSize = size.width() > 16 ? SHGFI_LARGEICON : SHGFI_SMALLICON;
+            const int iconSize = pixmapSize.width() > 16 ? SHGFI_LARGEICON : SHGFI_SMALLICON;
             if (QWindowsContext::shell32dll.sHGetStockIconInfo(SIID_SHIELD, SHGFI_ICON | iconSize, &iconInfo) == S_OK) {
                 pixmap = qt_pixmapFromWinHICON(iconInfo.hIcon);
+                pixmap.setDevicePixelRatio(scaleFactor);
                 DestroyIcon(iconInfo.hIcon);
                 return pixmap;
             }
@@ -571,13 +578,14 @@ QPixmap QWindowsTheme::standardPixmap(StandardPixmap sp, const QSizeF &size) con
     }
 
     if (resourceId != -1) {
-        QPixmap pixmap = loadIconFromShell32(resourceId, size);
+        QPixmap pixmap = loadIconFromShell32(resourceId, pixmapSize);
         if (!pixmap.isNull()) {
             if (sp == FileLinkIcon || sp == DirLinkIcon || sp == DirLinkOpenIcon) {
                 QPainter painter(&pixmap);
-                QPixmap link = loadIconFromShell32(30, size);
-                painter.drawPixmap(0, 0, size.width(), size.height(), link);
+                QPixmap link = loadIconFromShell32(30, pixmapSize);
+                painter.drawPixmap(0, 0, pixmapSize.width(), pixmapSize.height(), link);
             }
+            pixmap.setDevicePixelRatio(scaleFactor);
             return pixmap;
         }
     }
@@ -585,6 +593,7 @@ QPixmap QWindowsTheme::standardPixmap(StandardPixmap sp, const QSizeF &size) con
     if (iconName) {
         HICON iconHandle = LoadIcon(NULL, iconName);
         QPixmap pixmap = qt_pixmapFromWinHICON(iconHandle);
+        pixmap.setDevicePixelRatio(scaleFactor);
         DestroyIcon(iconHandle);
         if (!pixmap.isNull())
             return pixmap;

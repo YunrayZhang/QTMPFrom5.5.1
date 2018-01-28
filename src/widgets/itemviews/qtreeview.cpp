@@ -1,39 +1,31 @@
 /****************************************************************************
 **
-** Copyright (C) 2014 Digia Plc and/or its subsidiary(-ies).
-** Contact: http://www.qt-project.org/legal
+** Copyright (C) 2015 The Qt Company Ltd.
+** Contact: http://www.qt.io/licensing/
 **
 ** This file is part of the QtWidgets module of the Qt Toolkit.
 **
-** $QT_BEGIN_LICENSE:LGPL$
+** $QT_BEGIN_LICENSE:LGPL21$
 ** Commercial License Usage
 ** Licensees holding valid commercial Qt licenses may use this file in
 ** accordance with the commercial license agreement provided with the
 ** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and Digia.  For licensing terms and
-** conditions see http://qt.digia.com/licensing.  For further information
-** use the contact form at http://qt.digia.com/contact-us.
+** a written agreement between you and The Qt Company. For licensing terms
+** and conditions see http://www.qt.io/terms-conditions. For further
+** information use the contact form at http://www.qt.io/contact-us.
 **
 ** GNU Lesser General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 2.1 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU Lesser General Public License version 2.1 requirements
-** will be met: http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
+** General Public License version 2.1 or version 3 as published by the Free
+** Software Foundation and appearing in the file LICENSE.LGPLv21 and
+** LICENSE.LGPLv3 included in the packaging of this file. Please review the
+** following information to ensure the GNU Lesser General Public License
+** requirements will be met: https://www.gnu.org/licenses/lgpl.html and
+** http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
 **
-** In addition, as a special exception, Digia gives you certain additional
-** rights.  These rights are described in the Digia Qt LGPL Exception
+** As a special exception, The Qt Company gives you certain additional
+** rights. These rights are described in The Qt Company LGPL Exception
 ** version 1.1, included in the file LGPL_EXCEPTION.txt in this package.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3.0 as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU General Public License version 3.0 requirements will be
-** met: http://www.gnu.org/copyleft/gpl.html.
-**
 **
 ** $QT_END_LICENSE$
 **
@@ -109,6 +101,10 @@ QT_BEGIN_NAMESPACE
     its header. If this value is set to true, this property will override the
     resize mode set on the last section in the header.
 
+    By default, all columns in a tree view are movable except the first. To
+    disable movement of these columns, use QHeaderView's
+    \l {QHeaderView::}{setSectionsMovable()} function. For more information
+    about rearranging sections, see \l {Moving Header Sections}.
 
     \section1 Key Bindings
 
@@ -371,7 +367,9 @@ void QTreeView::setAutoExpandDelay(int delay)
   horizontal distance from the viewport edge to the items in the first column;
   for child items, it specifies their indentation from their parent items.
 
-  By default, this property has a value of 20.
+  By default, the value of this property is style dependent. Thus, when the style
+  changes, this property updates from it. Calling setIndentation() stops the updates,
+  calling resetIndentation() will restore default behavior.
 */
 int QTreeView::indentation() const
 {
@@ -382,9 +380,19 @@ int QTreeView::indentation() const
 void QTreeView::setIndentation(int i)
 {
     Q_D(QTreeView);
-    if (i != d->indent) {
+    if (!d->customIndent || (i != d->indent)) {
         d->indent = i;
+        d->customIndent = true;
         d->viewport->update();
+    }
+}
+
+void QTreeView::resetIndentation()
+{
+    Q_D(QTreeView);
+    if (d->customIndent) {
+        d->updateIndentationFromStyle();
+        d->customIndent = false;
     }
 }
 
@@ -424,6 +432,9 @@ void QTreeView::setRootIsDecorated(bool show)
 
   The height is obtained from the first item in the view.  It is updated
   when the data changes on that item.
+
+  \note If the editor size hint is bigger than the cell size hint, then the
+  size hint of the editor will be used.
 
   By default, this property is \c false.
 */
@@ -1905,7 +1916,7 @@ void QTreeView::mouseReleaseEvent(QMouseEvent *event)
     if (d->itemDecorationAt(event->pos()) == -1) {
         QAbstractItemView::mouseReleaseEvent(event);
     } else {
-        if (state() == QAbstractItemView::DragSelectingState)
+        if (state() == QAbstractItemView::DragSelectingState || state() == QAbstractItemView::DraggingState)
             setState(QAbstractItemView::NoState);
         if (style()->styleHint(QStyle::SH_ListViewExpand_SelectMouseType, 0, this) == QEvent::MouseButtonRelease)
             d->expandOrCollapseItemAtPos(event->pos());
@@ -2081,6 +2092,12 @@ QModelIndex QTreeView::indexBelow(const QModelIndex &index) const
 void QTreeView::doItemsLayout()
 {
     Q_D(QTreeView);
+    if (!d->customIndent) {
+        // ### Qt 6: move to event()
+        // QAbstractItemView calls this method in case of a style change,
+        // so update the indentation here if it wasn't set manually.
+        d->updateIndentationFromStyle();
+    }
     if (d->hasRemovedItems) {
         //clean the QSet that may contains old (and this invalid) indexes
         d->hasRemovedItems = false;
@@ -2185,7 +2202,7 @@ QModelIndex QTreeView::moveCursor(CursorAction cursorAction, Qt::KeyboardModifie
         return QModelIndex();
     }
     int vi = -1;
-#if defined(Q_WS_MAC) && !defined(QT_NO_STYLE_MAC)
+#if defined(Q_DEAD_CODE_FROM_QT4_MAC) && !defined(QT_NO_STYLE_MAC)
     // Selection behavior is slightly different on the Mac.
     if (d->selectionMode == QAbstractItemView::ExtendedSelection
         && d->selectionModel
@@ -2813,10 +2830,14 @@ void QTreeView::updateGeometries()
         if (d->geometryRecursionBlock)
             return;
         d->geometryRecursionBlock = true;
-        QSize hint = d->header->isHidden() ? QSize(0, 0) : d->header->sizeHint();
-        setViewportMargins(0, hint.height(), 0, 0);
+        int height = 0;
+        if (!d->header->isHidden()) {
+            height = qMax(d->header->minimumHeight(), d->header->sizeHint().height());
+            height = qMin(height, d->header->maximumHeight());
+        }
+        setViewportMargins(0, height, 0, 0);
         QRect vg = d->viewport->geometry();
-        QRect geometryRect(vg.left(), vg.top() - hint.height(), vg.width(), hint.height());
+        QRect geometryRect(vg.left(), vg.top() - height, vg.width(), height);
         d->header->setGeometry(geometryRect);
         QMetaObject::invokeMethod(d->header, "updateGeometries");
         d->updateScrollBars();
@@ -3025,6 +3046,8 @@ bool QTreeView::isIndexHidden(const QModelIndex &index) const
 void QTreeViewPrivate::initialize()
 {
     Q_Q(QTreeView);
+
+    updateIndentationFromStyle();
     updateStyledFrameWidths();
     q->setSelectionBehavior(QAbstractItemView::SelectRows);
     q->setSelectionMode(QAbstractItemView::SingleSelection);
@@ -3078,8 +3101,6 @@ void QTreeViewPrivate::expand(int item, bool emitSignal)
 
 void QTreeViewPrivate::insertViewItems(int pos, int count, const QTreeViewItem &viewItem)
 {
-    Q_Q(QTreeView);
-    Q_UNUSED(q)
     viewItems.insert(pos, count, viewItem);
     QTreeViewItem *items = viewItems.data();
     for (int i = pos + count; i < viewItems.count(); i++)
@@ -3089,8 +3110,6 @@ void QTreeViewPrivate::insertViewItems(int pos, int count, const QTreeViewItem &
 
 void QTreeViewPrivate::removeViewItems(int pos, int count)
 {
-    Q_Q(QTreeView);
-    Q_UNUSED(q)
     viewItems.remove(pos, count);
     QTreeViewItem *items = viewItems.data();
     for (int i = pos; i < viewItems.count(); i++)
@@ -3646,6 +3665,7 @@ void QTreeViewPrivate::updateScrollBars()
     if (!viewportSize.isValid())
         viewportSize = QSize(0, 0);
 
+    executePostedLayout();
     if (viewItems.isEmpty()) {
         q->doItemsLayout();
     }
@@ -3911,6 +3931,12 @@ int QTreeViewPrivate::accessibleTree2Index(const QModelIndex &index) const
     return (q->visualIndex(index) + (q->header() ? 1 : 0)) * index.model()->columnCount() + index.column();
 }
 
+void QTreeViewPrivate::updateIndentationFromStyle()
+{
+    Q_Q(const QTreeView);
+    indent = q->style()->pixelMetric(QStyle::PM_TreeViewIndentation, 0, q);
+}
+
 /*!
   \reimp
  */
@@ -3959,7 +3985,7 @@ void QTreeView::selectionChanged(const QItemSelection &selected,
         if (sel.isValid()) {
             int entry = d->accessibleTree2Index(sel);
             Q_ASSERT(entry >= 0);
-            QAccessibleEvent event(this, QAccessible::Selection);
+            QAccessibleEvent event(this, QAccessible::SelectionAdd);
             event.setChild(entry);
             QAccessible::updateAccessibility(&event);
         }

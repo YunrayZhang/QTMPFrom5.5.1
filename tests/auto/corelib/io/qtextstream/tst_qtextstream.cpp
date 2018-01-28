@@ -1,39 +1,31 @@
 /****************************************************************************
 **
-** Copyright (C) 2013 Digia Plc and/or its subsidiary(-ies).
-** Contact: http://www.qt-project.org/legal
+** Copyright (C) 2015 The Qt Company Ltd.
+** Contact: http://www.qt.io/licensing/
 **
 ** This file is part of the test suite of the Qt Toolkit.
 **
-** $QT_BEGIN_LICENSE:LGPL$
+** $QT_BEGIN_LICENSE:LGPL21$
 ** Commercial License Usage
 ** Licensees holding valid commercial Qt licenses may use this file in
 ** accordance with the commercial license agreement provided with the
 ** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and Digia.  For licensing terms and
-** conditions see http://qt.digia.com/licensing.  For further information
-** use the contact form at http://qt.digia.com/contact-us.
+** a written agreement between you and The Qt Company. For licensing terms
+** and conditions see http://www.qt.io/terms-conditions. For further
+** information use the contact form at http://www.qt.io/contact-us.
 **
 ** GNU Lesser General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 2.1 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU Lesser General Public License version 2.1 requirements
-** will be met: http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
+** General Public License version 2.1 or version 3 as published by the Free
+** Software Foundation and appearing in the file LICENSE.LGPLv21 and
+** LICENSE.LGPLv3 included in the packaging of this file. Please review the
+** following information to ensure the GNU Lesser General Public License
+** requirements will be met: https://www.gnu.org/licenses/lgpl.html and
+** http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
 **
-** In addition, as a special exception, Digia gives you certain additional
-** rights.  These rights are described in the Digia Qt LGPL Exception
+** As a special exception, The Qt Company gives you certain additional
+** rights. These rights are described in The Qt Company LGPL Exception
 ** version 1.1, included in the file LGPL_EXCEPTION.txt in this package.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3.0 as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU General Public License version 3.0 requirements will be
-** met: http://www.gnu.org/copyleft/gpl.html.
-**
 **
 ** $QT_END_LICENSE$
 **
@@ -89,6 +81,7 @@ private slots:
     void readLineMaxlen_data();
     void readLineMaxlen();
     void readLinesFromBufferCRCR();
+    void readLineInto();
 
     // all
     void readAllFromDevice_data();
@@ -194,7 +187,7 @@ private slots:
     void pos();
     void pos2();
     void pos3LargeFile();
-#if !defined(Q_OS_WINCE) && !defined(QT_NO_PROCESS)
+#if !defined(Q_OS_WINCE)
     void readStdin();
     void readAllFromStdin();
     void readLineFromStdin();
@@ -245,6 +238,8 @@ private:
 
     QTemporaryDir tempDir;
     QString testFileName;
+    const QString m_rfc3261FilePath;
+    const QString m_shiftJisFilePath;
 };
 
 void runOnExit()
@@ -256,11 +251,16 @@ Q_DESTRUCTOR_FUNCTION(runOnExit)
 
 tst_QTextStream::tst_QTextStream()
     : tempDir(QDir::tempPath() + "/tst_qtextstream.XXXXXX")
+    , m_rfc3261FilePath(QFINDTESTDATA("rfc3261.txt"))
+    , m_shiftJisFilePath(QFINDTESTDATA("shift-jis.txt"))
 {
 }
 
 void tst_QTextStream::initTestCase()
 {
+    QVERIFY(!m_rfc3261FilePath.isEmpty());
+    QVERIFY(!m_shiftJisFilePath.isEmpty());
+
     testFileName = tempDir.path() + "/testfile";
 
     // chdir into the testdata dir and refer to our helper apps with relative paths
@@ -594,6 +594,63 @@ void tst_QTextStream::readLinesFromBufferCRCR()
     }
 }
 
+class ErrorDevice : public QIODevice
+{
+protected:
+    qint64 readData(char *data, qint64 maxlen) Q_DECL_OVERRIDE
+    {
+        Q_UNUSED(data)
+        Q_UNUSED(maxlen)
+        return -1;
+    }
+
+    qint64 writeData(const char *data, qint64 len) Q_DECL_OVERRIDE
+    {
+        Q_UNUSED(data)
+        Q_UNUSED(len)
+        return -1;
+    }
+};
+
+void tst_QTextStream::readLineInto()
+{
+    QByteArray data = "1\n2\n3";
+
+    QTextStream ts(&data);
+    QString line;
+
+    ts.readLineInto(&line);
+    QCOMPARE(line, QStringLiteral("1"));
+
+    ts.readLineInto(Q_NULLPTR, 0); // read the second line, but don't store it
+
+    ts.readLineInto(&line);
+    QCOMPARE(line, QStringLiteral("3"));
+
+    QVERIFY(!ts.readLineInto(&line));
+    QVERIFY(line.isEmpty());
+
+    QFile file(m_rfc3261FilePath);
+    QVERIFY(file.open(QFile::ReadOnly));
+
+    ts.setDevice(&file);
+    line.reserve(1);
+    int maxLineCapacity = line.capacity();
+
+    while (ts.readLineInto(&line)) {
+        QVERIFY(line.capacity() >= maxLineCapacity);
+        maxLineCapacity = line.capacity();
+    }
+
+    line = "Test string";
+    ErrorDevice errorDevice;
+    QVERIFY(errorDevice.open(QIODevice::ReadOnly));
+    ts.setDevice(&errorDevice);
+
+    QVERIFY(!ts.readLineInto(&line));
+    QVERIFY(line.isEmpty());
+}
+
 // ------------------------------------------------------------------------------
 void tst_QTextStream::readLineFromString_data()
 {
@@ -768,7 +825,7 @@ void tst_QTextStream::generateAllData(bool for_QString)
 // ------------------------------------------------------------------------------
 void tst_QTextStream::readLineUntilNull()
 {
-    QFile file(QFINDTESTDATA("rfc3261.txt"));
+    QFile file(m_rfc3261FilePath);
     QVERIFY(file.open(QFile::ReadOnly));
 
     QTextStream stream(&file);
@@ -887,7 +944,7 @@ void tst_QTextStream::lineCount_data()
     QTest::newRow("buffersize+1 line") << QByteArray(16384, '\n') << 16384;
     QTest::newRow("buffersize+2 line") << QByteArray(16385, '\n') << 16385;
 
-    QFile file(QFINDTESTDATA("rfc3261.txt")); file.open(QFile::ReadOnly);
+    QFile file(m_rfc3261FilePath); file.open(QFile::ReadOnly);
     QTest::newRow("rfc3261") << file.readAll() << 15067;
 }
 
@@ -913,17 +970,32 @@ void tst_QTextStream::lineCount()
 }
 
 // ------------------------------------------------------------------------------
+struct CompareIndicesForArray
+{
+    int *array;
+    CompareIndicesForArray(int *array) : array(array) {}
+    bool operator() (const int i1, const int i2)
+    {
+        return array[i1] < array[i2];
+    }
+};
+
 void tst_QTextStream::performance()
 {
     // Phase #1 - test speed of reading a huge text file with QFile.
     QTime stopWatch;
 
-    int elapsed1 = 0;
-    int elapsed2 = 0;
+    const int N = 3;
+    const char * readMethods[N] = {
+        "QFile::readLine()",
+        "QTextStream::readLine()",
+        "QTextStream::readLine(QString *)"
+    };
+    int elapsed[N] = {0, 0, 0};
 
         stopWatch.restart();
         int nlines1 = 0;
-        QFile file(QFINDTESTDATA("rfc3261.txt"));
+        QFile file(m_rfc3261FilePath);
         QVERIFY(file.open(QFile::ReadOnly));
 
         while (!file.atEnd()) {
@@ -931,11 +1003,11 @@ void tst_QTextStream::performance()
             file.readLine();
         }
 
-        elapsed1 += stopWatch.elapsed();
+        elapsed[0] = stopWatch.elapsed();
         stopWatch.restart();
 
         int nlines2 = 0;
-        QFile file2(QFINDTESTDATA("rfc3261.txt"));
+        QFile file2(m_rfc3261FilePath);
         QVERIFY(file2.open(QFile::ReadOnly));
 
         QTextStream stream(&file2);
@@ -944,20 +1016,38 @@ void tst_QTextStream::performance()
             stream.readLine();
         }
 
-        elapsed2 += stopWatch.elapsed();
+        elapsed[1] = stopWatch.elapsed();
+        stopWatch.restart();
+
+        int nlines3 = 0;
+        QFile file3(m_rfc3261FilePath);
+        QVERIFY(file3.open(QFile::ReadOnly));
+
+        QTextStream stream2(&file3);
+        QString line;
+        while (stream2.readLineInto(&line))
+            ++nlines3;
+
+        elapsed[2] = stopWatch.elapsed();
+
         QCOMPARE(nlines1, nlines2);
+        QCOMPARE(nlines2, nlines3);
 
-    qDebug("QFile used %.2f seconds to read the file",
-           elapsed1 / 1000.0);
+    for (int i = 0; i < N; i++) {
+        qDebug("%s used %.3f seconds to read the file", readMethods[i],
+               elapsed[i] / 1000.0);
+    }
 
-    qDebug("QTextStream used %.2f seconds to read the file",
-           elapsed2 / 1000.0);
-    if (elapsed2 > elapsed1) {
-        qDebug("QFile is %.2fx faster than QTextStream",
-               double(elapsed2) / double(elapsed1));
-    } else {
-        qDebug("QTextStream is %.2fx faster than QFile",
-               double(elapsed1) / double(elapsed2));
+    int idx[N] = {0, 1, 2};
+    std::sort(idx, idx + N, CompareIndicesForArray(elapsed));
+
+    for (int i = 0; i < N-1; i++) {
+        int i1 = idx[i];
+        int i2 = idx[i+1];
+        qDebug("Reading by %s is %.2fx faster than by %s",
+               readMethods[i1],
+               double(elapsed[i2]) / double(elapsed[i1]),
+               readMethods[i2]);
     }
 }
 
@@ -1155,7 +1245,7 @@ void tst_QTextStream::readNewlines()
 // ------------------------------------------------------------------------------
 void tst_QTextStream::seek()
 {
-    QFile file(QFINDTESTDATA("rfc3261.txt"));
+    QFile file(m_rfc3261FilePath);
     QVERIFY(file.open(QFile::ReadOnly));
 
     QTextStream stream(&file);
@@ -1248,7 +1338,7 @@ void tst_QTextStream::pos()
     }
     {
         // Latin1 device
-        QFile file(QFINDTESTDATA("rfc3261.txt"));
+        QFile file(m_rfc3261FilePath);
         QVERIFY(file.open(QIODevice::ReadOnly));
 
         QTextStream stream(&file);
@@ -1280,7 +1370,7 @@ void tst_QTextStream::pos()
     {
         // Shift-JIS device
         for (int i = 0; i < 2; ++i) {
-            QFile file(QFINDTESTDATA("shift-jis.txt"));
+            QFile file(m_shiftJisFilePath);
             if (i == 0)
                 QVERIFY(file.open(QIODevice::ReadOnly));
             else
@@ -1394,9 +1484,12 @@ void tst_QTextStream::pos3LargeFile()
 
 // ------------------------------------------------------------------------------
 // Qt/CE has no stdin/out support for processes
-#if !defined(Q_OS_WINCE) && !defined(QT_NO_PROCESS)
+#if !defined(Q_OS_WINCE)
 void tst_QTextStream::readStdin()
 {
+#ifdef QT_NO_PROCESS
+    QSKIP("No qprocess support", SkipAll);
+#else
     QProcess stdinProcess;
     stdinProcess.start("stdinProcess/stdinProcess");
     stdinProcess.setReadChannel(QProcess::StandardError);
@@ -1415,12 +1508,16 @@ void tst_QTextStream::readStdin()
     QCOMPARE(a, 1);
     QCOMPARE(b, 2);
     QCOMPARE(c, 3);
+#endif
 }
 
 // ------------------------------------------------------------------------------
 // Qt/CE has no stdin/out support for processes
 void tst_QTextStream::readAllFromStdin()
 {
+#ifdef QT_NO_PROCESS
+    QSKIP("No qprocess support", SkipAll);
+#else
     QProcess stdinProcess;
     stdinProcess.start("readAllStdinProcess/readAllStdinProcess", QIODevice::ReadWrite | QIODevice::Text);
     stdinProcess.setReadChannel(QProcess::StandardError);
@@ -1433,12 +1530,16 @@ void tst_QTextStream::readAllFromStdin()
 
     QVERIFY(stdinProcess.waitForFinished(5000));
     QCOMPARE(stream.readAll(), QString::fromLatin1("hello world\n"));
+#endif
 }
 
 // ------------------------------------------------------------------------------
 // Qt/CE has no stdin/out support for processes
 void tst_QTextStream::readLineFromStdin()
 {
+#ifdef QT_NO_PROCESS
+    QSKIP("No qprocess support", SkipAll);
+#else
     QProcess stdinProcess;
     stdinProcess.start("readLineStdinProcess/readLineStdinProcess", QIODevice::ReadWrite | QIODevice::Text);
     stdinProcess.setReadChannel(QProcess::StandardError);
@@ -1454,6 +1555,7 @@ void tst_QTextStream::readLineFromStdin()
     stdinProcess.closeWriteChannel();
 
     QVERIFY(stdinProcess.waitForFinished(5000));
+#endif
 }
 #endif
 
@@ -1787,8 +1889,6 @@ void tst_QTextStream::writeSeekWriteNoBOM()
 
     QCOMPARE(out16.buffer(), first);
 }
-
-
 
 // ------------------------------------------------------------------------------
 void tst_QTextStream::generateOperatorCharData(bool for_QString)
@@ -2142,14 +2242,36 @@ void tst_QTextStream::byteArray_read_operator_FromDevice()
     { \
         QFETCH(qulonglong, number); \
         QFETCH(QByteArray, data); \
+        QFETCH(QByteArray, dataWithSeparators); \
         \
         QBuffer buffer; \
         buffer.open(QBuffer::WriteOnly); \
         QTextStream stream(&buffer); \
+        stream.setLocale(QLocale::c()); \
         stream << (type)number; \
         stream.flush(); \
-        \
         QCOMPARE(buffer.data().constData(), data.constData()); \
+        \
+        QLocale locale("en-US"); \
+        buffer.reset(); buffer.buffer().clear(); \
+        stream.setLocale(locale); \
+        stream << (type)number; \
+        stream.flush(); \
+        QCOMPARE(buffer.data(), dataWithSeparators); \
+        \
+        locale.setNumberOptions(QLocale::OmitGroupSeparator); \
+        buffer.reset(); buffer.buffer().clear(); \
+        stream.setLocale(locale); \
+        stream << (type)number; \
+        stream.flush(); \
+        QCOMPARE(buffer.data().constData(), data.constData()); \
+        \
+        locale = QLocale("de-DE"); \
+        buffer.reset(); buffer.buffer().clear(); \
+        stream.setLocale(locale); \
+        stream << (type)number; \
+        stream.flush(); \
+        QCOMPARE(buffer.data(), dataWithSeparators.replace(',', '.')); \
     }
 
 // ------------------------------------------------------------------------------
@@ -2157,16 +2279,17 @@ void tst_QTextStream::signedShort_write_operator_ToDevice_data()
 {
     QTest::addColumn<qulonglong>("number");
     QTest::addColumn<QByteArray>("data");
+    QTest::addColumn<QByteArray>("dataWithSeparators");
 
-    QTest::newRow("0") << Q_UINT64_C(0) << QByteArray("0");
-    QTest::newRow("1") << Q_UINT64_C(1) << QByteArray("1");
-    QTest::newRow("-1") << Q_UINT64_C(-1) << QByteArray("-1");
-    QTest::newRow("32767") << Q_UINT64_C(32767) << QByteArray("32767");
-    QTest::newRow("32768") << Q_UINT64_C(32768) << QByteArray("-32768");
-    QTest::newRow("32769") << Q_UINT64_C(32769) << QByteArray("-32767");
-    QTest::newRow("65535") << Q_UINT64_C(65535) << QByteArray("-1");
-    QTest::newRow("65536") << Q_UINT64_C(65536) << QByteArray("0");
-    QTest::newRow("65537") << Q_UINT64_C(65537) << QByteArray("1");
+    QTest::newRow("0") << Q_UINT64_C(0) << QByteArray("0") << QByteArray("0");
+    QTest::newRow("1") << Q_UINT64_C(1) << QByteArray("1") << QByteArray("1");
+    QTest::newRow("-1") << Q_UINT64_C(-1) << QByteArray("-1") << QByteArray("-1");
+    QTest::newRow("32767") << Q_UINT64_C(32767) << QByteArray("32767") << QByteArray("32,767");
+    QTest::newRow("32768") << Q_UINT64_C(32768) << QByteArray("-32768") << QByteArray("-32,768");
+    QTest::newRow("32769") << Q_UINT64_C(32769) << QByteArray("-32767") << QByteArray("-32,767");
+    QTest::newRow("65535") << Q_UINT64_C(65535) << QByteArray("-1") << QByteArray("-1");
+    QTest::newRow("65536") << Q_UINT64_C(65536) << QByteArray("0") << QByteArray("0");
+    QTest::newRow("65537") << Q_UINT64_C(65537) << QByteArray("1") << QByteArray("1");
 }
 IMPLEMENT_STREAM_LEFT_INT_OPERATOR_TEST(signedShort, signed short)
     ;
@@ -2176,16 +2299,17 @@ void tst_QTextStream::unsignedShort_write_operator_ToDevice_data()
 {
     QTest::addColumn<qulonglong>("number");
     QTest::addColumn<QByteArray>("data");
+    QTest::addColumn<QByteArray>("dataWithSeparators");
 
-    QTest::newRow("0") << Q_UINT64_C(0) << QByteArray("0");
-    QTest::newRow("1") << Q_UINT64_C(1) << QByteArray("1");
-    QTest::newRow("-1") << Q_UINT64_C(-1) << QByteArray("65535");
-    QTest::newRow("32767") << Q_UINT64_C(32767) << QByteArray("32767");
-    QTest::newRow("32768") << Q_UINT64_C(32768) << QByteArray("32768");
-    QTest::newRow("32769") << Q_UINT64_C(32769) << QByteArray("32769");
-    QTest::newRow("65535") << Q_UINT64_C(65535) << QByteArray("65535");
-    QTest::newRow("65536") << Q_UINT64_C(65536) << QByteArray("0");
-    QTest::newRow("65537") << Q_UINT64_C(65537) << QByteArray("1");
+    QTest::newRow("0") << Q_UINT64_C(0) << QByteArray("0") << QByteArray("0");
+    QTest::newRow("1") << Q_UINT64_C(1) << QByteArray("1") << QByteArray("1");
+    QTest::newRow("-1") << Q_UINT64_C(-1) << QByteArray("65535") << QByteArray("65,535");
+    QTest::newRow("32767") << Q_UINT64_C(32767) << QByteArray("32767") << QByteArray("32,767");
+    QTest::newRow("32768") << Q_UINT64_C(32768) << QByteArray("32768") << QByteArray("32,768");
+    QTest::newRow("32769") << Q_UINT64_C(32769) << QByteArray("32769") << QByteArray("32,769");
+    QTest::newRow("65535") << Q_UINT64_C(65535) << QByteArray("65535") << QByteArray("65,535");
+    QTest::newRow("65536") << Q_UINT64_C(65536) << QByteArray("0") << QByteArray("0");
+    QTest::newRow("65537") << Q_UINT64_C(65537) << QByteArray("1") << QByteArray("1");
 }
 IMPLEMENT_STREAM_LEFT_INT_OPERATOR_TEST(unsignedShort, unsigned short)
     ;
@@ -2195,22 +2319,23 @@ void tst_QTextStream::signedInt_write_operator_ToDevice_data()
 {
     QTest::addColumn<qulonglong>("number");
     QTest::addColumn<QByteArray>("data");
+    QTest::addColumn<QByteArray>("dataWithSeparators");
 
-    QTest::newRow("0") << Q_UINT64_C(0) << QByteArray("0");
-    QTest::newRow("1") << Q_UINT64_C(1) << QByteArray("1");
-    QTest::newRow("-1") << Q_UINT64_C(-1) << QByteArray("-1");
-    QTest::newRow("32767") << Q_UINT64_C(32767) << QByteArray("32767");
-    QTest::newRow("32768") << Q_UINT64_C(32768) << QByteArray("32768");
-    QTest::newRow("32769") << Q_UINT64_C(32769) << QByteArray("32769");
-    QTest::newRow("65535") << Q_UINT64_C(65535) << QByteArray("65535");
-    QTest::newRow("65536") << Q_UINT64_C(65536) << QByteArray("65536");
-    QTest::newRow("65537") << Q_UINT64_C(65537) << QByteArray("65537");
-    QTest::newRow("2147483647") << Q_UINT64_C(2147483647) << QByteArray("2147483647");
-    QTest::newRow("2147483648") << Q_UINT64_C(2147483648) << QByteArray("-2147483648");
-    QTest::newRow("2147483649") << Q_UINT64_C(2147483649) << QByteArray("-2147483647");
-    QTest::newRow("4294967295") << Q_UINT64_C(4294967295) << QByteArray("-1");
-    QTest::newRow("4294967296") << Q_UINT64_C(4294967296) << QByteArray("0");
-    QTest::newRow("4294967297") << Q_UINT64_C(4294967297) << QByteArray("1");
+    QTest::newRow("0") << Q_UINT64_C(0) << QByteArray("0") << QByteArray("0");
+    QTest::newRow("1") << Q_UINT64_C(1) << QByteArray("1") << QByteArray("1");
+    QTest::newRow("-1") << Q_UINT64_C(-1) << QByteArray("-1") << QByteArray("-1");
+    QTest::newRow("32767") << Q_UINT64_C(32767) << QByteArray("32767") << QByteArray("32,767");
+    QTest::newRow("32768") << Q_UINT64_C(32768) << QByteArray("32768") << QByteArray("32,768");
+    QTest::newRow("32769") << Q_UINT64_C(32769) << QByteArray("32769") << QByteArray("32,769");
+    QTest::newRow("65535") << Q_UINT64_C(65535) << QByteArray("65535") << QByteArray("65,535");
+    QTest::newRow("65536") << Q_UINT64_C(65536) << QByteArray("65536") << QByteArray("65,536");
+    QTest::newRow("65537") << Q_UINT64_C(65537) << QByteArray("65537") << QByteArray("65,537");
+    QTest::newRow("2147483647") << Q_UINT64_C(2147483647) << QByteArray("2147483647") << QByteArray("2,147,483,647");
+    QTest::newRow("2147483648") << Q_UINT64_C(2147483648) << QByteArray("-2147483648") << QByteArray("-2,147,483,648");
+    QTest::newRow("2147483649") << Q_UINT64_C(2147483649) << QByteArray("-2147483647") << QByteArray("-2,147,483,647");
+    QTest::newRow("4294967295") << Q_UINT64_C(4294967295) << QByteArray("-1") << QByteArray("-1");
+    QTest::newRow("4294967296") << Q_UINT64_C(4294967296) << QByteArray("0") << QByteArray("0");
+    QTest::newRow("4294967297") << Q_UINT64_C(4294967297) << QByteArray("1") << QByteArray("1");
 }
 IMPLEMENT_STREAM_LEFT_INT_OPERATOR_TEST(signedInt, signed int)
     ;
@@ -2220,22 +2345,23 @@ void tst_QTextStream::unsignedInt_write_operator_ToDevice_data()
 {
     QTest::addColumn<qulonglong>("number");
     QTest::addColumn<QByteArray>("data");
+    QTest::addColumn<QByteArray>("dataWithSeparators");
 
-    QTest::newRow("0") << Q_UINT64_C(0) << QByteArray("0");
-    QTest::newRow("1") << Q_UINT64_C(1) << QByteArray("1");
-    QTest::newRow("-1") << Q_UINT64_C(-1) << QByteArray("4294967295");
-    QTest::newRow("32767") << Q_UINT64_C(32767) << QByteArray("32767");
-    QTest::newRow("32768") << Q_UINT64_C(32768) << QByteArray("32768");
-    QTest::newRow("32769") << Q_UINT64_C(32769) << QByteArray("32769");
-    QTest::newRow("65535") << Q_UINT64_C(65535) << QByteArray("65535");
-    QTest::newRow("65536") << Q_UINT64_C(65536) << QByteArray("65536");
-    QTest::newRow("65537") << Q_UINT64_C(65537) << QByteArray("65537");
-    QTest::newRow("2147483647") << Q_UINT64_C(2147483647) << QByteArray("2147483647");
-    QTest::newRow("2147483648") << Q_UINT64_C(2147483648) << QByteArray("2147483648");
-    QTest::newRow("2147483649") << Q_UINT64_C(2147483649) << QByteArray("2147483649");
-    QTest::newRow("4294967295") << Q_UINT64_C(4294967295) << QByteArray("4294967295");
-    QTest::newRow("4294967296") << Q_UINT64_C(4294967296) << QByteArray("0");
-    QTest::newRow("4294967297") << Q_UINT64_C(4294967297) << QByteArray("1");
+    QTest::newRow("0") << Q_UINT64_C(0) << QByteArray("0") << QByteArray("0");
+    QTest::newRow("1") << Q_UINT64_C(1) << QByteArray("1") << QByteArray("1");
+    QTest::newRow("-1") << Q_UINT64_C(-1) << QByteArray("4294967295") << QByteArray("4,294,967,295");
+    QTest::newRow("32767") << Q_UINT64_C(32767) << QByteArray("32767") << QByteArray("32,767");
+    QTest::newRow("32768") << Q_UINT64_C(32768) << QByteArray("32768") << QByteArray("32,768");
+    QTest::newRow("32769") << Q_UINT64_C(32769) << QByteArray("32769") << QByteArray("32,769");
+    QTest::newRow("65535") << Q_UINT64_C(65535) << QByteArray("65535") << QByteArray("65,535");
+    QTest::newRow("65536") << Q_UINT64_C(65536) << QByteArray("65536") << QByteArray("65,536");
+    QTest::newRow("65537") << Q_UINT64_C(65537) << QByteArray("65537") << QByteArray("65,537");
+    QTest::newRow("2147483647") << Q_UINT64_C(2147483647) << QByteArray("2147483647") << QByteArray("2,147,483,647");
+    QTest::newRow("2147483648") << Q_UINT64_C(2147483648) << QByteArray("2147483648") << QByteArray("2,147,483,648");
+    QTest::newRow("2147483649") << Q_UINT64_C(2147483649) << QByteArray("2147483649") << QByteArray("2,147,483,649");
+    QTest::newRow("4294967295") << Q_UINT64_C(4294967295) << QByteArray("4294967295") << QByteArray("4,294,967,295");
+    QTest::newRow("4294967296") << Q_UINT64_C(4294967296) << QByteArray("0") << QByteArray("0");
+    QTest::newRow("4294967297") << Q_UINT64_C(4294967297) << QByteArray("1") << QByteArray("1");
 }
 IMPLEMENT_STREAM_LEFT_INT_OPERATOR_TEST(unsignedInt, unsigned int)
     ;
@@ -2245,26 +2371,27 @@ void tst_QTextStream::qlonglong_write_operator_ToDevice_data()
 {
     QTest::addColumn<qulonglong>("number");
     QTest::addColumn<QByteArray>("data");
+    QTest::addColumn<QByteArray>("dataWithSeparators");
 
-    QTest::newRow("0") << Q_UINT64_C(0) << QByteArray("0");
-    QTest::newRow("1") << Q_UINT64_C(1) << QByteArray("1");
-    QTest::newRow("-1") << Q_UINT64_C(-1) << QByteArray("-1");
-    QTest::newRow("32767") << Q_UINT64_C(32767) << QByteArray("32767");
-    QTest::newRow("32768") << Q_UINT64_C(32768) << QByteArray("32768");
-    QTest::newRow("32769") << Q_UINT64_C(32769) << QByteArray("32769");
-    QTest::newRow("65535") << Q_UINT64_C(65535) << QByteArray("65535");
-    QTest::newRow("65536") << Q_UINT64_C(65536) << QByteArray("65536");
-    QTest::newRow("65537") << Q_UINT64_C(65537) << QByteArray("65537");
-    QTest::newRow("2147483647") << Q_UINT64_C(2147483647) << QByteArray("2147483647");
-    QTest::newRow("2147483648") << Q_UINT64_C(2147483648) << QByteArray("2147483648");
-    QTest::newRow("2147483649") << Q_UINT64_C(2147483649) << QByteArray("2147483649");
-    QTest::newRow("4294967295") << Q_UINT64_C(4294967295) << QByteArray("4294967295");
-    QTest::newRow("4294967296") << Q_UINT64_C(4294967296) << QByteArray("4294967296");
-    QTest::newRow("4294967297") << Q_UINT64_C(4294967297) << QByteArray("4294967297");
-    QTest::newRow("9223372036854775807") << Q_UINT64_C(9223372036854775807) << QByteArray("9223372036854775807");
-    QTest::newRow("9223372036854775808") << Q_UINT64_C(9223372036854775808) << QByteArray("-9223372036854775808");
-    QTest::newRow("9223372036854775809") << Q_UINT64_C(9223372036854775809) << QByteArray("-9223372036854775807");
-    QTest::newRow("18446744073709551615") << Q_UINT64_C(18446744073709551615) << QByteArray("-1");
+    QTest::newRow("0") << Q_UINT64_C(0) << QByteArray("0") << QByteArray("0");
+    QTest::newRow("1") << Q_UINT64_C(1) << QByteArray("1") << QByteArray("1");
+    QTest::newRow("-1") << Q_UINT64_C(-1) << QByteArray("-1") << QByteArray("-1");
+    QTest::newRow("32767") << Q_UINT64_C(32767) << QByteArray("32767") << QByteArray("32,767");
+    QTest::newRow("32768") << Q_UINT64_C(32768) << QByteArray("32768") << QByteArray("32,768");
+    QTest::newRow("32769") << Q_UINT64_C(32769) << QByteArray("32769") << QByteArray("32,769");
+    QTest::newRow("65535") << Q_UINT64_C(65535) << QByteArray("65535") << QByteArray("65,535");
+    QTest::newRow("65536") << Q_UINT64_C(65536) << QByteArray("65536") << QByteArray("65,536");
+    QTest::newRow("65537") << Q_UINT64_C(65537) << QByteArray("65537") << QByteArray("65,537");
+    QTest::newRow("2147483647") << Q_UINT64_C(2147483647) << QByteArray("2147483647") << QByteArray("2,147,483,647");
+    QTest::newRow("2147483648") << Q_UINT64_C(2147483648) << QByteArray("2147483648") << QByteArray("2,147,483,648");
+    QTest::newRow("2147483649") << Q_UINT64_C(2147483649) << QByteArray("2147483649") << QByteArray("2,147,483,649");
+    QTest::newRow("4294967295") << Q_UINT64_C(4294967295) << QByteArray("4294967295") << QByteArray("4,294,967,295");
+    QTest::newRow("4294967296") << Q_UINT64_C(4294967296) << QByteArray("4294967296") << QByteArray("4,294,967,296");
+    QTest::newRow("4294967297") << Q_UINT64_C(4294967297) << QByteArray("4294967297") << QByteArray("4,294,967,297");
+    QTest::newRow("9223372036854775807") << Q_UINT64_C(9223372036854775807) << QByteArray("9223372036854775807") << QByteArray("9,223,372,036,854,775,807");
+    QTest::newRow("9223372036854775808") << Q_UINT64_C(9223372036854775808) << QByteArray("-9223372036854775808") << QByteArray("-9,223,372,036,854,775,808");
+    QTest::newRow("9223372036854775809") << Q_UINT64_C(9223372036854775809) << QByteArray("-9223372036854775807") << QByteArray("-9,223,372,036,854,775,807");
+    QTest::newRow("18446744073709551615") << Q_UINT64_C(18446744073709551615) << QByteArray("-1") << QByteArray("-1");
 }
 IMPLEMENT_STREAM_LEFT_INT_OPERATOR_TEST(qlonglong, qlonglong)
     ;
@@ -2274,26 +2401,27 @@ void tst_QTextStream::qulonglong_write_operator_ToDevice_data()
 {
     QTest::addColumn<qulonglong>("number");
     QTest::addColumn<QByteArray>("data");
+    QTest::addColumn<QByteArray>("dataWithSeparators");
 
-    QTest::newRow("0") << Q_UINT64_C(0) << QByteArray("0");
-    QTest::newRow("1") << Q_UINT64_C(1) << QByteArray("1");
-    QTest::newRow("-1") << Q_UINT64_C(-1) << QByteArray("18446744073709551615");
-    QTest::newRow("32767") << Q_UINT64_C(32767) << QByteArray("32767");
-    QTest::newRow("32768") << Q_UINT64_C(32768) << QByteArray("32768");
-    QTest::newRow("32769") << Q_UINT64_C(32769) << QByteArray("32769");
-    QTest::newRow("65535") << Q_UINT64_C(65535) << QByteArray("65535");
-    QTest::newRow("65536") << Q_UINT64_C(65536) << QByteArray("65536");
-    QTest::newRow("65537") << Q_UINT64_C(65537) << QByteArray("65537");
-    QTest::newRow("2147483647") << Q_UINT64_C(2147483647) << QByteArray("2147483647");
-    QTest::newRow("2147483648") << Q_UINT64_C(2147483648) << QByteArray("2147483648");
-    QTest::newRow("2147483649") << Q_UINT64_C(2147483649) << QByteArray("2147483649");
-    QTest::newRow("4294967295") << Q_UINT64_C(4294967295) << QByteArray("4294967295");
-    QTest::newRow("4294967296") << Q_UINT64_C(4294967296) << QByteArray("4294967296");
-    QTest::newRow("4294967297") << Q_UINT64_C(4294967297) << QByteArray("4294967297");
-    QTest::newRow("9223372036854775807") << Q_UINT64_C(9223372036854775807) << QByteArray("9223372036854775807");
-    QTest::newRow("9223372036854775808") << Q_UINT64_C(9223372036854775808) << QByteArray("9223372036854775808");
-    QTest::newRow("9223372036854775809") << Q_UINT64_C(9223372036854775809) << QByteArray("9223372036854775809");
-    QTest::newRow("18446744073709551615") << Q_UINT64_C(18446744073709551615) << QByteArray("18446744073709551615");
+    QTest::newRow("0") << Q_UINT64_C(0) << QByteArray("0") << QByteArray("0");
+    QTest::newRow("1") << Q_UINT64_C(1) << QByteArray("1") << QByteArray("1");
+    QTest::newRow("-1") << Q_UINT64_C(-1) << QByteArray("18446744073709551615") << QByteArray("18,446,744,073,709,551,615");
+    QTest::newRow("32767") << Q_UINT64_C(32767) << QByteArray("32767") << QByteArray("32,767");
+    QTest::newRow("32768") << Q_UINT64_C(32768) << QByteArray("32768") << QByteArray("32,768");
+    QTest::newRow("32769") << Q_UINT64_C(32769) << QByteArray("32769") << QByteArray("32,769");
+    QTest::newRow("65535") << Q_UINT64_C(65535) << QByteArray("65535") << QByteArray("65,535");
+    QTest::newRow("65536") << Q_UINT64_C(65536) << QByteArray("65536") << QByteArray("65,536");
+    QTest::newRow("65537") << Q_UINT64_C(65537) << QByteArray("65537") << QByteArray("65,537");
+    QTest::newRow("2147483647") << Q_UINT64_C(2147483647) << QByteArray("2147483647") << QByteArray("2,147,483,647");
+    QTest::newRow("2147483648") << Q_UINT64_C(2147483648) << QByteArray("2147483648") << QByteArray("2,147,483,648");
+    QTest::newRow("2147483649") << Q_UINT64_C(2147483649) << QByteArray("2147483649") << QByteArray("2,147,483,649");
+    QTest::newRow("4294967295") << Q_UINT64_C(4294967295) << QByteArray("4294967295") << QByteArray("4,294,967,295");
+    QTest::newRow("4294967296") << Q_UINT64_C(4294967296) << QByteArray("4294967296") << QByteArray("4,294,967,296");
+    QTest::newRow("4294967297") << Q_UINT64_C(4294967297) << QByteArray("4294967297") << QByteArray("4,294,967,297");
+    QTest::newRow("9223372036854775807") << Q_UINT64_C(9223372036854775807) << QByteArray("9223372036854775807") << QByteArray("9,223,372,036,854,775,807");
+    QTest::newRow("9223372036854775808") << Q_UINT64_C(9223372036854775808) << QByteArray("9223372036854775808") << QByteArray("9,223,372,036,854,775,808");
+    QTest::newRow("9223372036854775809") << Q_UINT64_C(9223372036854775809) << QByteArray("9223372036854775809") << QByteArray("9,223,372,036,854,775,809");
+    QTest::newRow("18446744073709551615") << Q_UINT64_C(18446744073709551615) << QByteArray("18446744073709551615") << QByteArray("18,446,744,073,709,551,615");
 }
 IMPLEMENT_STREAM_LEFT_INT_OPERATOR_TEST(qulonglong, qulonglong)
     ;
@@ -2304,12 +2432,14 @@ void tst_QTextStream::generateRealNumbersDataWrite()
 {
     QTest::addColumn<double>("number");
     QTest::addColumn<QByteArray>("data");
+    QTest::addColumn<QByteArray>("dataWithSeparators");
 
-    QTest::newRow("0") << 0.0 << QByteArray("0");
-    QTest::newRow("3.14") << 3.14 << QByteArray("3.14");
-    QTest::newRow("-3.14") << -3.14 << QByteArray("-3.14");
-    QTest::newRow("1.2e+10") << 1.2e+10 << QByteArray("1.2e+10");
-    QTest::newRow("-1.2e+10") << -1.2e+10 << QByteArray("-1.2e+10");
+    QTest::newRow("0") << 0.0 << QByteArray("0") << QByteArray("0");
+    QTest::newRow("3.14") << 3.14 << QByteArray("3.14") << QByteArray("3.14");
+    QTest::newRow("-3.14") << -3.14 << QByteArray("-3.14") << QByteArray("-3.14");
+    QTest::newRow("1.2e+10") << 1.2e+10 << QByteArray("1.2e+10") << QByteArray("1.2e+10");
+    QTest::newRow("-1.2e+10") << -1.2e+10 << QByteArray("-1.2e+10") << QByteArray("-1.2e+10");
+    QTest::newRow("12345") << 12345. << QByteArray("12345") << QByteArray("12,345");
 }
 
 // ------------------------------------------------------------------------------
@@ -2320,14 +2450,22 @@ void tst_QTextStream::generateRealNumbersDataWrite()
     { \
         QFETCH(double, number); \
         QFETCH(QByteArray, data); \
+        QFETCH(QByteArray, dataWithSeparators); \
         \
         QBuffer buffer; \
         buffer.open(QBuffer::WriteOnly); \
         QTextStream stream(&buffer); \
+        stream.setLocale(QLocale::c()); \
         float f = (float)number; \
         stream << f; \
         stream.flush(); \
         QCOMPARE(buffer.data().constData(), data.constData()); \
+        \
+        buffer.reset(); \
+        stream.setLocale(QLocale("en-US")); \
+        stream << f; \
+        stream.flush(); \
+        QCOMPARE(buffer.data(), dataWithSeparators); \
     }
 IMPLEMENT_STREAM_LEFT_REAL_OPERATOR_TEST(float, float)
 IMPLEMENT_STREAM_LEFT_REAL_OPERATOR_TEST(double, float)

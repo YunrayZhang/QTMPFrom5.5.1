@@ -1,39 +1,31 @@
 /****************************************************************************
 **
-** Copyright (C) 2013 Digia Plc and/or its subsidiary(-ies).
-** Contact: http://www.qt-project.org/legal
+** Copyright (C) 2015 The Qt Company Ltd.
+** Contact: http://www.qt.io/licensing/
 **
 ** This file is part of the QtWidgets module of the Qt Toolkit.
 **
-** $QT_BEGIN_LICENSE:LGPL$
+** $QT_BEGIN_LICENSE:LGPL21$
 ** Commercial License Usage
 ** Licensees holding valid commercial Qt licenses may use this file in
 ** accordance with the commercial license agreement provided with the
 ** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and Digia.  For licensing terms and
-** conditions see http://qt.digia.com/licensing.  For further information
-** use the contact form at http://qt.digia.com/contact-us.
+** a written agreement between you and The Qt Company. For licensing terms
+** and conditions see http://www.qt.io/terms-conditions. For further
+** information use the contact form at http://www.qt.io/contact-us.
 **
 ** GNU Lesser General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 2.1 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU Lesser General Public License version 2.1 requirements
-** will be met: http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
+** General Public License version 2.1 or version 3 as published by the Free
+** Software Foundation and appearing in the file LICENSE.LGPLv21 and
+** LICENSE.LGPLv3 included in the packaging of this file. Please review the
+** following information to ensure the GNU Lesser General Public License
+** requirements will be met: https://www.gnu.org/licenses/lgpl.html and
+** http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
 **
-** In addition, as a special exception, Digia gives you certain additional
-** rights.  These rights are described in the Digia Qt LGPL Exception
+** As a special exception, The Qt Company gives you certain additional
+** rights. These rights are described in The Qt Company LGPL Exception
 ** version 1.1, included in the file LGPL_EXCEPTION.txt in this package.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3.0 as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU General Public License version 3.0 requirements will be
-** met: http://www.gnu.org/copyleft/gpl.html.
-**
 **
 ** $QT_END_LICENSE$
 **
@@ -834,7 +826,7 @@ QSize QTabWidget::sizeHint() const
     if(d->rightCornerWidget)
         rc = d->rightCornerWidget->sizeHint();
     if (!d->dirty) {
-        QTabWidget *that = (QTabWidget*)this;
+        QTabWidget *that = const_cast<QTabWidget*>(this);
         that->setUpLayout(true);
     }
     QSize s(d->stack->sizeHint());
@@ -866,7 +858,7 @@ QSize QTabWidget::minimumSizeHint() const
     if(d->rightCornerWidget)
         rc = d->rightCornerWidget->minimumSizeHint();
     if (!d->dirty) {
-        QTabWidget *that = (QTabWidget*)this;
+        QTabWidget *that = const_cast<QTabWidget*>(this);
         that->setUpLayout(true);
     }
     QSize s(d->stack->minimumSizeHint());
@@ -902,7 +894,7 @@ int QTabWidget::heightForWidth(int width) const
     if(d->rightCornerWidget)
         rc = d->rightCornerWidget->sizeHint();
     if (!d->dirty) {
-        QTabWidget *that = (QTabWidget*)this;
+        QTabWidget *that = const_cast<QTabWidget*>(this);
         that->setUpLayout(true);
     }
     QSize t(d->tabs->sizeHint());
@@ -1326,7 +1318,7 @@ void QTabWidget::setUsesScrollButtons(bool useButtons)
 /*!
     \property QTabWidget::documentMode
     \brief Whether or not the tab widget is rendered in a mode suitable for document
-     pages. This is the same as document mode on Mac OS X.
+     pages. This is the same as document mode on OS X.
     \since 4.5
 
     When this property is set the tab widget frame is not rendered. This mode is useful
@@ -1348,6 +1340,29 @@ void QTabWidget::setDocumentMode(bool enabled)
     d->tabs->setExpanding(!enabled);
     d->tabs->setDrawBase(enabled);
     setUpLayout();
+}
+
+/*!
+    \property QTabWidget::tabBarAutoHide
+    \brief If true, the tab bar is automatically hidden when it contains less
+    than 2 tabs.
+    \since 5.4
+
+    By default, this property is false.
+
+    \sa QWidget::visible
+*/
+
+bool QTabWidget::tabBarAutoHide() const
+{
+    Q_D(const QTabWidget);
+    return d->tabs->autoHide();
+}
+
+void QTabWidget::setTabBarAutoHide(bool enabled)
+{
+    Q_D(QTabWidget);
+    return d->tabs->setAutoHide(enabled);
 }
 
 /*!

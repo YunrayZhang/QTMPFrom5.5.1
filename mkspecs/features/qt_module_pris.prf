@@ -26,8 +26,11 @@ else: \
     mod_inst_pfx = $$mod_work_pfx
 !internal_module {
     MODULE_ID = $$MODULE
-    MODULE_PRIVATE_PRI = $$mod_inst_pfx/qt_lib_$${MODULE}_private.pri
-    mods_to_load = $$MODULE $${MODULE}_private
+    mods_to_load = $$MODULE
+    !no_private_module {
+        MODULE_PRIVATE_PRI = $$mod_inst_pfx/qt_lib_$${MODULE}_private.pri
+        mods_to_load += $${MODULE}_private
+    }
 } else {
     MODULE_ID = $${MODULE}_private
     mods_to_load = $${MODULE}_private
@@ -48,9 +51,10 @@ MODULE_FWD_PRI = $$mod_work_pfx/qt_lib_$${MODULE_ID}.pri
         module_libs = "\$\$QT_MODULE_LIB_BASE"
     unix:!static {
         host_build: \
-            module_rpath = "QT.$${MODULE_ID}.rpath = $$[QT_HOST_LIBS]"
+            module_rpath = $$[QT_HOST_LIBS]
         else: \
-            module_rpath = "QT.$${MODULE_ID}.rpath = $$[QT_INSTALL_LIBS/raw]"
+            module_rpath = $$[QT_INSTALL_LIBS/dev]
+        module_rpath = "QT.$${MODULE_ID}.rpath = $$val_escape(module_rpath)"
     } else {
         module_rpath =
     }
@@ -64,8 +68,12 @@ MODULE_FWD_PRI = $$mod_work_pfx/qt_lib_$${MODULE_ID}.pri
         module_build_type = lib_bundle
     else: \
         module_build_type =
+    equals(TEMPLATE, aux): \
+        module_build_type += no_link
     internal_module: \
         module_build_type += internal_module
+    ltcg: \
+        module_build_type += ltcg
     !isEmpty(MODULE_CONFIG): \
         module_config = "QT.$${MODULE_ID}.CONFIG = $$MODULE_CONFIG"
     else: \
@@ -74,20 +82,31 @@ MODULE_FWD_PRI = $$mod_work_pfx/qt_lib_$${MODULE_ID}.pri
         module_plugtypes = "QT.$${MODULE_ID}.plugin_types = $$replace(MODULE_PLUGIN_TYPES, /.*$, )"
     else: \
         module_plugtypes =
+    !isEmpty(MODULE_MASTER_HEADER): \
+        module_master = "QT.$${MODULE_ID}.master_header = $$MODULE_MASTER_HEADER"
+    else: \
+        module_master =
     !no_module_headers:!minimal_syncqt {
         MODULE_INCLUDES = \$\$QT_MODULE_INCLUDE_BASE \$\$QT_MODULE_INCLUDE_BASE/$$MODULE_INCNAME
         MODULE_PRIVATE_INCLUDES = \$\$QT_MODULE_INCLUDE_BASE/$$MODULE_INCNAME/$$VERSION \
                                   \$\$QT_MODULE_INCLUDE_BASE/$$MODULE_INCNAME/$$VERSION/$$MODULE_INCNAME
     }
-    split_incpath: \
+    split_incpath {
         MODULE_SHADOW_INCLUDES = $$replace(MODULE_INCLUDES, ^\\\$\\\$QT_MODULE_INCLUDE_BASE, \
                                                             $$MODULE_BASE_OUTDIR/include)
+        generated_privates: \
+            MODULE_SHADOW_PRIVATE_INCLUDES = $$replace(MODULE_PRIVATE_INCLUDES, ^\\\$\\\$QT_MODULE_INCLUDE_BASE, \
+                                                                                $$MODULE_BASE_OUTDIR/include)
+    }
     MODULE_INCLUDES += $$MODULE_AUX_INCLUDES
     MODULE_PRIVATE_INCLUDES += $$MODULE_PRIVATE_AUX_INCLUDES
     internal_module: \
         MODULE_INCLUDES += $$MODULE_PRIVATE_INCLUDES
-    split_incpath: \
-        MODULE_FWD_PRI_CONT_SUFFIX += "QT.$${MODULE_ID}.includes += $$MODULE_SHADOW_INCLUDES"
+    split_incpath {
+        MODULE_FWD_PRI_CONT_SUFFIX += "QT.$${MODULE_ID}.includes += $$val_escape(MODULE_SHADOW_INCLUDES)"
+        generated_privates: \
+            MODULE_FWD_PRI_CONT_SUFFIX += "QT.$${MODULE}_private.includes += $$val_escape(MODULE_SHADOW_PRIVATE_INCLUDES)"
+    }
     MODULE_PRI_CONT = \
         "QT.$${MODULE_ID}.VERSION = $${VERSION}" \
         "QT.$${MODULE_ID}.MAJOR_VERSION = $$section(VERSION, ., 0, 0)" \
@@ -97,6 +116,7 @@ MODULE_FWD_PRI = $$mod_work_pfx/qt_lib_$${MODULE_ID}.pri
         "QT.$${MODULE_ID}.name = $$TARGET" \
         "QT.$${MODULE_ID}.libs = $$module_libs" \
         $$module_rpath \
+        $$module_master \
         "QT.$${MODULE_ID}.includes = $$MODULE_INCLUDES"
     !host_build: MODULE_PRI_CONT += \
         "QT.$${MODULE_ID}.bins = \$\$QT_MODULE_BIN_BASE" \
@@ -110,11 +130,11 @@ MODULE_FWD_PRI = $$mod_work_pfx/qt_lib_$${MODULE_ID}.pri
         $$module_rundep \
         "QT.$${MODULE_ID}.module_config =$$join(module_build_type, " ", " ")" \
         $$module_config \
-        "QT.$${MODULE_ID}.DEFINES = $$MODULE_DEFINES" \ # assume sufficient quoting
+        "QT.$${MODULE_ID}.DEFINES = $$val_escape(MODULE_DEFINES)" \
         "" \
         "QT_MODULES += $$MODULE"
     write_file($$MODULE_PRI, MODULE_PRI_CONT)|error("Aborting.")
-    !internal_module {
+    !internal_module:!no_private_module {
         module_build_type += internal_module no_link
         MODULE_PRIVATE_PRI_CONT = \
             "QT.$${MODULE}_private.VERSION = $${VERSION}" \
@@ -140,17 +160,19 @@ MODULE_FWD_PRI = $$mod_work_pfx/qt_lib_$${MODULE_ID}.pri
 
         # Create a forwarding module .pri file
         MODULE_FWD_PRI_CONT = \
-            "QT_MODULE_BIN_BASE = $$MODULE_BASE_OUTDIR/bin" \
-            "QT_MODULE_INCLUDE_BASE = $$MODULE_BASE_INCDIR/include" \
-            "QT_MODULE_IMPORT_BASE = $$MODULE_BASE_OUTDIR/imports" \
-            "QT_MODULE_QML_BASE = $$MODULE_BASE_OUTDIR/qml" \
-            "QT_MODULE_LIB_BASE = $$MODULE_BASE_OUTDIR/lib" \
-            "QT_MODULE_HOST_LIB_BASE = $$MODULE_BASE_OUTDIR/lib" \
-            "QT_MODULE_LIBEXEC_BASE = $$MODULE_BASE_OUTDIR/libexec" \
-            "QT_MODULE_PLUGIN_BASE = $$MODULE_BASE_OUTDIR/plugins" \
-            "include($$MODULE_PRI)"
-        !internal_module: MODULE_FWD_PRI_CONT += \
-            "include($$MODULE_PRIVATE_PRI)"
+            "QT_MODULE_BIN_BASE = $$val_escape(MODULE_BASE_OUTDIR)/bin" \
+            "QT_MODULE_INCLUDE_BASE = $$val_escape(MODULE_BASE_INCDIR)/include" \
+            "QT_MODULE_IMPORT_BASE = $$val_escape(MODULE_BASE_OUTDIR)/imports" \
+            "QT_MODULE_QML_BASE = $$val_escape(MODULE_BASE_OUTDIR)/qml" \
+            "QT_MODULE_LIB_BASE = $$val_escape(MODULE_BASE_OUTDIR)/lib" \
+            "QT_MODULE_HOST_LIB_BASE = $$val_escape(MODULE_BASE_OUTDIR)/lib" \
+            "QT_MODULE_LIBEXEC_BASE = $$val_escape(MODULE_BASE_OUTDIR)/libexec" \
+            "QT_MODULE_PLUGIN_BASE = $$val_escape(MODULE_BASE_OUTDIR)/plugins" \
+            "include($$val_escape(MODULE_PRI))" \
+            "QT.$${MODULE_ID}.priority = 1"
+        !internal_module:!no_private_module: MODULE_FWD_PRI_CONT += \
+            "include($$val_escape(MODULE_PRIVATE_PRI))" \
+            "QT.$${MODULE}_private.priority = 1"
         MODULE_FWD_PRI_CONT += $$MODULE_FWD_PRI_CONT_SUFFIX
         write_file($$MODULE_FWD_PRI, MODULE_FWD_PRI_CONT)|error("Aborting.")
         touch($$MODULE_FWD_PRI, $$MODULE_PRI)
@@ -178,7 +200,7 @@ MODULE_FWD_PRI = $$mod_work_pfx/qt_lib_$${MODULE_ID}.pri
     for(mod, mods_to_load) {
         for(var, $$list(VERSION MAJOR_VERSION MINOR_VERSION PATCH_VERSION \
                         name depends run_depends plugin_types module_config CONFIG DEFINES \
-                        includes bins libs libexecs plugins imports qml \
+                        priority includes bins libs libexecs plugins imports qml \
                 )):defined(QT.$${mod}.$$var, var):cache(QT.$${mod}.$$var, transient)
     }
     cache(QT_MODULES, transient)

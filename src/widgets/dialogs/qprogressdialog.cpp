@@ -1,39 +1,31 @@
 /****************************************************************************
 **
-** Copyright (C) 2013 Digia Plc and/or its subsidiary(-ies).
-** Contact: http://www.qt-project.org/legal
+** Copyright (C) 2015 The Qt Company Ltd.
+** Contact: http://www.qt.io/licensing/
 **
 ** This file is part of the QtWidgets module of the Qt Toolkit.
 **
-** $QT_BEGIN_LICENSE:LGPL$
+** $QT_BEGIN_LICENSE:LGPL21$
 ** Commercial License Usage
 ** Licensees holding valid commercial Qt licenses may use this file in
 ** accordance with the commercial license agreement provided with the
 ** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and Digia.  For licensing terms and
-** conditions see http://qt.digia.com/licensing.  For further information
-** use the contact form at http://qt.digia.com/contact-us.
+** a written agreement between you and The Qt Company. For licensing terms
+** and conditions see http://www.qt.io/terms-conditions. For further
+** information use the contact form at http://www.qt.io/contact-us.
 **
 ** GNU Lesser General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 2.1 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU Lesser General Public License version 2.1 requirements
-** will be met: http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
+** General Public License version 2.1 or version 3 as published by the Free
+** Software Foundation and appearing in the file LICENSE.LGPLv21 and
+** LICENSE.LGPLv3 included in the packaging of this file. Please review the
+** following information to ensure the GNU Lesser General Public License
+** requirements will be met: https://www.gnu.org/licenses/lgpl.html and
+** http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
 **
-** In addition, as a special exception, Digia gives you certain additional
-** rights.  These rights are described in the Digia Qt LGPL Exception
+** As a special exception, The Qt Company gives you certain additional
+** rights. These rights are described in The Qt Company LGPL Exception
 ** version 1.1, included in the file LGPL_EXCEPTION.txt in this package.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3.0 as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU General Public License version 3.0 requirements will be
-** met: http://www.gnu.org/copyleft/gpl.html.
-**
 **
 ** $QT_END_LICENSE$
 **
@@ -73,6 +65,7 @@ public:
     QProgressDialogPrivate() : label(0), cancel(0), bar(0),
         shown_once(false),
         cancellation_flag(false),
+        setValue_called(false),
         showTime(defaultShowTime),
 #ifndef QT_NO_SHORTCUT
         escapeShortcut(0),
@@ -84,6 +77,9 @@ public:
     void init(const QString &labelText, const QString &cancelText, int min, int max);
     void layout();
     void retranslateStrings();
+    void setCancelButtonText(const QString &cancelButtonText);
+    void adoptChildWidget(QWidget *c);
+    void ensureSizeIsAtLeastSizeHint();
     void _q_disconnectOnClose();
 
     QLabel *label;
@@ -92,6 +88,7 @@ public:
     QTimer *forceTimer;
     bool shown_once;
     bool cancellation_flag;
+    bool setValue_called;
     QElapsedTimer starttime;
 #ifndef QT_NO_CURSOR
     QCursor parentCursor;
@@ -113,10 +110,10 @@ void QProgressDialogPrivate::init(const QString &labelText, const QString &cance
 {
     Q_Q(QProgressDialog);
     label = new QLabel(labelText, q);
-    int align = q->style()->styleHint(QStyle::SH_ProgressDialog_TextLabelAlignment, 0, q);
-    label->setAlignment(Qt::Alignment(align));
     bar = new QProgressBar(q);
     bar->setRange(min, max);
+    int align = q->style()->styleHint(QStyle::SH_ProgressDialog_TextLabelAlignment, 0, q);
+    label->setAlignment(Qt::Alignment(align));
     autoClose = true;
     autoReset = true;
     forceHide = false;
@@ -128,6 +125,8 @@ void QProgressDialogPrivate::init(const QString &labelText, const QString &cance
     } else {
         q->setCancelButtonText(cancelText);
     }
+    starttime.start();
+    forceTimer->start(showTime);
 }
 
 void QProgressDialogPrivate::layout()
@@ -178,9 +177,8 @@ void QProgressDialogPrivate::layout()
 
 void QProgressDialogPrivate::retranslateStrings()
 {
-    Q_Q(QProgressDialog);
     if (useDefaultCancelText)
-        q->setCancelButtonText(QProgressDialog::tr("Cancel"));
+        setCancelButtonText(QProgressDialog::tr("Cancel"));
 }
 
 void QProgressDialogPrivate::_q_disconnectOnClose()
@@ -354,20 +352,14 @@ QProgressDialog::~QProgressDialog()
 void QProgressDialog::setLabel(QLabel *label)
 {
     Q_D(QProgressDialog);
+    if (label == d->label) {
+        if (label)
+            qWarning("QProgressDialog::setLabel: Attempt to set the same label again");
+        return;
+    }
     delete d->label;
     d->label = label;
-    if (label) {
-        if (label->parentWidget() == this) {
-            label->hide(); // until we resize
-        } else {
-            label->setParent(this, 0);
-        }
-    }
-    int w = qMax(isVisible() ? width() : 0, sizeHint().width());
-    int h = qMax(isVisible() ? height() : 0, sizeHint().height());
-    resize(w, h);
-    if (label)
-        label->show();
+    d->adoptChildWidget(label);
 }
 
 
@@ -391,9 +383,7 @@ void QProgressDialog::setLabelText(const QString &text)
     Q_D(QProgressDialog);
     if (d->label) {
         d->label->setText(text);
-        int w = qMax(isVisible() ? width() : 0, sizeHint().width());
-        int h = qMax(isVisible() ? height() : 0, sizeHint().height());
-        resize(w, h);
+        d->ensureSizeIsAtLeastSizeHint();
     }
 }
 
@@ -411,14 +401,14 @@ void QProgressDialog::setLabelText(const QString &text)
 void QProgressDialog::setCancelButton(QPushButton *cancelButton)
 {
     Q_D(QProgressDialog);
+    if (d->cancel == cancelButton) {
+        if (cancelButton)
+            qWarning("QProgressDialog::setCancelButton: Attempt to set the same button again");
+        return;
+    }
     delete d->cancel;
     d->cancel = cancelButton;
     if (cancelButton) {
-        if (cancelButton->parentWidget() == this) {
-            cancelButton->hide(); // until we resize
-        } else {
-            cancelButton->setParent(this, 0);
-        }
         connect(d->cancel, SIGNAL(clicked()), this, SIGNAL(canceled()));
 #ifndef QT_NO_SHORTCUT
         d->escapeShortcut = new QShortcut(Qt::Key_Escape, this, SIGNAL(canceled()));
@@ -429,11 +419,7 @@ void QProgressDialog::setCancelButton(QPushButton *cancelButton)
         d->escapeShortcut = 0;
 #endif
     }
-    int w = qMax(isVisible() ? width() : 0, sizeHint().width());
-    int h = qMax(isVisible() ? height() : 0, sizeHint().height());
-    resize(w, h);
-    if (cancelButton)
-        cancelButton->show();
+    d->adoptChildWidget(cancelButton);
 }
 
 /*!
@@ -448,19 +434,23 @@ void QProgressDialog::setCancelButtonText(const QString &cancelButtonText)
 {
     Q_D(QProgressDialog);
     d->useDefaultCancelText = false;
+    d->setCancelButtonText(cancelButtonText);
+}
+
+void QProgressDialogPrivate::setCancelButtonText(const QString &cancelButtonText)
+{
+    Q_Q(QProgressDialog);
 
     if (!cancelButtonText.isNull()) {
-        if (d->cancel) {
-            d->cancel->setText(cancelButtonText);
+        if (cancel) {
+            cancel->setText(cancelButtonText);
         } else {
-            setCancelButton(new QPushButton(cancelButtonText, this));
+            q->setCancelButton(new QPushButton(cancelButtonText, q));
         }
     } else {
-        setCancelButton(0);
+        q->setCancelButton(0);
     }
-    int w = qMax(isVisible() ? width() : 0, sizeHint().width());
-    int h = qMax(isVisible() ? height() : 0, sizeHint().height());
-    resize(w, h);
+    ensureSizeIsAtLeastSizeHint();
 }
 
 
@@ -483,11 +473,38 @@ void QProgressDialog::setBar(QProgressBar *bar)
         qWarning("QProgressDialog::setBar: Cannot set a new progress bar "
                   "while the old one is active");
 #endif
+    if (bar == d->bar) {
+        qWarning("QProgressDialog::setBar: Attempt to set the same progress bar again");
+        return;
+    }
     delete d->bar;
     d->bar = bar;
-    int w = qMax(isVisible() ? width() : 0, sizeHint().width());
-    int h = qMax(isVisible() ? height() : 0, sizeHint().height());
-    resize(w, h);
+    d->adoptChildWidget(bar);
+}
+
+void QProgressDialogPrivate::adoptChildWidget(QWidget *c)
+{
+    Q_Q(QProgressDialog);
+
+    if (c) {
+        if (c->parentWidget() == q)
+            c->hide(); // until after ensureSizeIsAtLeastSizeHint()
+        else
+            c->setParent(q, 0);
+    }
+    ensureSizeIsAtLeastSizeHint();
+    if (c)
+        c->show();
+}
+
+void QProgressDialogPrivate::ensureSizeIsAtLeastSizeHint()
+{
+    Q_Q(QProgressDialog);
+
+    QSize size = q->sizeHint();
+    if (q->isVisible())
+        size = size.expandedTo(q->size());
+    q->resize(size);
 }
 
 
@@ -507,7 +524,7 @@ bool QProgressDialog::wasCanceled() const
     \property QProgressDialog::maximum
     \brief the highest value represented by the progress bar
 
-    The default is 0.
+    The default is 100.
 
     \sa minimum, setRange()
 */
@@ -585,6 +602,7 @@ void QProgressDialog::reset()
     d->bar->reset();
     d->cancellation_flag = false;
     d->shown_once = false;
+    d->setValue_called = false;
     d->forceTimer->stop();
 
     /*
@@ -623,7 +641,7 @@ int QProgressDialog::value() const
   \brief the current amount of progress made.
 
   For the progress dialog to work as expected, you should initially set
-  this property to 0 and finally set it to
+  this property to QProgressDialog::minimum() and finally set it to
   QProgressDialog::maximum(); you can call setValue() any number of times
   in-between.
 
@@ -638,8 +656,7 @@ int QProgressDialog::value() const
 void QProgressDialog::setValue(int progress)
 {
     Q_D(QProgressDialog);
-    if (progress == d->bar->value()
-        || (d->bar->value() == -1 && progress == d->bar->maximum()))
+    if (d->setValue_called && progress == d->bar->value())
         return;
 
     d->bar->setValue(progress);
@@ -648,11 +665,13 @@ void QProgressDialog::setValue(int progress)
         if (isModal())
             QApplication::processEvents();
     } else {
-        if (progress == 0) {
+        if ((!d->setValue_called && progress == 0 /* for compat with Qt < 5.4 */) || progress == minimum()) {
             d->starttime.start();
             d->forceTimer->start(d->showTime);
+            d->setValue_called = true;
             return;
         } else {
+            d->setValue_called = true;
             bool need_show;
             int elapsed = d->starttime.elapsed();
             if (elapsed >= d->showTime) {
@@ -673,14 +692,12 @@ void QProgressDialog::setValue(int progress)
                 }
             }
             if (need_show) {
-                int w = qMax(isVisible() ? width() : 0, sizeHint().width());
-                int h = qMax(isVisible() ? height() : 0, sizeHint().height());
-                resize(w, h);
+                d->ensureSizeIsAtLeastSizeHint();
                 show();
                 d->shown_once = true;
             }
         }
-#ifdef Q_WS_MAC
+#ifdef Q_DEAD_CODE_FROM_QT4_MAC
         QApplication::flush();
 #endif
     }
@@ -748,7 +765,7 @@ void QProgressDialog::setMinimumDuration(int ms)
 {
     Q_D(QProgressDialog);
     d->showTime = ms;
-    if (d->bar->value() == 0) {
+    if (d->bar->value() == d->bar->minimum()) {
         d->forceTimer->stop();
         d->forceTimer->start(ms);
     }
@@ -821,9 +838,7 @@ void QProgressDialog::showEvent(QShowEvent *e)
 {
     Q_D(QProgressDialog);
     QDialog::showEvent(e);
-    int w = qMax(isVisible() ? width() : 0, sizeHint().width());
-    int h = qMax(isVisible() ? height() : 0, sizeHint().height());
-    resize(w, h);
+    d->ensureSizeIsAtLeastSizeHint();
     d->forceTimer->stop();
 }
 

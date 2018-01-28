@@ -1,39 +1,31 @@
 /****************************************************************************
 **
-** Copyright (C) 2014 Digia Plc and/or its subsidiary(-ies).
-** Contact: http://www.qt-project.org/legal
+** Copyright (C) 2015 The Qt Company Ltd.
+** Contact: http://www.qt.io/licensing/
 **
 ** This file is part of the test suite of the Qt Toolkit.
 **
-** $QT_BEGIN_LICENSE:LGPL$
+** $QT_BEGIN_LICENSE:LGPL21$
 ** Commercial License Usage
 ** Licensees holding valid commercial Qt licenses may use this file in
 ** accordance with the commercial license agreement provided with the
 ** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and Digia.  For licensing terms and
-** conditions see http://qt.digia.com/licensing.  For further information
-** use the contact form at http://qt.digia.com/contact-us.
+** a written agreement between you and The Qt Company. For licensing terms
+** and conditions see http://www.qt.io/terms-conditions. For further
+** information use the contact form at http://www.qt.io/contact-us.
 **
 ** GNU Lesser General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 2.1 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU Lesser General Public License version 2.1 requirements
-** will be met: http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
+** General Public License version 2.1 or version 3 as published by the Free
+** Software Foundation and appearing in the file LICENSE.LGPLv21 and
+** LICENSE.LGPLv3 included in the packaging of this file. Please review the
+** following information to ensure the GNU Lesser General Public License
+** requirements will be met: https://www.gnu.org/licenses/lgpl.html and
+** http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
 **
-** In addition, as a special exception, Digia gives you certain additional
-** rights.  These rights are described in the Digia Qt LGPL Exception
+** As a special exception, The Qt Company gives you certain additional
+** rights. These rights are described in The Qt Company LGPL Exception
 ** version 1.1, included in the file LGPL_EXCEPTION.txt in this package.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3.0 as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU General Public License version 3.0 requirements will be
-** met: http://www.gnu.org/copyleft/gpl.html.
-**
 **
 ** $QT_END_LICENSE$
 **
@@ -64,6 +56,7 @@ public slots:
 private slots:
     void record();
     void primaryIndex();
+    void formatValue();
 };
 
 
@@ -79,18 +72,18 @@ void tst_QSqlDriver::recreateTestTables(QSqlDatabase db)
     QSqlQuery q(db);
     const QString relTEST1(qTableName("relTEST1", __FILE__, db));
 
-    QSqlDriverPrivate::DBMSType dbType = tst_Databases::getDatabaseType(db);
-    if (dbType == QSqlDriverPrivate::PostgreSQL)
+    QSqlDriver::DbmsType dbType = tst_Databases::getDatabaseType(db);
+    if (dbType == QSqlDriver::PostgreSQL)
         QVERIFY_SQL( q, exec("set client_min_messages='warning'"));
 
     tst_Databases::safeDropTable( db, relTEST1 );
-
+    QString doubleField = (dbType == QSqlDriver::SQLite) ? "more_data double" : "more_data double(8,7)";
     QVERIFY_SQL( q, exec("create table " + relTEST1 +
-            " (id int not null primary key, name varchar(20), title_key int, another_title_key int)"));
-    QVERIFY_SQL( q, exec("insert into " + relTEST1 + " values(1, 'harry', 1, 2)"));
-    QVERIFY_SQL( q, exec("insert into " + relTEST1 + " values(2, 'trond', 2, 1)"));
-    QVERIFY_SQL( q, exec("insert into " + relTEST1 + " values(3, 'vohi', 1, 2)"));
-    QVERIFY_SQL( q, exec("insert into " + relTEST1 + " values(4, 'boris', 2, 2)"));
+            " (id int not null primary key, name varchar(20), title_key int, another_title_key int, " + doubleField + ")"));
+    QVERIFY_SQL( q, exec("insert into " + relTEST1 + " values(1, 'harry', 1, 2, 1.234567)"));
+    QVERIFY_SQL( q, exec("insert into " + relTEST1 + " values(2, 'trond', 2, 1, 8.901234)"));
+    QVERIFY_SQL( q, exec("insert into " + relTEST1 + " values(3, 'vohi', 1, 2, 5.678901)"));
+    QVERIFY_SQL( q, exec("insert into " + relTEST1 + " values(4, 'boris', 2, 2, 2.345678)"));
 }
 
 void tst_QSqlDriver::initTestCase()
@@ -124,48 +117,48 @@ void tst_QSqlDriver::record()
 
     QString tablename(qTableName("relTEST1", __FILE__, db));
     QStringList fields;
-    fields << "id" << "name" << "title_key" << "another_title_key";
+    fields << "id" << "name" << "title_key" << "another_title_key" << "more_data";
 
     //check we can get records using an unquoted mixed case table name
     QSqlRecord rec = db.driver()->record(tablename);
-    QCOMPARE(rec.count(), 4);
+    QCOMPARE(rec.count(), 5);
 
-    QSqlDriverPrivate::DBMSType dbType = tst_Databases::getDatabaseType(db);
+    QSqlDriver::DbmsType dbType = tst_Databases::getDatabaseType(db);
     // QTBUG-1363: QSqlField::length() always return -1 when using QODBC3 driver and QSqlDatabase::record()
-    if (dbType == QSqlDriverPrivate::MSSqlServer && db.driverName().startsWith("QODBC"))
+    if (dbType == QSqlDriver::MSSqlServer && db.driverName().startsWith("QODBC"))
         QCOMPARE(rec.field(1).length(), 20);
 
-    if (dbType == QSqlDriverPrivate::Interbase || dbType == QSqlDriverPrivate::Oracle || dbType == QSqlDriverPrivate::DB2)
+    if (dbType == QSqlDriver::Interbase || dbType == QSqlDriver::Oracle || dbType == QSqlDriver::DB2)
         for(int i = 0; i < fields.count(); ++i)
             fields[i] = fields[i].toUpper();
 
     for (int i = 0; i < fields.count(); ++i)
         QCOMPARE(rec.fieldName(i), fields[i]);
 
-    if (dbType == QSqlDriverPrivate::Interbase || dbType == QSqlDriverPrivate::Oracle || dbType == QSqlDriverPrivate::DB2)
+    if (dbType == QSqlDriver::Interbase || dbType == QSqlDriver::Oracle || dbType == QSqlDriver::DB2)
         tablename = tablename.toUpper();
-    else if (dbType == QSqlDriverPrivate::PostgreSQL)
+    else if (dbType == QSqlDriver::PostgreSQL)
         tablename = tablename.toLower();
 
-    if (dbType != QSqlDriverPrivate::PostgreSQL && !db.driverName().startsWith("QODBC")) {
+    if (dbType != QSqlDriver::PostgreSQL && !db.driverName().startsWith("QODBC")) {
         //check we can get records using a properly quoted table name
         rec = db.driver()->record(db.driver()->escapeIdentifier(tablename,QSqlDriver::TableName));
-        QCOMPARE(rec.count(), 4);
+        QCOMPARE(rec.count(), 5);
     }
 
     for (int i = 0; i < fields.count(); ++i)
         QCOMPARE(rec.fieldName(i), fields[i]);
 
-    if (dbType == QSqlDriverPrivate::Interbase || dbType == QSqlDriverPrivate::Oracle || dbType == QSqlDriverPrivate::DB2)
+    if (dbType == QSqlDriver::Interbase || dbType == QSqlDriver::Oracle || dbType == QSqlDriver::DB2)
         tablename = tablename.toLower();
-    else if (dbType == QSqlDriverPrivate::PostgreSQL)
+    else if (dbType == QSqlDriver::PostgreSQL)
         tablename = tablename.toUpper();
 
     //check that we can't get records using incorrect tablename casing that's been quoted
     rec = db.driver()->record(db.driver()->escapeIdentifier(tablename,QSqlDriver::TableName));
-    if (dbType == QSqlDriverPrivate::MySqlServer || dbType == QSqlDriverPrivate::SQLite || dbType == QSqlDriverPrivate::Sybase
-      || dbType == QSqlDriverPrivate::MSSqlServer || tst_Databases::isMSAccess(db))
-        QCOMPARE(rec.count(), 4); //mysql, sqlite and tds will match
+    if (dbType == QSqlDriver::MySqlServer || dbType == QSqlDriver::SQLite || dbType == QSqlDriver::Sybase
+      || dbType == QSqlDriver::MSSqlServer || tst_Databases::isMSAccess(db))
+        QCOMPARE(rec.count(), 5); //mysql, sqlite and tds will match
     else
         QCOMPARE(rec.count(), 0);
 
@@ -182,24 +175,24 @@ void tst_QSqlDriver::primaryIndex()
     QSqlIndex index = db.driver()->primaryIndex(tablename);
     QCOMPARE(index.count(), 1);
 
-    QSqlDriverPrivate::DBMSType dbType = tst_Databases::getDatabaseType(db);
-    if (dbType == QSqlDriverPrivate::Interbase || dbType == QSqlDriverPrivate::Oracle || dbType == QSqlDriverPrivate::DB2)
+    QSqlDriver::DbmsType dbType = tst_Databases::getDatabaseType(db);
+    if (dbType == QSqlDriver::Interbase || dbType == QSqlDriver::Oracle || dbType == QSqlDriver::DB2)
         QCOMPARE(index.fieldName(0), QString::fromLatin1("ID"));
     else
         QCOMPARE(index.fieldName(0), QString::fromLatin1("id"));
 
 
     //check that we can get the primary index using a quoted tablename
-    if (dbType == QSqlDriverPrivate::Interbase || dbType == QSqlDriverPrivate::Oracle || dbType == QSqlDriverPrivate::DB2)
+    if (dbType == QSqlDriver::Interbase || dbType == QSqlDriver::Oracle || dbType == QSqlDriver::DB2)
         tablename = tablename.toUpper();
-    else if (dbType == QSqlDriverPrivate::PostgreSQL)
+    else if (dbType == QSqlDriver::PostgreSQL)
         tablename = tablename.toLower();
 
-    if (dbType != QSqlDriverPrivate::PostgreSQL && !db.driverName().startsWith("QODBC")) {
+    if (dbType != QSqlDriver::PostgreSQL && !db.driverName().startsWith("QODBC")) {
         index = db.driver()->primaryIndex(db.driver()->escapeIdentifier(tablename, QSqlDriver::TableName));
         QCOMPARE(index.count(), 1);
     }
-    if (dbType == QSqlDriverPrivate::Interbase || dbType == QSqlDriverPrivate::Oracle || dbType == QSqlDriverPrivate::DB2)
+    if (dbType == QSqlDriver::Interbase || dbType == QSqlDriver::Oracle || dbType == QSqlDriver::DB2)
         QCOMPARE(index.fieldName(0), QString::fromLatin1("ID"));
     else
         QCOMPARE(index.fieldName(0), QString::fromLatin1("id"));
@@ -207,17 +200,32 @@ void tst_QSqlDriver::primaryIndex()
 
 
     //check that we can not get the primary index using a quoted but incorrect table name casing
-    if (dbType == QSqlDriverPrivate::Interbase || dbType == QSqlDriverPrivate::Oracle || dbType == QSqlDriverPrivate::DB2)
+    if (dbType == QSqlDriver::Interbase || dbType == QSqlDriver::Oracle || dbType == QSqlDriver::DB2)
         tablename = tablename.toLower();
-    else if (dbType == QSqlDriverPrivate::PostgreSQL)
+    else if (dbType == QSqlDriver::PostgreSQL)
         tablename = tablename.toUpper();
 
     index = db.driver()->primaryIndex(db.driver()->escapeIdentifier(tablename, QSqlDriver::TableName));
-    if (dbType == QSqlDriverPrivate::MySqlServer || dbType == QSqlDriverPrivate::SQLite || dbType == QSqlDriverPrivate::Sybase
-      || dbType == QSqlDriverPrivate::MSSqlServer || tst_Databases::isMSAccess(db))
+    if (dbType == QSqlDriver::MySqlServer || dbType == QSqlDriver::SQLite || dbType == QSqlDriver::Sybase
+      || dbType == QSqlDriver::MSSqlServer || tst_Databases::isMSAccess(db))
         QCOMPARE(index.count(), 1); //mysql will always find the table name regardless of casing
     else
         QCOMPARE(index.count(), 0);
+}
+
+void tst_QSqlDriver::formatValue()
+{
+    QFETCH_GLOBAL(QString, dbName);
+    QSqlDatabase db = QSqlDatabase::database(dbName);
+    CHECK_DATABASE(db);
+    QString tablename(qTableName("relTEST1", __FILE__, db));
+    QSqlQuery qry(db);
+    QVERIFY_SQL(qry, exec("SELECT * FROM " + tablename));
+    qry.next();
+    QSqlRecord rec = qry.record();
+    QCOMPARE(db.driver()->formatValue(rec.field("id")), QString("1"));
+    QCOMPARE(db.driver()->formatValue(rec.field("name")), QString("'harry'"));
+    QCOMPARE(db.driver()->formatValue(rec.field("more_data")), QString("1.234567"));
 }
 
 QTEST_MAIN(tst_QSqlDriver)

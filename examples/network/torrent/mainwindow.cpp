@@ -1,7 +1,7 @@
 /****************************************************************************
 **
-** Copyright (C) 2013 Digia Plc and/or its subsidiary(-ies).
-** Contact: http://www.qt-project.org/legal
+** Copyright (C) 2015 The Qt Company Ltd.
+** Contact: http://www.qt.io/licensing/
 **
 ** This file is part of the examples of the Qt Toolkit.
 **
@@ -17,8 +17,8 @@
 **     notice, this list of conditions and the following disclaimer in
 **     the documentation and/or other materials provided with the
 **     distribution.
-**   * Neither the name of Digia Plc and its Subsidiary(-ies) nor the names
-**     of its contributors may be used to endorse or promote products derived
+**   * Neither the name of The Qt Company Ltd nor the names of its
+**     contributors may be used to endorse or promote products derived
 **     from this software without specific prior written permission.
 **
 **
@@ -57,8 +57,8 @@ signals:
     void fileDropped(const QString &fileName);
 
 protected:
-    void dragMoveEvent(QDragMoveEvent *event);
-    void dropEvent(QDropEvent *event);
+    void dragMoveEvent(QDragMoveEvent *event) Q_DECL_OVERRIDE;
+    void dropEvent(QDropEvent *event) Q_DECL_OVERRIDE;
 #endif
 };
 
@@ -69,8 +69,8 @@ class TorrentViewDelegate : public QItemDelegate
 public:
     inline TorrentViewDelegate(MainWindow *mainWindow) : QItemDelegate(mainWindow) {}
 
-    inline void paint(QPainter *painter, const QStyleOptionViewItem &option,
-                      const QModelIndex &index ) const
+    void paint(QPainter *painter, const QStyleOptionViewItem &option,
+               const QModelIndex &index ) const Q_DECL_OVERRIDE
     {
         if (index.column() != 2) {
             QItemDelegate::paint(painter, option, index);
@@ -92,7 +92,7 @@ public:
         // Set the progress and text values of the style option.
         int progress = qobject_cast<MainWindow *>(parent())->clientForRow(index.row())->progress();
         progressBarOption.progress = progress < 0 ? 0 : progress;
-        progressBarOption.text = QString().sprintf("%d%%", progressBarOption.progress);
+        progressBarOption.text = QString::asprintf("%d%%", progressBarOption.progress);
 
         // Draw the progress bar onto the view.
         QApplication::style()->drawControl(QStyle::CE_ProgressBar, &progressBarOption, painter);
@@ -172,6 +172,10 @@ MainWindow::MainWindow(QWidget *parent)
     bottomBar->addWidget(uploadLimitSlider);
     bottomBar->addWidget((uploadLimitLabel = new QLabel(tr("0 KB/s"))));
     uploadLimitLabel->setFixedSize(QSize(fm.width(tr("99999 KB/s")), fm.lineSpacing()));
+
+#ifdef Q_OS_OSX
+    setUnifiedTitleAndToolBarOnMac(true);
+#endif
 
     // Set up connections
     connect(torrentView, SIGNAL(itemSelectionChanged()),
@@ -505,8 +509,7 @@ void MainWindow::updateDownloadRate(int bytesPerSecond)
     // Update the download rate.
     TorrentClient *client = qobject_cast<TorrentClient *>(sender());
     int row = rowOfClient(client);
-    QString num;
-    num.sprintf("%.1f KB/s", bytesPerSecond / 1024.0);
+    const QString num = QString::asprintf("%.1f KB/s", bytesPerSecond / 1024.0);
     torrentView->topLevelItem(row)->setText(3, num);
 
     if (!saveChanges) {
@@ -520,8 +523,7 @@ void MainWindow::updateUploadRate(int bytesPerSecond)
     // Update the upload rate.
     TorrentClient *client = qobject_cast<TorrentClient *>(sender());
     int row = rowOfClient(client);
-    QString num;
-    num.sprintf("%.1f KB/s", bytesPerSecond / 1024.0);
+    const QString num = QString::asprintf("%.1f KB/s", bytesPerSecond / 1024.0);
     torrentView->topLevelItem(row)->setText(4, num);
 
     if (!saveChanges) {
@@ -589,14 +591,14 @@ static int rateFromValue(int value)
 void MainWindow::setUploadLimit(int value)
 {
     int rate = rateFromValue(value);
-    uploadLimitLabel->setText(tr("%1 KB/s").arg(QString().sprintf("%4d", rate)));
+    uploadLimitLabel->setText(tr("%1 KB/s").arg(QString::asprintf("%4d", rate)));
     RateController::instance()->setUploadLimit(rate * 1024);
 }
 
 void MainWindow::setDownloadLimit(int value)
 {
     int rate = rateFromValue(value);
-    downloadLimitLabel->setText(tr("%1 KB/s").arg(QString().sprintf("%4d", rate)));
+    downloadLimitLabel->setText(tr("%1 KB/s").arg(QString::asprintf("%4d", rate)));
     RateController::instance()->setDownloadLimit(rate * 1024);
 }
 

@@ -1,39 +1,31 @@
 /****************************************************************************
 **
-** Copyright (C) 2013 Digia Plc and/or its subsidiary(-ies).
-** Contact: http://www.qt-project.org/legal
+** Copyright (C) 2015 The Qt Company Ltd.
+** Contact: http://www.qt.io/licensing/
 **
 ** This file is part of the test suite of the Qt Toolkit.
 **
-** $QT_BEGIN_LICENSE:LGPL$
+** $QT_BEGIN_LICENSE:LGPL21$
 ** Commercial License Usage
 ** Licensees holding valid commercial Qt licenses may use this file in
 ** accordance with the commercial license agreement provided with the
 ** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and Digia.  For licensing terms and
-** conditions see http://qt.digia.com/licensing.  For further information
-** use the contact form at http://qt.digia.com/contact-us.
+** a written agreement between you and The Qt Company. For licensing terms
+** and conditions see http://www.qt.io/terms-conditions. For further
+** information use the contact form at http://www.qt.io/contact-us.
 **
 ** GNU Lesser General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 2.1 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU Lesser General Public License version 2.1 requirements
-** will be met: http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
+** General Public License version 2.1 or version 3 as published by the Free
+** Software Foundation and appearing in the file LICENSE.LGPLv21 and
+** LICENSE.LGPLv3 included in the packaging of this file. Please review the
+** following information to ensure the GNU Lesser General Public License
+** requirements will be met: https://www.gnu.org/licenses/lgpl.html and
+** http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
 **
-** In addition, as a special exception, Digia gives you certain additional
-** rights.  These rights are described in the Digia Qt LGPL Exception
+** As a special exception, The Qt Company gives you certain additional
+** rights. These rights are described in The Qt Company LGPL Exception
 ** version 1.1, included in the file LGPL_EXCEPTION.txt in this package.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3.0 as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU General Public License version 3.0 requirements will be
-** met: http://www.gnu.org/copyleft/gpl.html.
-**
 **
 ** $QT_END_LICENSE$
 **
@@ -244,6 +236,7 @@ private slots:
 
 #ifndef QT_NO_CLIPBOARD
     void cut();
+    void cutWithoutSelection();
 #endif
     void maxLengthAndInputMask();
     void returnPressedKeyEvent();
@@ -256,6 +249,7 @@ private slots:
 
     void editInvalidText();
 
+    void charWithAltOrCtrlModifier_data();
     void charWithAltOrCtrlModifier();
 
     void inlineCompletion();
@@ -310,10 +304,13 @@ private slots:
     void undoRedoAndEchoModes();
 
     void clearButton();
+    void clearButtonVisibleAfterSettingText_QTBUG_45518();
     void sideWidgets();
+    void sideWidgetsActionEvents();
 
     void shouldShowPlaceholderText_data();
     void shouldShowPlaceholderText();
+    void QTBUG1266_setInputMaskEmittingTextEdited();
 
 protected slots:
     void editingFinished();
@@ -1677,7 +1674,7 @@ void tst_QLineEdit::displayText()
 
 void tst_QLineEdit::passwordEchoOnEdit()
 {
-    QStyleOptionFrameV2 opt;
+    QStyleOptionFrame opt;
     QLineEdit *testWidget = ensureTestWidget();
     QChar fillChar = testWidget->style()->styleHint(QStyle::SH_LineEdit_PasswordCharacter, &opt, testWidget);
 
@@ -1722,7 +1719,7 @@ void tst_QLineEdit::passwordEchoDelay()
     if (delay <= 0)
         QSKIP("Platform not defining echo delay and overriding only possible in internal build");
 
-    QStyleOptionFrameV2 opt;
+    QStyleOptionFrame opt;
     QChar fillChar = testWidget->style()->styleHint(QStyle::SH_LineEdit_PasswordCharacter, &opt, testWidget);
 
     testWidget->setEchoMode(QLineEdit::Password);
@@ -2519,6 +2516,7 @@ void tst_QLineEdit::setValidator_QIntValidator_data()
     QTest::addColumn<QString>("expectedText");
     QTest::addColumn<bool>("useKeys");
     QTest::addColumn<bool>("is_valid");
+    QTest::addColumn<uint>("echoMode");
 
     for (int i=0; i<2; i++) {
         bool useKeys = false;
@@ -2535,7 +2533,8 @@ void tst_QLineEdit::setValidator_QIntValidator_data()
             << QString("1")
             << QString("1")
             << bool(useKeys)
-            << bool(true);
+            << bool(true)
+            << uint(QLineEdit::Normal);
 
         QTest::newRow(QString(inputMode + "range [3,7] valid '3'").toLatin1())
             << 3
@@ -2543,7 +2542,8 @@ void tst_QLineEdit::setValidator_QIntValidator_data()
             << QString("3")
             << QString("3")
             << bool(useKeys)
-            << bool(true);
+            << bool(true)
+            << uint(QLineEdit::Normal);
 
         QTest::newRow(QString(inputMode + "range [3,7] valid '7'").toLatin1())
             << 3
@@ -2551,7 +2551,8 @@ void tst_QLineEdit::setValidator_QIntValidator_data()
             << QString("7")
             << QString("7")
             << bool(useKeys)
-            << bool(true);
+            << bool(true)
+            << uint(QLineEdit::Normal);
 
         QTest::newRow(QString(inputMode + "range [0,100] valid '9'").toLatin1())
             << 0
@@ -2559,7 +2560,8 @@ void tst_QLineEdit::setValidator_QIntValidator_data()
             << QString("9")
             << QString("9")
             << bool(useKeys)
-            << bool(true);
+            << bool(true)
+            << uint(QLineEdit::Normal);
 
         QTest::newRow(QString(inputMode + "range [0,100] valid '12'").toLatin1())
             << 0
@@ -2567,7 +2569,8 @@ void tst_QLineEdit::setValidator_QIntValidator_data()
             << QString("12")
             << QString("12")
             << bool(useKeys)
-            << bool(true);
+            << bool(true)
+            << uint(QLineEdit::Normal);
 
         QTest::newRow(QString(inputMode + "range [-100,100] valid '-12'").toLatin1())
             << -100
@@ -2575,7 +2578,8 @@ void tst_QLineEdit::setValidator_QIntValidator_data()
             << QString("-12")
             << QString("-12")
             << bool(useKeys)
-            << bool(true);
+            << bool(true)
+            << uint(QLineEdit::Normal);
 
         // invalid data
         // characters not allowed in QIntValidator
@@ -2585,7 +2589,8 @@ void tst_QLineEdit::setValidator_QIntValidator_data()
             << QString("a")
             << QString("")
             << bool(useKeys)
-            << bool(false);
+            << bool(false)
+            << uint(QLineEdit::Normal);
 
         QTest::newRow(QString(inputMode + "range [0,9] inv 'A'").toLatin1())
             << 0
@@ -2593,7 +2598,8 @@ void tst_QLineEdit::setValidator_QIntValidator_data()
             << QString("A")
             << QString("")
             << bool(useKeys)
-            << bool(false);
+            << bool(false)
+            << uint(QLineEdit::Normal);
         // minus sign only allowed with a range on the negative side
         QTest::newRow(QString(inputMode + "range [0,100] inv '-'").toLatin1())
             << 0
@@ -2601,36 +2607,48 @@ void tst_QLineEdit::setValidator_QIntValidator_data()
             << QString("-")
             << QString("")
             << bool(useKeys)
-            << bool(false);
+            << bool(false)
+            << uint(QLineEdit::Normal);
         QTest::newRow(QString(inputMode + "range [0,100] int '153'").toLatin1())
             << 0
             << 100
             << QString("153")
             << QString(useKeys ? "15" : "")
             << bool(useKeys)
-            << bool(useKeys ? true : false);
+            << bool(useKeys ? true : false)
+            << uint(QLineEdit::Normal);
         QTest::newRow(QString(inputMode + "range [-100,100] int '-153'").toLatin1())
             << -100
             << 100
             << QString("-153")
             << QString(useKeys ? "-15" : "")
             << bool(useKeys)
-            << bool(useKeys ? true : false);
+            << bool(useKeys ? true : false)
+            << uint(QLineEdit::Normal);
         QTest::newRow(QString(inputMode + "range [3,7] int '2'").toLatin1())
             << 3
             << 7
             << QString("2")
             << QString("2")
             << bool(useKeys)
-            << bool(false);
-
+            << bool(false)
+            << uint(QLineEdit::Normal);
         QTest::newRow(QString(inputMode + "range [3,7] int '8'").toLatin1())
             << 3
             << 7
             << QString("8")
             << QString("")
             << bool(useKeys)
-            << bool(false);
+            << bool(false)
+            << uint(QLineEdit::Normal);
+        QTest::newRow(QString(inputMode + "range [0,99] inv 'a-a'").toLatin1())
+            << 0
+            << 99
+            << QString("19a")
+            << QString(useKeys ? "19" : "")
+            << bool(useKeys)
+            << bool(useKeys ? true : false)
+            << uint(QLineEdit::Password);
     }
 }
 
@@ -2642,9 +2660,11 @@ void tst_QLineEdit::setValidator_QIntValidator()
     QFETCH(QString, expectedText);
     QFETCH(bool, useKeys);
     QFETCH(bool, is_valid);
+    QFETCH(uint, echoMode);
 
     QIntValidator intValidator(mini, maxi, 0);
     QLineEdit *testWidget = ensureTestWidget();
+    testWidget->setEchoMode((QLineEdit::EchoMode)echoMode);
     testWidget->setValidator(&intValidator);
     QVERIFY(testWidget->text().isEmpty());
 //qDebug("1 input: '" + input + "' Exp: '" + expectedText + "'");
@@ -2977,7 +2997,37 @@ void tst_QLineEdit::cut()
     testWidget->cut();
     QCOMPARE(testWidget->text(), QString("Abcdefg defg hijklmno"));
 }
-#endif
+
+void tst_QLineEdit::cutWithoutSelection()
+{
+    enum { selectionLength = 1 };
+
+    if (QKeySequence(QKeySequence::Cut).toString() != QLatin1String("Ctrl+X"))
+        QSKIP("Platform with non-standard keybindings");
+    QClipboard *clipboard = QGuiApplication::clipboard();
+    if (!PlatformClipboard::isAvailable()
+        || !QGuiApplication::platformName().compare("xcb", Qt::CaseInsensitive)) { // Avoid unstable X11 clipboard
+        clipboard = Q_NULLPTR;
+    }
+
+    if (clipboard)
+        clipboard->clear();
+    const QString origText = QStringLiteral("test");
+    QLineEdit lineEdit(origText);
+    lineEdit.setCursorPosition(0);
+    QVERIFY(!lineEdit.hasSelectedText());
+    QTest::keyClick(&lineEdit, Qt::Key_X, Qt::ControlModifier);
+    QCOMPARE(lineEdit.text(), origText); // No selection, unmodified.
+    if (clipboard)
+        QVERIFY(clipboard->text().isEmpty());
+    lineEdit.setSelection(0, selectionLength);
+    QTest::keyClick(&lineEdit, Qt::Key_X, Qt::ControlModifier);
+    QCOMPARE(lineEdit.text(), origText.right(origText.size() - selectionLength));
+    if (clipboard)
+        QCOMPARE(clipboard->text(), origText.left(selectionLength));
+}
+
+#endif // !QT_NO_CLIPBOARD
 
 class InputMaskValidator : public QValidator
 {
@@ -3178,19 +3228,35 @@ void tst_QLineEdit::editInvalidText()
     testWidget->setValidator(0);
 }
 
+Q_DECLARE_METATYPE(Qt::KeyboardModifiers)
+
+void tst_QLineEdit::charWithAltOrCtrlModifier_data()
+{
+    QTest::addColumn<Qt::KeyboardModifiers>("modifiers");
+    QTest::addColumn<bool>("textExpected");
+    QTest::newRow("no-modifiers") << Qt::KeyboardModifiers() << true;
+    // Ctrl, Ctrl+Shift: No text (QTBUG-35734)
+    QTest::newRow("ctrl") << Qt::KeyboardModifiers(Qt::ControlModifier)
+        << false;
+    QTest::newRow("ctrl-shift") << Qt::KeyboardModifiers(Qt::ShiftModifier | Qt::ControlModifier)
+        << false;
+    QTest::newRow("alt") << Qt::KeyboardModifiers(Qt::AltModifier) << true;
+    // Alt-Ctrl (Alt-Gr on German keyboards, Task 129098): Expect text
+    QTest::newRow("alt-ctrl") << (Qt::AltModifier | Qt::ControlModifier) << true;
+}
+
 void tst_QLineEdit::charWithAltOrCtrlModifier()
 {
+    QFETCH(Qt::KeyboardModifiers, modifiers);
+    QFETCH(bool, textExpected);
+
     QLineEdit *testWidget = ensureTestWidget();
     testWidget->clear();
-    QCOMPARE(testWidget->text(), QString(""));
-    QTest::keyPress(testWidget, Qt::Key_Plus);
-    QCOMPARE(testWidget->text(), QString("+"));
-    QTest::keyPress(testWidget, Qt::Key_Plus, Qt::ControlModifier);
-    QCOMPARE(testWidget->text(), QString("++"));
-    QTest::keyPress(testWidget, Qt::Key_Plus, Qt::AltModifier);
-    QCOMPARE(testWidget->text(), QString("+++"));
-    QTest::keyPress(testWidget, Qt::Key_Plus, Qt::AltModifier | Qt::ControlModifier);
-    QCOMPARE(testWidget->text(), QString("++++"));
+    QVERIFY(testWidget->text().isEmpty());
+
+    QTest::keyPress(testWidget, Qt::Key_Plus, modifiers);
+    const QString expectedText = textExpected ?  QLatin1String("+") : QString();
+    QCOMPARE(testWidget->text(), expectedText);
 }
 
 void tst_QLineEdit::leftKeyOnSelectedText()
@@ -3361,10 +3427,20 @@ void tst_QLineEdit::textMargin()
     testWidget.setCursorPosition(6);
 
     QSize sizeHint = testWidget.sizeHint();
+    QSize minSizeHint = testWidget.minimumSizeHint();
     testWidget.setTextMargins(left, top, right, bottom);
+
     sizeHint.setWidth(sizeHint.width() + left + right);
     sizeHint.setHeight(sizeHint.height() + top +bottom);
     QCOMPARE(testWidget.sizeHint(), sizeHint);
+
+    if (minSizeHint.width() > -1) {
+        minSizeHint.setWidth(minSizeHint.width() + left + right);
+        minSizeHint.setHeight(minSizeHint.height() + top + bottom);
+        QCOMPARE(testWidget.minimumSizeHint(), minSizeHint);
+    }
+
+
     testWidget.setFrame(false);
     centerOnScreen(&tlw);
     tlw.show();
@@ -3625,7 +3701,7 @@ void tst_QLineEdit::task233101_cursorPosAfterInputMethod()
 
 void tst_QLineEdit::task241436_passwordEchoOnEditRestoreEchoMode()
 {
-    QStyleOptionFrameV2 opt;
+    QStyleOptionFrame opt;
     QLineEdit *testWidget = ensureTestWidget();
     QChar fillChar = testWidget->style()->styleHint(QStyle::SH_LineEdit_PasswordCharacter, &opt, testWidget);
 
@@ -4186,12 +4262,68 @@ void tst_QLineEdit::clearButton()
     QTRY_COMPARE(filterModel->rowCount(), 2); // matches 'aa', 'ab'
     QTest::keyClick(filterLineEdit, 'b');
     QTRY_COMPARE(filterModel->rowCount(), 1); // matches 'ab'
-    QTest::mouseClick(clearButton, Qt::LeftButton, 0, QRect(QPoint(0, 0), clearButton->size()).center());
+    QSignalSpy spyEdited(filterLineEdit, &QLineEdit::textEdited);
+    const QPoint clearButtonCenterPos = QRect(QPoint(0, 0), clearButton->size()).center();
+    QTest::mouseClick(clearButton, Qt::LeftButton, 0, clearButtonCenterPos);
+    QCOMPARE(spyEdited.count(), 1);
     QTRY_COMPARE(clearButton->cursor().shape(), filterLineEdit->cursor().shape());
     QTRY_COMPARE(filterModel->rowCount(), 3);
+    QCoreApplication::processEvents();
+    QCOMPARE(spyEdited.count(), 1);
 
     filterLineEdit->setReadOnly(true); // QTBUG-34315
     QVERIFY(!clearButton->isEnabled());
+}
+
+void tst_QLineEdit::clearButtonVisibleAfterSettingText_QTBUG_45518()
+{
+#ifndef QT_BUILD_INTERNAL
+    QSKIP("This test requires a developer build");
+#else
+    QLineEdit edit;
+    edit.setMinimumWidth(200);
+    centerOnScreen(&edit);
+    QLineEditIconButton *clearButton;
+    clearButton = edit.findChild<QLineEditIconButton *>();
+    QVERIFY(!clearButton);
+
+    edit.setText(QStringLiteral("some text"));
+    edit.show();
+    QVERIFY(QTest::qWaitForWindowActive(&edit));
+
+    QVERIFY(!edit.isClearButtonEnabled());
+
+    clearButton = edit.findChild<QLineEditIconButton *>();
+    QVERIFY(!clearButton);
+
+    edit.setClearButtonEnabled(true);
+    QVERIFY(edit.isClearButtonEnabled());
+
+    clearButton = edit.findChild<QLineEditIconButton *>();
+    QVERIFY(clearButton);
+    QVERIFY(clearButton->isVisible());
+
+    QTRY_VERIFY(clearButton->opacity() > 0);
+    QTRY_COMPARE(clearButton->cursor().shape(), Qt::ArrowCursor);
+
+    QTest::mouseClick(clearButton, Qt::LeftButton, 0, clearButton->rect().center());
+    QTRY_COMPARE(edit.text(), QString());
+
+    QTRY_COMPARE(clearButton->opacity(), qreal(0));
+    QTRY_COMPARE(clearButton->cursor().shape(), clearButton->parentWidget()->cursor().shape());
+
+    edit.setClearButtonEnabled(false);
+    QVERIFY(!edit.isClearButtonEnabled());
+    clearButton = edit.findChild<QLineEditIconButton *>();
+    QVERIFY(!clearButton);
+#endif // QT_BUILD_INTERNAL
+}
+
+static inline QIcon sideWidgetTestIcon(Qt::GlobalColor color = Qt::yellow)
+{
+    QImage image(QSize(20, 20), QImage::Format_ARGB32);
+    image.fill(color);
+    return QIcon(QPixmap::fromImage(image));
 }
 
 void tst_QLineEdit::sideWidgets()
@@ -4201,9 +4333,7 @@ void tst_QLineEdit::sideWidgets()
     QLineEdit *lineEdit = new QLineEdit(&testWidget);
     l->addWidget(lineEdit);
     l->addSpacerItem(new QSpacerItem(0, 50, QSizePolicy::Ignored, QSizePolicy::Fixed));
-    QImage image(QSize(20, 20), QImage::Format_ARGB32);
-    image.fill(Qt::yellow);
-    QAction *iconAction = new QAction(QIcon(QPixmap::fromImage(image)), QString(), lineEdit);
+    QAction *iconAction = new QAction(sideWidgetTestIcon(), QString(), lineEdit);
     QWidgetAction *label1Action = new QWidgetAction(lineEdit);
     label1Action->setDefaultWidget(new QLabel(QStringLiteral("l1")));
     QWidgetAction *label2Action = new QWidgetAction(lineEdit);
@@ -4228,6 +4358,62 @@ void tst_QLineEdit::sideWidgets()
     lineEdit->removeAction(label1Action);
     lineEdit->addAction(iconAction);
     lineEdit->addAction(iconAction);
+}
+
+template <class T> T *findAssociatedWidget(const QAction *a)
+{
+    foreach (QWidget *w, a->associatedWidgets()) {
+        if (T *result = qobject_cast<T *>(w))
+            return result;
+    }
+    return Q_NULLPTR;
+}
+
+void tst_QLineEdit::sideWidgetsActionEvents()
+{
+    // QTBUG-39660, verify whether action events are handled by the widget.
+    QWidget testWidget;
+    QVBoxLayout *l = new QVBoxLayout(&testWidget);
+    QLineEdit *lineEdit = new QLineEdit(&testWidget);
+    l->addWidget(lineEdit);
+    l->addSpacerItem(new QSpacerItem(0, 50, QSizePolicy::Ignored, QSizePolicy::Fixed));
+    QAction *iconAction1 = lineEdit->addAction(sideWidgetTestIcon(Qt::red), QLineEdit::LeadingPosition);
+    QAction *iconAction2 = lineEdit->addAction(sideWidgetTestIcon(Qt::blue), QLineEdit::LeadingPosition);
+    QAction *iconAction3 = lineEdit->addAction(sideWidgetTestIcon(Qt::yellow), QLineEdit::LeadingPosition);
+    iconAction3->setVisible(false);
+
+    testWidget.move(300, 300);
+    testWidget.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&testWidget));
+
+    QWidget *toolButton1 = findAssociatedWidget<QToolButton>(iconAction1);
+    QWidget *toolButton2 = findAssociatedWidget<QToolButton>(iconAction2);
+    QWidget *toolButton3 = findAssociatedWidget<QToolButton>(iconAction3);
+
+    QVERIFY(toolButton1);
+    QVERIFY(toolButton2);
+    QVERIFY(toolButton3);
+
+    QVERIFY(!toolButton3->isVisible()); // QTBUG-48899 , action hidden before show().
+
+    QVERIFY(toolButton1->isVisible());
+    QVERIFY(toolButton1->isEnabled());
+
+    QVERIFY(toolButton2->isVisible());
+    QVERIFY(toolButton2->isEnabled());
+
+    const int toolButton1X = toolButton1->x();
+    const int toolButton2X = toolButton2->x();
+    QVERIFY(toolButton1X < toolButton2X); // QTBUG-48806, positioned beside each other.
+
+    iconAction1->setEnabled(false);
+    QVERIFY(!toolButton1->isEnabled());
+
+    iconAction1->setVisible(false);
+    QVERIFY(!toolButton1->isVisible());
+
+    // QTBUG-39660, button 2 takes position of invisible button 1.
+    QCOMPARE(toolButton2->x(), toolButton1X);
 }
 
 Q_DECLARE_METATYPE(Qt::AlignmentFlag)
@@ -4282,6 +4468,16 @@ void tst_QLineEdit::shouldShowPlaceholderText()
     QCOMPARE(priv->shouldShowPlaceholderText(), shouldShowPlaceholderText);
 #endif
 
+}
+
+void tst_QLineEdit::QTBUG1266_setInputMaskEmittingTextEdited()
+{
+    QLineEdit lineEdit;
+    lineEdit.setText("test");
+    QSignalSpy spy(&lineEdit, SIGNAL(textEdited(QString)));
+    lineEdit.setInputMask("AAAA");
+    lineEdit.setInputMask(QString());
+    QVERIFY(spy.count() == 0);
 }
 
 QTEST_MAIN(tst_QLineEdit)

@@ -1,39 +1,31 @@
 /****************************************************************************
 **
-** Copyright (C) 2013 Digia Plc and/or its subsidiary(-ies).
-** Contact: http://www.qt-project.org/legal
+** Copyright (C) 2015 The Qt Company Ltd.
+** Contact: http://www.qt.io/licensing/
 **
 ** This file is part of the QtWidgets module of the Qt Toolkit.
 **
-** $QT_BEGIN_LICENSE:LGPL$
+** $QT_BEGIN_LICENSE:LGPL21$
 ** Commercial License Usage
 ** Licensees holding valid commercial Qt licenses may use this file in
 ** accordance with the commercial license agreement provided with the
 ** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and Digia.  For licensing terms and
-** conditions see http://qt.digia.com/licensing.  For further information
-** use the contact form at http://qt.digia.com/contact-us.
+** a written agreement between you and The Qt Company. For licensing terms
+** and conditions see http://www.qt.io/terms-conditions. For further
+** information use the contact form at http://www.qt.io/contact-us.
 **
 ** GNU Lesser General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 2.1 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU Lesser General Public License version 2.1 requirements
-** will be met: http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
+** General Public License version 2.1 or version 3 as published by the Free
+** Software Foundation and appearing in the file LICENSE.LGPLv21 and
+** LICENSE.LGPLv3 included in the packaging of this file. Please review the
+** following information to ensure the GNU Lesser General Public License
+** requirements will be met: https://www.gnu.org/licenses/lgpl.html and
+** http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
 **
-** In addition, as a special exception, Digia gives you certain additional
-** rights.  These rights are described in the Digia Qt LGPL Exception
+** As a special exception, The Qt Company gives you certain additional
+** rights. These rights are described in The Qt Company LGPL Exception
 ** version 1.1, included in the file LGPL_EXCEPTION.txt in this package.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3.0 as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU General Public License version 3.0 requirements will be
-** met: http://www.gnu.org/copyleft/gpl.html.
-**
 **
 ** $QT_END_LICENSE$
 **
@@ -44,13 +36,7 @@
 #ifndef QT_NO_ITEMVIEWS
 #include <qabstractitemmodel.h>
 #include <qapplication.h>
-#include <qpa/qplatformintegration.h>
-#include <qpa/qplatformdrag.h>
-#include <private/qguiapplication_p.h>
 #include <qbrush.h>
-#include <qlineedit.h>
-#include <qtextedit.h>
-#include <qplaintextedit.h>
 #include <qpainter.h>
 #include <qpalette.h>
 #include <qpoint.h>
@@ -66,8 +52,7 @@
 #include <qitemeditorfactory.h>
 #include <qmetaobject.h>
 #include <qtextlayout.h>
-#include <private/qobject_p.h>
-#include <private/qdnd_p.h>
+#include <private/qabstractitemdelegate_p.h>
 #include <private/qtextengine_p.h>
 #include <qdebug.h>
 #include <qlocale.h>
@@ -82,7 +67,7 @@
 
 QT_BEGIN_NAMESPACE
 
-class QItemDelegatePrivate : public QObjectPrivate
+class QItemDelegatePrivate : public QAbstractItemDelegatePrivate
 {
     Q_DECLARE_PUBLIC(QItemDelegate)
 
@@ -113,9 +98,6 @@ public:
 
     static QString valueToText(const QVariant &value, const QStyleOptionViewItem &option);
 
-    bool tryFixup(QWidget *editor);
-    void _q_commitDataAndCloseEditor(QWidget *editor);
-
     QItemEditorFactory *f;
     bool clipPainting;
 
@@ -136,13 +118,6 @@ public:
         QIcon::State state;
     } tmp;
 };
-
-void QItemDelegatePrivate::_q_commitDataAndCloseEditor(QWidget *editor)
-{
-    Q_Q(QItemDelegate);
-    emit q->commitData(editor);
-    emit q->closeEditor(editor, QAbstractItemDelegate::SubmitModelCache);
-}
 
 QRect QItemDelegatePrivate::textLayoutBounds(const QStyleOptionViewItem &option) const
 {
@@ -385,24 +360,6 @@ QString QItemDelegatePrivate::valueToText(const QVariant &value, const QStyleOpt
             break;
     }
     return text;
-}
-
-bool QItemDelegatePrivate::tryFixup(QWidget *editor)
-{
-#ifndef QT_NO_LINEEDIT
-    if (QLineEdit *e = qobject_cast<QLineEdit*>(editor)) {
-        if (!e->hasAcceptableInput()) {
-            if (const QValidator *validator = e->validator()) {
-                QString text = e->text();
-                validator->fixup(text);
-                e->setText(text);
-            }
-            return e->hasAcceptableInput();
-        }
-    }
-#endif // QT_NO_LINEEDIT
-
-    return true;
 }
 
 /*!
@@ -1018,7 +975,7 @@ QPixmap QItemDelegate::decoration(const QStyleOptionViewItem &option, const QVar
     return qvariant_cast<QPixmap>(variant);
 }
 
-// hacky but faster version of "QString::sprintf("%d-%d", i, enabled)"
+// hacky but faster version of "QString::asprintf("%d-%d", i, enabled)"
 static QString qPixmapSerial(quint64 i, bool enabled)
 {
     ushort arr[] = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, '-', ushort('0' + enabled) };
@@ -1174,75 +1131,7 @@ QRect QItemDelegate::textRectangle(QPainter * /*painter*/, const QRect &rect,
 bool QItemDelegate::eventFilter(QObject *object, QEvent *event)
 {
     Q_D(QItemDelegate);
-
-    QWidget *editor = qobject_cast<QWidget*>(object);
-    if (!editor)
-        return false;
-    if (event->type() == QEvent::KeyPress) {
-        switch (static_cast<QKeyEvent *>(event)->key()) {
-        case Qt::Key_Tab:
-            if (d->tryFixup(editor)) {
-                emit commitData(editor);
-                emit closeEditor(editor, EditNextItem);
-            }
-            return true;
-        case Qt::Key_Backtab:
-            if (d->tryFixup(editor)) {
-                emit commitData(editor);
-                emit closeEditor(editor, EditPreviousItem);
-            }
-            return true;
-        case Qt::Key_Enter:
-        case Qt::Key_Return:
-#ifndef QT_NO_TEXTEDIT
-            if (qobject_cast<QTextEdit *>(editor) || qobject_cast<QPlainTextEdit *>(editor))
-                return false; // don't filter enter key events for QTextEdit
-            // We want the editor to be able to process the key press
-            // before committing the data (e.g. so it can do
-            // validation/fixup of the input).
-#endif // QT_NO_TEXTEDIT
-            if (!d->tryFixup(editor))
-                return true;
-
-            QMetaObject::invokeMethod(this, "_q_commitDataAndCloseEditor",
-                                      Qt::QueuedConnection, Q_ARG(QWidget*, editor));
-            return false;
-        case Qt::Key_Escape:
-            // don't commit data
-            emit closeEditor(editor, QAbstractItemDelegate::RevertModelCache);
-            return true;
-        default:
-            return false;
-        }
-    } else if (event->type() == QEvent::FocusOut || (event->type() == QEvent::Hide && editor->isWindow())) {
-        //the Hide event will take care of he editors that are in fact complete dialogs
-        if (!editor->isActiveWindow() || (QApplication::focusWidget() != editor)) {
-            QWidget *w = QApplication::focusWidget();
-            while (w) { // don't worry about focus changes internally in the editor
-                if (w == editor)
-                    return false;
-                w = w->parentWidget();
-            }
-#ifndef QT_NO_DRAGANDDROP
-            // The window may lose focus during an drag operation.
-            // i.e when dragging involves the taskbar on Windows.
-            QPlatformDrag *platformDrag = QGuiApplicationPrivate::instance()->platformIntegration()->drag();
-            if (platformDrag && platformDrag->currentDrag()) {
-                return false;
-            }
-#endif
-            if (d->tryFixup(editor))
-                emit commitData(editor);
-
-            emit closeEditor(editor, NoHint);
-        }
-    } else if (event->type() == QEvent::ShortcutOverride) {
-        if (static_cast<QKeyEvent*>(event)->key() == Qt::Key_Escape) {
-            event->accept();
-            return true;
-        }
-    }
-    return false;
+    return d->editorEventFilter(object, event);
 }
 
 /*!
@@ -1293,7 +1182,7 @@ bool QItemDelegate::editorEvent(QEvent *event,
     }
 
     Qt::CheckState state = static_cast<Qt::CheckState>(value.toInt());
-    if (flags & Qt::ItemIsTristate)
+    if (flags & Qt::ItemIsUserTristate)
         state = ((Qt::CheckState)((state + 1) % 3));
     else
         state = (state == Qt::Checked) ? Qt::Unchecked : Qt::Checked;

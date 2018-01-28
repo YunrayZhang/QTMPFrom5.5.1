@@ -1,7 +1,7 @@
 /****************************************************************************
 **
-** Copyright (C) 2013 Digia Plc and/or its subsidiary(-ies).
-** Contact: http://www.qt-project.org/legal
+** Copyright (C) 2015 The Qt Company Ltd.
+** Contact: http://www.qt.io/licensing/
 **
 ** This file is part of the QtCore module of the Qt Toolkit.
 **
@@ -17,8 +17,8 @@
 **     notice, this list of conditions and the following disclaimer in
 **     the documentation and/or other materials provided with the
 **     distribution.
-**   * Neither the name of Digia Plc and its Subsidiary(-ies) nor the names
-**     of its contributors may be used to endorse or promote products derived
+**   * Neither the name of The Qt Company Ltd nor the names of its
+**     contributors may be used to endorse or promote products derived
 **     from this software without specific prior written permission.
 **
 **
@@ -93,7 +93,7 @@ public:
         : QSignalTransition(fact, SIGNAL(xChanged(int))), m_fact(fact)
     {}
 
-    virtual bool eventTest(QEvent *e)
+    virtual bool eventTest(QEvent *e) Q_DECL_OVERRIDE
     {
         if (!QSignalTransition::eventTest(e))
             return false;
@@ -101,7 +101,7 @@ public:
         return se->arguments().at(0).toInt() > 1;
     }
 
-    virtual void onTransition(QEvent *e)
+    virtual void onTransition(QEvent *e) Q_DECL_OVERRIDE
     {
         QStateMachine::SignalEvent *se = static_cast<QStateMachine::SignalEvent*>(e);
         int x = se->arguments().at(0).toInt();
@@ -123,7 +123,7 @@ public:
         : QSignalTransition(fact, SIGNAL(xChanged(int))), m_fact(fact)
     {}
 
-    virtual bool eventTest(QEvent *e)
+    virtual bool eventTest(QEvent *e) Q_DECL_OVERRIDE
     {
         if (!QSignalTransition::eventTest(e))
             return false;
@@ -131,7 +131,7 @@ public:
         return se->arguments().at(0).toInt() <= 1;
     }
 
-    virtual void onTransition(QEvent *)
+    virtual void onTransition(QEvent *) Q_DECL_OVERRIDE
     {
         fprintf(stdout, "%d\n", m_fact->property("fac").toInt());
     }

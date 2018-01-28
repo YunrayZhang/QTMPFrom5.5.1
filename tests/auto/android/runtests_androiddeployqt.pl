@@ -2,40 +2,32 @@
 #############################################################################
 ##
 ## Copyright (C) 2012-2013 BogDan Vatra <bogdan@kde.org>
-## Copyright (C) 2013 Digia Plc and/or its subsidiary(-ies).
-## Contact: http://www.qt-project.org/legal
+## Copyright (C) 2015 The Qt Company Ltd.
+## Contact: http://www.qt.io/licensing/
 ##
 ## This file is part of the test suite of the Qt Toolkit.
 ##
-## $QT_BEGIN_LICENSE:LGPL$
+## $QT_BEGIN_LICENSE:LGPL21$
 ## Commercial License Usage
 ## Licensees holding valid commercial Qt licenses may use this file in
 ## accordance with the commercial license agreement provided with the
 ## Software or, alternatively, in accordance with the terms contained in
-## a written agreement between you and Digia.  For licensing terms and
-## conditions see http://qt.digia.com/licensing.  For further information
-## use the contact form at http://qt.digia.com/contact-us.
+## a written agreement between you and The Qt Company. For licensing terms
+## and conditions see http://www.qt.io/terms-conditions. For further
+## information use the contact form at http://www.qt.io/contact-us.
 ##
 ## GNU Lesser General Public License Usage
 ## Alternatively, this file may be used under the terms of the GNU Lesser
-## General Public License version 2.1 as published by the Free Software
-## Foundation and appearing in the file LICENSE.LGPL included in the
-## packaging of this file.  Please review the following information to
-## ensure the GNU Lesser General Public License version 2.1 requirements
-## will be met: http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
+## General Public License version 2.1 or version 3 as published by the Free
+## Software Foundation and appearing in the file LICENSE.LGPLv21 and
+## LICENSE.LGPLv3 included in the packaging of this file. Please review the
+## following information to ensure the GNU Lesser General Public License
+## requirements will be met: https://www.gnu.org/licenses/lgpl.html and
+## http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
 ##
-## In addition, as a special exception, Digia gives you certain additional
-## rights.  These rights are described in the Digia Qt LGPL Exception
+## As a special exception, The Qt Company gives you certain additional
+## rights. These rights are described in The Qt Company LGPL Exception
 ## version 1.1, included in the file LGPL_EXCEPTION.txt in this package.
-##
-## GNU General Public License Usage
-## Alternatively, this file may be used under the terms of the GNU
-## General Public License version 3.0 as published by the Free Software
-## Foundation and appearing in the file LICENSE.GPL included in the
-## packaging of this file.  Please review the following information to
-## ensure the GNU General Public License version 3.0 requirements will be
-## met: http://www.gnu.org/copyleft/gpl.html.
-##
 ##
 ## $QT_END_LICENSE$
 ##
@@ -48,6 +40,8 @@ use File::Temp 'tempdir';
 use File::Path 'remove_tree';
 use Getopt::Long;
 use Pod::Usage;
+use XML::Simple;
+use Term::ANSIColor;
 
 ### default options
 my @stack = cwd;
@@ -61,6 +55,7 @@ my $testsubset = "";
 my $man = 0;
 my $help = 0;
 my $make_clean = 0;
+my $stop_on_fail = 0;
 my $time_out=400;
 my $android_toolchain_version = "4.8";
 my $host_arch = "linux-x86";
@@ -79,6 +74,7 @@ my $total_failed = 0;
 my $failed_insignificants = 0;
 my $ci_use = 0;
 my $start = time();
+my $uninstall = 0;
 
 GetOptions('h|help' => \$help
             , man => \$man
@@ -96,8 +92,10 @@ GetOptions('h|help' => \$help
             , 'strip=s' => \$strip_tool
             , 'readelf=s' => \$readelf_tool
             , 'testcase=s' => \$testcase
+            , 'f|fail' => sub { $stop_on_fail = 1 }
             , 'silent' => sub { $silent = 1 }
             , 'ci' => sub { $ci_use = 1 }
+            , 'uninstall' => sub { $uninstall = 1 }
             ) or pod2usage(2);
 pod2usage(1) if $help;
 pod2usage(-verbose => 2) if $man;
@@ -300,6 +298,7 @@ sub waitForProcess
 my $src_dir_qt=abs_path(dirname($0)."/../../..");
 my $quadruplor_dir="$src_dir_qt/tests/auto/android";
 my $qmake_path="$src_dir_qt/bin/qmake";
+my $androiddeployqt_path="$src_dir_qt/bin/androiddeployqt";
 my $tests_dir="$src_dir_qt/tests$testsubset";
 my $temp_dir=tempdir(CLEANUP => 1);
 my ($sec,$min,$hour,$mday,$mon,$year,$wday,$yday,$isdst) = localtime(time);
@@ -314,6 +313,37 @@ if ($output =~ m/.*\[ro.build.version.sdk\]: \[(\d+)\]/)
     $sdk_api=int($1);
     $sdk_api=5 if ($sdk_api>5 && $sdk_api<8);
     $sdk_api=9 if ($sdk_api>9);
+}
+
+sub checkXMLOutput
+{
+    print color 'bold red';
+    my $fileName = shift;
+    my $XMLOutput = eval { XMLin($fileName, ForceArray => 1) };
+    if (!defined($XMLOutput)) {
+        print "Can't parse the $fileName file, probably the test crased.\n";
+        print color 'reset';
+        die "Stopping\n" if $stop_on_fail;
+        return;
+    }
+    my $testName = $XMLOutput->{name};
+    my $fail = 0;
+    while (my($node_key, $node_valule) = each (%{$XMLOutput})) {
+        next if $node_key ne "TestFunction";
+        while (my($function_key, $function_valule) = each (%{$node_valule})) {
+            while (my($test_key, $test_valule) = each (%{$function_valule})) {
+                next if $test_key ne "Incident";
+                for my $incident  (@{$test_valule}) {
+                    if (($incident->{type} ne "pass") && ($incident->{type} ne "xfail")) {
+                        print "test $testName::$function_key failed $incident->{file}:$incident->{line}\n";
+                        $fail = 1;
+                    }
+                }
+            }
+        }
+    }
+    print color 'reset';
+    die "Stopping\n" if $stop_on_fail and $fail;
 }
 
 sub startTest
@@ -349,6 +379,7 @@ sub startTest
     {
         #killProcess($packageName);
         print "Someone should kill $packageName\n";
+        system("$adb_tool $device_serial uninstall $packageName") if ($uninstall);
         return 1;
     }
 
@@ -356,12 +387,16 @@ sub startTest
     sleep(3);
 
     system("$adb_tool $device_serial pull /data/data/$packageName/output.xml $output_dir/$output_file.xml") if ($get_xml);
+
     system("$adb_tool $device_serial pull /data/data/$packageName/output.txt $output_dir/$output_file.txt") if ($get_txt);
     if ($get_txt){
-       print "Tesresults for $packageName:\n";
+       print "Test results for $packageName:\n";
        my $insig =
        print_output("$output_dir/$output_file.txt", $packageName, $insignificance);
     }
+    system("$adb_tool $device_serial uninstall $packageName") if ($uninstall);
+
+    checkXMLOutput("$output_dir/$output_file.xml") if ($get_xml);
     return 1;
 }
 
@@ -389,9 +424,9 @@ foreach (split("\n",$testsFiles))
     print $res if (!$silent);
     my $application=basename(cwd);
     if ($silent) {
-        $cmd="androiddeployqt --install ${deployqt_device_serial} --output ${temp_dir} --deployment debug --verbose --input android-libtst_${application}.so-deployment-settings.json >/dev/null 2>&1";
+        $cmd="$androiddeployqt_path --install ${deployqt_device_serial} --output ${temp_dir} --deployment debug --verbose --input android-libtst_${application}.so-deployment-settings.json >/dev/null 2>&1";
     } else {
-        $cmd="androiddeployqt --install ${deployqt_device_serial} --output ${temp_dir} --deployment debug --verbose --input android-libtst_${application}.so-deployment-settings.json";
+        $cmd="$androiddeployqt_path --install ${deployqt_device_serial} --output ${temp_dir} --deployment debug --verbose --input android-libtst_${application}.so-deployment-settings.json";
     }
     $res = qx(${cmd});
     print $res if (!$silent);
@@ -442,6 +477,9 @@ runtests.pl [options]
 =head1 OPTIONS
 
 =over 8
+=item B<-f --fail>
+
+Stop the script when test fails. Default 0
 
 =item B<-s --serial = serial>
 
@@ -495,6 +533,10 @@ Suppress output of system commands.
 
 Enables checking if test is insignificant or not. Also prints test
 summary after all tests has been executed.
+
+=item B<-uninstall>
+
+Uninstalls the test after has been executed.
 
 =item B<-h  --help>
 

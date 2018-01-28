@@ -4,24 +4,28 @@
 // found in the LICENSE file.
 //
 
-#ifndef COMPILER_TRANSLATORHLSL_H_
-#define COMPILER_TRANSLATORHLSL_H_
+#ifndef COMPILER_TRANSLATOR_TRANSLATORHLSL_H_
+#define COMPILER_TRANSLATOR_TRANSLATORHLSL_H_
 
-#include "compiler/translator/ShHandle.h"
-#include "compiler/translator/Uniform.h"
+#include "compiler/translator/Compiler.h"
 
-class TranslatorHLSL : public TCompiler {
-public:
-    TranslatorHLSL(ShShaderType type, ShShaderSpec spec, ShShaderOutput output);
-
+class TranslatorHLSL : public TCompiler
+{
+  public:
+    TranslatorHLSL(sh::GLenum type, ShShaderSpec spec, ShShaderOutput output);
     virtual TranslatorHLSL *getAsTranslatorHLSL() { return this; }
-    const sh::ActiveUniforms &getUniforms() { return mActiveUniforms; }
 
-protected:
-    virtual void translate(TIntermNode* root);
+    bool hasInterfaceBlock(const std::string &interfaceBlockName) const;
+    unsigned int getInterfaceBlockRegister(const std::string &interfaceBlockName) const;
 
-    sh::ActiveUniforms mActiveUniforms;
-    ShShaderOutput mOutputType;
+    bool hasUniform(const std::string &uniformName) const;
+    unsigned int getUniformRegister(const std::string &uniformName) const;
+
+  protected:
+    virtual void translate(TIntermNode *root, int compileOptions);
+
+    std::map<std::string, unsigned int> mInterfaceBlockRegisterMap;
+    std::map<std::string, unsigned int> mUniformRegisterMap;
 };
 
-#endif  // COMPILER_TRANSLATORHLSL_H_
+#endif  // COMPILER_TRANSLATOR_TRANSLATORHLSL_H_

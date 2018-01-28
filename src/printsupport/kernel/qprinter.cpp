@@ -1,39 +1,31 @@
 /****************************************************************************
 **
-** Copyright (C) 2013 Digia Plc and/or its subsidiary(-ies).
-** Contact: http://www.qt-project.org/legal
+** Copyright (C) 2015 The Qt Company Ltd.
+** Contact: http://www.qt.io/licensing/
 **
 ** This file is part of the QtGui module of the Qt Toolkit.
 **
-** $QT_BEGIN_LICENSE:LGPL$
+** $QT_BEGIN_LICENSE:LGPL21$
 ** Commercial License Usage
 ** Licensees holding valid commercial Qt licenses may use this file in
 ** accordance with the commercial license agreement provided with the
 ** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and Digia.  For licensing terms and
-** conditions see http://qt.digia.com/licensing.  For further information
-** use the contact form at http://qt.digia.com/contact-us.
+** a written agreement between you and The Qt Company. For licensing terms
+** and conditions see http://www.qt.io/terms-conditions. For further
+** information use the contact form at http://www.qt.io/contact-us.
 **
 ** GNU Lesser General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 2.1 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU Lesser General Public License version 2.1 requirements
-** will be met: http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
+** General Public License version 2.1 or version 3 as published by the Free
+** Software Foundation and appearing in the file LICENSE.LGPLv21 and
+** LICENSE.LGPLv3 included in the packaging of this file. Please review the
+** following information to ensure the GNU Lesser General Public License
+** requirements will be met: https://www.gnu.org/licenses/lgpl.html and
+** http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
 **
-** In addition, as a special exception, Digia gives you certain additional
-** rights.  These rights are described in the Digia Qt LGPL Exception
+** As a special exception, The Qt Company gives you certain additional
+** rights. These rights are described in The Qt Company LGPL Exception
 ** version 1.1, included in the file LGPL_EXCEPTION.txt in this package.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3.0 as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU General Public License version 3.0 requirements will be
-** met: http://www.gnu.org/copyleft/gpl.html.
-**
 **
 ** $QT_END_LICENSE$
 **
@@ -319,7 +311,7 @@ public:
   features, such as orientation and resolution, and to step through
   the pages in a document as it is generated.
 
-  When printing directly to a printer on Windows or Mac OS X, QPrinter uses
+  When printing directly to a printer on Windows or OS X, QPrinter uses
   the built-in printer drivers. On X11, QPrinter uses the
   \l{Common Unix Printing System (CUPS)}
   to send PDF output to the printer. As an alternative,
@@ -917,7 +909,7 @@ QString QPrinter::outputFileName() const
 
     QPrinter uses Qt's cross-platform PDF print engines
     respectively. If you can produce this format natively, for example
-    Mac OS X can generate PDF's from its print engine, set the output format
+    OS X can generate PDF's from its print engine, set the output format
     back to NativeFormat.
 
     \sa outputFileName(), setOutputFormat()
@@ -1100,11 +1092,19 @@ void QPrinter::setCreator(const QString &creator)
 
     To obtain the current page margins use pageLayout().pageMargins().
 
-    Returns true if the page margins was successfully set to \a margins.
+    Returns \c true if the page margins was successfully set to \a margins.
 
     \sa pageLayout(), setPageLayout()
 */
 
+/*!
+    \fn bool QPrinter::setPageMargins(const QMarginsF &margins)
+
+    Set the page margins to \a margins using the current units.
+    Returns \c true if the page margins were set successfully.
+
+    \sa pageLayout(), setPageLayout()
+*/
 /*!
     \fn QPageLayout QPrinter::pageLayout() const
     \since 5.3
@@ -1232,7 +1232,10 @@ void QPrinter::setPageSize(PageSize newPageSize)
 
 void QPrinter::setPaperSize(const QSizeF &paperSize, QPrinter::Unit unit)
 {
-    setPageSize(QPageSize(paperSize, QPageSize::Unit(unit)));
+    if (unit == QPrinter::DevicePixel)
+        setPageSize(QPageSize(paperSize * qt_pixelMultiplier(resolution()), QPageSize::Point));
+    else
+        setPageSize(QPageSize(paperSize, QPageSize::Unit(unit)));
 }
 
 /*!
@@ -1376,7 +1379,7 @@ QPrinter::ColorMode QPrinter::colorMode() const
   \obsolete
   Returns the number of copies to be printed. The default value is 1.
 
-  On Windows, Mac OS X and X11 systems that support CUPS, this will always
+  On Windows, OS X and X11 systems that support CUPS, this will always
   return 1 as these operating systems can internally handle the number
   of copies.
 
@@ -1640,8 +1643,6 @@ QPrinter::PaperSource QPrinter::paperSource() const
 
   Enabled or disables font embedding depending on \a enable.
 
-  Currently this option is only supported on X11.
-
   \sa fontEmbeddingEnabled()
 */
 void QPrinter::setFontEmbeddingEnabled(bool enable)
@@ -1654,8 +1655,6 @@ void QPrinter::setFontEmbeddingEnabled(bool enable)
   \since 4.1
 
   Returns \c true if font embedding is enabled.
-
-  Currently this option is only supported on X11.
 
   \sa setFontEmbeddingEnabled()
 */
@@ -1686,9 +1685,11 @@ bool QPrinter::fontEmbeddingEnabled() const
 /*!
   \since 4.2
 
+  \obsolete Use setDuplex() instead.
+
   Enables double sided printing if \a doubleSided is true; otherwise disables it.
 
-  Currently this option is only supported on X11.
+  \sa setDuplex()
 */
 void QPrinter::setDoubleSidedPrinting(bool doubleSided)
 {
@@ -1699,9 +1700,11 @@ void QPrinter::setDoubleSidedPrinting(bool doubleSided)
 /*!
   \since 4.2
 
+  \obsolete Use duplex() instead.
+
   Returns \c true if double side printing is enabled.
 
-  Currently this option is only supported on X11.
+  \sa duplex()
 */
 bool QPrinter::doubleSidedPrinting() const
 {
@@ -1713,7 +1716,7 @@ bool QPrinter::doubleSidedPrinting() const
 
   Enables double sided printing based on the \a duplex mode.
 
-  Currently this option is only supported on X11.
+  \sa duplex()
 */
 void QPrinter::setDuplex(DuplexMode duplex)
 {
@@ -1726,7 +1729,7 @@ void QPrinter::setDuplex(DuplexMode duplex)
 
   Returns the current duplex mode.
 
-  Currently this option is only supported on X11.
+  \sa setDuplex()
 */
 QPrinter::DuplexMode QPrinter::duplex() const
 {
@@ -1769,7 +1772,7 @@ QRectF QPrinter::paperRect(Unit unit) const
 }
 
 /*!
-    \obsolete Use pageLayout().paintRect() instead.
+    \obsolete Use pageLayout().paintRectPixels(resolution()) instead.
 
     Returns the page's rectangle; this is usually smaller than the
     paperRect() since the page normally has margins between its
@@ -1786,7 +1789,7 @@ QRect QPrinter::pageRect() const
 }
 
 /*!
-    \obsolete Use pageLayout().fullPageRect() instead.
+    \obsolete Use pageLayout().fullRectPixels(resolution()) instead.
 
     Returns the paper's rectangle; this is usually larger than the
     pageRect().

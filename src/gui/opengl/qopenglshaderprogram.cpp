@@ -1,39 +1,31 @@
 /****************************************************************************
 **
-** Copyright (C) 2013 Digia Plc and/or its subsidiary(-ies).
-** Contact: http://www.qt-project.org/legal
+** Copyright (C) 2015 The Qt Company Ltd.
+** Contact: http://www.qt.io/licensing/
 **
 ** This file is part of the QtGui module of the Qt Toolkit.
 **
-** $QT_BEGIN_LICENSE:LGPL$
+** $QT_BEGIN_LICENSE:LGPL21$
 ** Commercial License Usage
 ** Licensees holding valid commercial Qt licenses may use this file in
 ** accordance with the commercial license agreement provided with the
 ** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and Digia.  For licensing terms and
-** conditions see http://qt.digia.com/licensing.  For further information
-** use the contact form at http://qt.digia.com/contact-us.
+** a written agreement between you and The Qt Company. For licensing terms
+** and conditions see http://www.qt.io/terms-conditions. For further
+** information use the contact form at http://www.qt.io/contact-us.
 **
 ** GNU Lesser General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 2.1 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU Lesser General Public License version 2.1 requirements
-** will be met: http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
+** General Public License version 2.1 or version 3 as published by the Free
+** Software Foundation and appearing in the file LICENSE.LGPLv21 and
+** LICENSE.LGPLv3 included in the packaging of this file. Please review the
+** following information to ensure the GNU Lesser General Public License
+** requirements will be met: https://www.gnu.org/licenses/lgpl.html and
+** http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
 **
-** In addition, as a special exception, Digia gives you certain additional
-** rights.  These rights are described in the Digia Qt LGPL Exception
+** As a special exception, The Qt Company gives you certain additional
+** rights. These rights are described in The Qt Company LGPL Exception
 ** version 1.1, included in the file LGPL_EXCEPTION.txt in this package.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3.0 as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU General Public License version 3.0 requirements will be
-** met: http://www.gnu.org/copyleft/gpl.html.
-**
 **
 ** $QT_END_LICENSE$
 **
@@ -47,6 +39,7 @@
 #include <QtCore/qfile.h>
 #include <QtCore/qvarlengtharray.h>
 #include <QtCore/qvector.h>
+#include <QtCore/qregularexpression.h>
 #include <QtGui/qtransform.h>
 #include <QtGui/QColor>
 #include <QtGui/QSurfaceFormat>
@@ -54,6 +47,8 @@
 #if !defined(QT_OPENGL_ES_2)
 #include <QtGui/qopenglfunctions_4_0_core.h>
 #endif
+
+#include <algorithm>
 
 QT_BEGIN_NAMESPACE
 
@@ -79,7 +74,7 @@ QT_BEGIN_NAMESPACE
 
     \snippet code/src_gui_qopenglshaderprogram.cpp 0
 
-    \section1 Writing portable shaders
+    \section1 Writing Portable Shaders
 
     Shader programs can be difficult to reuse across OpenGL implementations
     because of varying levels of support for standard vertex attributes and
@@ -103,7 +98,7 @@ QT_BEGIN_NAMESPACE
     to just features that are present in GLSL/ES, and avoid
     standard variable names that only work on the desktop.
 
-    \section1 Simple shader example
+    \section1 Simple Shader Example
 
     \snippet code/src_gui_qopenglshaderprogram.cpp 1
 
@@ -112,7 +107,7 @@ QT_BEGIN_NAMESPACE
 
     \snippet code/src_gui_qopenglshaderprogram.cpp 2
 
-    \section1 Binary shaders and programs
+    \section1 Binary Shaders and Programs
 
     Binary shaders may be specified using \c{glShaderBinary()} on
     the return value from QOpenGLShader::shaderId().  The QOpenGLShader instance
@@ -278,16 +273,27 @@ bool QOpenGLShaderPrivate::compile(QOpenGLShader *q)
             "Fragment",
             "Vertex",
             "Geometry",
+            "Tessellation Control",
+            "Tessellation Evaluation",
+            "Compute",
             ""
         };
 
-        const char *type = types[3];
-        if (shaderType == QOpenGLShader::Fragment)
-            type = types[0];
-        else if (shaderType == QOpenGLShader::Vertex)
-            type = types[1];
-        else if (shaderType == QOpenGLShader::Geometry)
-            type = types[2];
+        const char *type = types[6];
+        switch (shaderType) {
+        case QOpenGLShader::Fragment:
+            type = types[0]; break;
+        case QOpenGLShader::Vertex:
+            type = types[1]; break;
+        case QOpenGLShader::Geometry:
+            type = types[2]; break;
+        case QOpenGLShader::TessellationControl:
+            type = types[3]; break;
+        case QOpenGLShader::TessellationEvaluation:
+            type = types[4]; break;
+        case QOpenGLShader::Compute:
+            type = types[5]; break;
+        }
 
         // Get info and source code lengths
         GLint infoLogLength = 0;
@@ -398,6 +404,96 @@ static const char redefineHighp[] =
     "#endif\n";
 #endif
 
+struct QVersionDirectivePosition
+{
+    Q_DECL_CONSTEXPR QVersionDirectivePosition(int position = 0, int line = -1)
+        : position(position)
+        , line(line)
+    {
+    }
+
+    Q_DECL_CONSTEXPR bool hasPosition() const
+    {
+        return position > 0;
+    }
+
+    const int position;
+    const int line;
+};
+
+static QVersionDirectivePosition findVersionDirectivePosition(const char *source)
+{
+    Q_ASSERT(source);
+
+    QString working = QString::fromUtf8(source);
+
+    // According to the GLSL spec the #version directive must not be
+    // preceded by anything but whitespace and comments.
+    // In order to not get confused by #version directives within a
+    // multiline comment, we need to run a minimal preprocessor first.
+    enum {
+        Normal,
+        CommentStarting,
+        MultiLineComment,
+        SingleLineComment,
+        CommentEnding
+    } state = Normal;
+
+    for (QChar *c = working.begin(); c != working.end(); ++c) {
+        switch (state) {
+        case Normal:
+            if (*c == QLatin1Char('/'))
+                state = CommentStarting;
+            break;
+        case CommentStarting:
+            if (*c == QLatin1Char('*'))
+                state = MultiLineComment;
+            else if (*c == QLatin1Char('/'))
+                state = SingleLineComment;
+            else
+                state = Normal;
+            break;
+        case MultiLineComment:
+            if (*c == QLatin1Char('*'))
+                state = CommentEnding;
+            else if (*c == QLatin1Char('#'))
+                *c = QLatin1Char('_');
+            break;
+        case SingleLineComment:
+            if (*c == QLatin1Char('\n'))
+                state = Normal;
+            else if (*c == QLatin1Char('#'))
+                *c = QLatin1Char('_');
+            break;
+        case CommentEnding:
+            if (*c == QLatin1Char('/')) {
+                state = Normal;
+            } else {
+                if (*c == QLatin1Char('#'))
+                    *c = QLatin1Char('_');
+                if (*c != QLatin1Char('*'))
+                    state = MultiLineComment;
+            }
+            break;
+        }
+    }
+
+    // Search for #version directive
+    int splitPosition = 0;
+    int linePosition = 1;
+
+    static const QRegularExpression pattern(QStringLiteral("^\\s*#\\s*version.*(\\n)?"),
+                                            QRegularExpression::MultilineOption
+                                            | QRegularExpression::OptimizeOnFirstUsageOption);
+    QRegularExpressionMatch match = pattern.match(working);
+    if (match.hasMatch()) {
+        splitPosition = match.capturedEnd();
+        linePosition += int(std::count(working.begin(), working.begin() + splitPosition, QLatin1Char('\n')));
+    }
+
+    return QVersionDirectivePosition(splitPosition, linePosition);
+}
+
 /*!
     Sets the \a source code for this shader and compiles it.
     Returns \c true if the source was successfully compiled, false otherwise.
@@ -407,31 +503,30 @@ static const char redefineHighp[] =
 bool QOpenGLShader::compileSourceCode(const char *source)
 {
     Q_D(QOpenGLShader);
-    if (d->shaderGuard && d->shaderGuard->id()) {
-        QVarLengthArray<const char *, 4> src;
-        QVarLengthArray<GLint, 4> srclen;
-        int headerLen = 0;
-        while (source && source[headerLen] == '#') {
-            // Skip #version and #extension directives at the start of
-            // the shader code.  We need to insert the qualifierDefines
-            // and redefineHighp just after them.
-            if (qstrncmp(source + headerLen, "#version", 8) != 0 &&
-                    qstrncmp(source + headerLen, "#extension", 10) != 0) {
-                break;
-            }
-            while (source[headerLen] != '\0' && source[headerLen] != '\n')
-                ++headerLen;
-            if (source[headerLen] == '\n')
-                ++headerLen;
-        }
-        if (headerLen > 0) {
-            src.append(source);
-            srclen.append(GLint(headerLen));
+    // This method breaks the shader code into two parts:
+    // 1. Up to and including an optional #version directive.
+    // 2. The rest.
+    // If a #version directive exists, qualifierDefines and redefineHighp
+    // are inserted after. Otherwise they are inserted right at the start.
+    // In both cases a #line directive is appended in order to compensate
+    // for line number changes in case of compiler errors.
+
+    if (d->shaderGuard && d->shaderGuard->id() && source) {
+        const QVersionDirectivePosition versionDirectivePosition = findVersionDirectivePosition(source);
+
+        QVarLengthArray<const char *, 5> sourceChunks;
+        QVarLengthArray<GLint, 5> sourceChunkLengths;
+
+        if (versionDirectivePosition.hasPosition()) {
+            // Append source up to #version directive
+            sourceChunks.append(source);
+            sourceChunkLengths.append(GLint(versionDirectivePosition.position));
         }
 
         // The precision qualifiers are useful on OpenGL/ES systems,
         // but usually not present on desktop systems.
-        const QSurfaceFormat currentSurfaceFormat = QOpenGLContext::currentContext()->format();
+        QOpenGLContext *ctx = QOpenGLContext::currentContext();
+        const QSurfaceFormat currentSurfaceFormat = ctx->format();
         QOpenGLContextPrivate *ctx_d = QOpenGLContextPrivate::get(QOpenGLContext::currentContext());
         if (currentSurfaceFormat.renderableType() == QSurfaceFormat::OpenGL
                 || ctx_d->workaround_missingPrecisionQualifiers
@@ -439,20 +534,34 @@ bool QOpenGLShader::compileSourceCode(const char *source)
                 || true
 #endif
                 ) {
-            src.append(qualifierDefines);
-            srclen.append(GLint(sizeof(qualifierDefines) - 1));
+            sourceChunks.append(qualifierDefines);
+            sourceChunkLengths.append(GLint(sizeof(qualifierDefines) - 1));
         }
 
 #ifdef QOpenGL_REDEFINE_HIGHP
         if (d->shaderType == Fragment && !ctx_d->workaround_missingPrecisionQualifiers
             && QOpenGLContext::currentContext()->isOpenGLES()) {
-            src.append(redefineHighp);
-            srclen.append(GLint(sizeof(redefineHighp) - 1));
+            sourceChunks.append(redefineHighp);
+            sourceChunkLengths.append(GLint(sizeof(redefineHighp) - 1));
         }
 #endif
-        src.append(source + headerLen);
-        srclen.append(GLint(qstrlen(source + headerLen)));
-        d->glfuncs->glShaderSource(d->shaderGuard->id(), src.size(), src.data(), srclen.data());
+
+        QByteArray lineDirective;
+        // #line is rejected by some drivers:
+        // "2.1 Mesa 8.1-devel (git-48a3d4e)" or "MESA 2.1 Mesa 8.1-devel"
+        const char *version = reinterpret_cast<const char *>(ctx->functions()->glGetString(GL_VERSION));
+        if (!version || !strstr(version, "2.1 Mesa 8")) {
+            // Append #line directive in order to compensate for text insertion
+            lineDirective = QStringLiteral("#line %1\n").arg(versionDirectivePosition.line).toUtf8();
+            sourceChunks.append(lineDirective.constData());
+            sourceChunkLengths.append(GLint(lineDirective.length()));
+        }
+
+        // Append rest of shader code
+        sourceChunks.append(source + versionDirectivePosition.position);
+        sourceChunkLengths.append(GLint(qstrlen(source + versionDirectivePosition.position)));
+
+        d->glfuncs->glShaderSource(d->shaderGuard->id(), sourceChunks.size(), sourceChunks.data(), sourceChunkLengths.data());
         return d->compile(this);
     } else {
         return false;
@@ -1868,6 +1977,9 @@ void QOpenGLShaderProgram::setUniformValue(const char *name, GLint value)
     Sets the uniform variable at \a location in the current context to \a value.
     This function should be used when setting sampler values.
 
+    \note This function is not aware of unsigned int support in modern OpenGL
+    versions and therefore treats \a value as a GLint and calls glUniform1i.
+
     \sa setAttributeValue()
 */
 void QOpenGLShaderProgram::setUniformValue(int location, GLuint value)
@@ -1883,6 +1995,9 @@ void QOpenGLShaderProgram::setUniformValue(int location, GLuint value)
 
     Sets the uniform variable called \a name in the current context
     to \a value.  This function should be used when setting sampler values.
+
+    \note This function is not aware of unsigned int support in modern OpenGL
+    versions and therefore treats \a value as a GLint and calls glUniform1i.
 
     \sa setAttributeValue()
 */
@@ -2650,6 +2765,9 @@ void QOpenGLShaderProgram::setUniformValueArray
     Sets the uniform variable array at \a location in the current
     context to the \a count elements of \a values.  This overload
     should be used when setting an array of sampler values.
+
+    \note This function is not aware of unsigned int support in modern OpenGL
+    versions and therefore treats \a values as a GLint and calls glUniform1iv.
 
     \sa setAttributeValue()
 */

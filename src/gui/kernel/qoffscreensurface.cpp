@@ -1,39 +1,31 @@
 /****************************************************************************
 **
-** Copyright (C) 2013 Digia Plc and/or its subsidiary(-ies).
-** Contact: http://www.qt-project.org/legal
+** Copyright (C) 2015 The Qt Company Ltd.
+** Contact: http://www.qt.io/licensing/
 **
 ** This file is part of the QtGui module of the Qt Toolkit.
 **
-** $QT_BEGIN_LICENSE:LGPL$
+** $QT_BEGIN_LICENSE:LGPL21$
 ** Commercial License Usage
 ** Licensees holding valid commercial Qt licenses may use this file in
 ** accordance with the commercial license agreement provided with the
 ** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and Digia.  For licensing terms and
-** conditions see http://qt.digia.com/licensing.  For further information
-** use the contact form at http://qt.digia.com/contact-us.
+** a written agreement between you and The Qt Company. For licensing terms
+** and conditions see http://www.qt.io/terms-conditions. For further
+** information use the contact form at http://www.qt.io/contact-us.
 **
 ** GNU Lesser General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 2.1 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU Lesser General Public License version 2.1 requirements
-** will be met: http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
+** General Public License version 2.1 or version 3 as published by the Free
+** Software Foundation and appearing in the file LICENSE.LGPLv21 and
+** LICENSE.LGPLv3 included in the packaging of this file. Please review the
+** following information to ensure the GNU Lesser General Public License
+** requirements will be met: https://www.gnu.org/licenses/lgpl.html and
+** http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
 **
-** In addition, as a special exception, Digia gives you certain additional
-** rights.  These rights are described in the Digia Qt LGPL Exception
+** As a special exception, The Qt Company gives you certain additional
+** rights. These rights are described in The Qt Company LGPL Exception
 ** version 1.1, included in the file LGPL_EXCEPTION.txt in this package.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3.0 as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU General Public License version 3.0 requirements will be
-** met: http://www.gnu.org/copyleft/gpl.html.
-**
 **
 ** $QT_END_LICENSE$
 **
@@ -59,7 +51,7 @@ QT_BEGIN_NAMESPACE
     QOffscreenSurface is intended to be used with QOpenGLContext to allow rendering with OpenGL in
     an arbitrary thread without the need to create a QWindow.
 
-    Even though the surface is renderable, the surface's pixels are not accessible.
+    Even though the surface is typically renderable, the surface's pixels are not accessible.
     QOffscreenSurface should only be used to create OpenGL resources such as textures
     or framebuffer objects.
 
@@ -72,6 +64,12 @@ QT_BEGIN_NAMESPACE
     typically use a pixel buffer (pbuffer). If the platform doesn't implement or support
     offscreen surfaces, QOffscreenSurface will use an invisible QWindow internally.
 
+    \note Due to the fact that QOffscreenSurface is backed by a QWindow on some platforms,
+    cross-platform applications must ensure that create() is only called on the main (GUI)
+    thread. The QOffscreenSurface is then safe to be used with
+    \l{QOpenGLContext::makeCurrent()}{makeCurrent()} on other threads, but the
+    initialization and destruction must always happen on the main (GUI) thread.
+
     \note In order to create an offscreen surface that is guaranteed to be compatible with
     a given context and window, make sure to set the format to the context's or the
     window's actual format, that is, the QSurfaceFormat returned from
@@ -79,6 +77,11 @@ QT_BEGIN_NAMESPACE
     created}. Passing the format returned from QWindow::requestedFormat() to setFormat()
     may result in an incompatible offscreen surface since the underlying windowing system
     interface may offer a different set of configurations for window and pbuffer surfaces.
+
+    \note Some platforms may utilize a surfaceless context extension (for example
+    EGL_KHR_surfaceless_context) when available. In this case there will be no underlying
+    native surface. For the use cases of QOffscreenSurface (rendering to FBOs, texture
+    upload) this is not a problem.
 */
 class Q_GUI_EXPORT QOffscreenSurfacePrivate : public QObjectPrivate
 {
@@ -90,6 +93,7 @@ public:
         , surfaceType(QSurface::OpenGLSurface)
         , platformOffscreenSurface(0)
         , offscreenWindow(0)
+        , requestedFormat(QSurfaceFormat::defaultFormat())
         , screen(0)
         , size(1, 1)
     {
@@ -159,6 +163,8 @@ QOffscreenSurface::SurfaceType QOffscreenSurface::surfaceType() const
 
     Call destroy() to free the platform resources if necessary.
 
+    \note Some platforms require this function to be called on the main (GUI) thread.
+
     \sa destroy()
 */
 void QOffscreenSurface::create()
@@ -179,6 +185,9 @@ void QOffscreenSurface::create()
             d->offscreenWindow->setGeometry(0, 0, d->size.width(), d->size.height());
             d->offscreenWindow->create();
         }
+
+        QPlatformSurfaceEvent e(QPlatformSurfaceEvent::SurfaceCreated);
+        QGuiApplication::sendEvent(this, &e);
     }
 }
 
@@ -190,6 +199,10 @@ void QOffscreenSurface::create()
 void QOffscreenSurface::destroy()
 {
     Q_D(QOffscreenSurface);
+
+    QPlatformSurfaceEvent e(QPlatformSurfaceEvent::SurfaceAboutToBeDestroyed);
+    QGuiApplication::sendEvent(this, &e);
+
     delete d->platformOffscreenSurface;
     d->platformOffscreenSurface = 0;
     if (d->offscreenWindow) {

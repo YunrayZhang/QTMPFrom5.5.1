@@ -1,7 +1,7 @@
 /****************************************************************************
 **
 ** Copyright (C) 2013 David Faure <faure@kde.org>
-** Contact: http://www.qt-project.org/legal
+** Contact: http://www.qt.io/licensing/
 **
 ** This file is part of the documentation of the Qt Toolkit.
 **
@@ -17,8 +17,8 @@
 **     notice, this list of conditions and the following disclaimer in
 **     the documentation and/or other materials provided with the
 **     distribution.
-**   * Neither the name of Digia Plc and its Subsidiary(-ies) nor the names
-**     of its contributors may be used to endorse or promote products derived
+**   * Neither the name of The Qt Company Ltd nor the names of its
+**     contributors may be used to endorse or promote products derived
 **     from this software without specific prior written permission.
 **
 **
@@ -82,3 +82,20 @@ int main(int argc, char *argv[])
 }
 
 //! [0]
+
+void f() {
+//! [cxx11]
+    parser.addOptions({
+        // A boolean option with a single name (-p)
+        {"p",
+            QCoreApplication::translate("main", "Show progress during copy")},
+        // A boolean option with multiple names (-f, --force)
+        {{"f", "force"},
+            QCoreApplication::translate("main", "Overwrite existing files.")},
+        // An option with a value
+        {{"t", "target-directory"},
+            QCoreApplication::translate("main", "Copy all source files into <directory>."),
+            QCoreApplication::translate("main", "directory")},
+    });
+//! [cxx11]
+}

@@ -1,39 +1,31 @@
 /****************************************************************************
 **
-** Copyright (C) 2013 Digia Plc and/or its subsidiary(-ies).
-** Contact: http://www.qt-project.org/legal
+** Copyright (C) 2015 The Qt Company Ltd.
+** Contact: http://www.qt.io/licensing/
 **
 ** This file is part of the QtGui module of the Qt Toolkit.
 **
-** $QT_BEGIN_LICENSE:LGPL$
+** $QT_BEGIN_LICENSE:LGPL21$
 ** Commercial License Usage
 ** Licensees holding valid commercial Qt licenses may use this file in
 ** accordance with the commercial license agreement provided with the
 ** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and Digia.  For licensing terms and
-** conditions see http://qt.digia.com/licensing.  For further information
-** use the contact form at http://qt.digia.com/contact-us.
+** a written agreement between you and The Qt Company. For licensing terms
+** and conditions see http://www.qt.io/terms-conditions. For further
+** information use the contact form at http://www.qt.io/contact-us.
 **
 ** GNU Lesser General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 2.1 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU Lesser General Public License version 2.1 requirements
-** will be met: http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
+** General Public License version 2.1 or version 3 as published by the Free
+** Software Foundation and appearing in the file LICENSE.LGPLv21 and
+** LICENSE.LGPLv3 included in the packaging of this file. Please review the
+** following information to ensure the GNU Lesser General Public License
+** requirements will be met: https://www.gnu.org/licenses/lgpl.html and
+** http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
 **
-** In addition, as a special exception, Digia gives you certain additional
-** rights.  These rights are described in the Digia Qt LGPL Exception
+** As a special exception, The Qt Company gives you certain additional
+** rights. These rights are described in The Qt Company LGPL Exception
 ** version 1.1, included in the file LGPL_EXCEPTION.txt in this package.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3.0 as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU General Public License version 3.0 requirements will be
-** met: http://www.gnu.org/copyleft/gpl.html.
-**
 **
 ** $QT_END_LICENSE$
 **
@@ -96,14 +88,16 @@ struct QShortcutEntry
 /*! \internal
     QDebug operator<< for easy debug output of the shortcut entries.
 */
-static QDebug &operator<<(QDebug &dbg, const QShortcutEntry *se) {
+static QDebug &operator<<(QDebug &dbg, const QShortcutEntry *se)
+{
+    QDebugStateSaver saver(dbg);
     if (!se)
         return dbg << "QShortcutEntry(0x0)";
     dbg.nospace()
         << "QShortcutEntry(" << se->keyseq
         << "), id(" << se->id << "), enabled(" << se->enabled << "), autorepeat(" << se->autorepeat
         << "), owner(" << se->owner << ')';
-    return dbg.space();
+    return dbg;
 }
 #endif // QT_NO_DEBUGSTREAM
 
@@ -318,6 +312,10 @@ QKeySequence::SequenceMatch QShortcutMap::state()
     Uses ShortcutOverride event to see if any widgets want to override
     the event. If not, uses nextState(QKeyEvent) to check for a grabbed
     Shortcut, and dispatchEvent() is found and identical.
+
+    \note that this function should only be called from QWindowSystemInterface,
+    otherwise it will result in duplicate events.
+
     \sa nextState, dispatchEvent
 */
 bool QShortcutMap::tryShortcutEvent(QObject *o, QKeyEvent *e)
@@ -388,9 +386,7 @@ QKeySequence::SequenceMatch QShortcutMap::nextState(QKeyEvent *e)
     result = find(e);
     if (result == QKeySequence::NoMatch && (e->modifiers() & Qt::KeypadModifier)) {
         // Try to find a match without keypad modifier
-        QKeyEvent event = *e;
-        event.setModifiers(e->modifiers() & ~Qt::KeypadModifier);
-        result = find(&event);
+        result = find(e, Qt::KeypadModifier);
     }
     if (result == QKeySequence::NoMatch && e->modifiers() & Qt::ShiftModifier) {
         // If Shift + Key_Backtab, also try Shift + Qt::Key_Tab
@@ -443,13 +439,13 @@ bool QShortcutMap::hasShortcutForKeySequence(const QKeySequence &seq) const
     which can be access through matches().
     \sa matches
 */
-QKeySequence::SequenceMatch QShortcutMap::find(QKeyEvent *e)
+QKeySequence::SequenceMatch QShortcutMap::find(QKeyEvent *e, int ignoredModifiers)
 {
     Q_D(QShortcutMap);
     if (!d->sequences.count())
         return QKeySequence::NoMatch;
 
-    createNewSequences(e, d->newEntries);
+    createNewSequences(e, d->newEntries, ignoredModifiers);
 #if defined(DEBUG_QSHORTCUTMAP)
     qDebug() << "Possible shortcut key sequences:" << d->newEntries;
 #endif
@@ -551,7 +547,7 @@ void QShortcutMap::clearSequence(QVector<QKeySequence> &ksl)
     Alters \a seq to the new sequence state, based on the
     current sequence state, and the new key event \a e.
 */
-void QShortcutMap::createNewSequences(QKeyEvent *e, QVector<QKeySequence> &ksl)
+void QShortcutMap::createNewSequences(QKeyEvent *e, QVector<QKeySequence> &ksl, int ignoredModifiers)
 {
     Q_D(QShortcutMap);
     QList<int> possibleKeys = QKeyMapper::possibleKeys(e);
@@ -581,7 +577,7 @@ void QShortcutMap::createNewSequences(QKeyEvent *e, QVector<QKeySequence> &ksl)
                 curKsl.setKey(0, 2);
                 curKsl.setKey(0, 3);
             }
-            curKsl.setKey(possibleKeys.at(pkNum), index);
+            curKsl.setKey(possibleKeys.at(pkNum) & ~ignoredModifiers, index);
         }
     }
 }

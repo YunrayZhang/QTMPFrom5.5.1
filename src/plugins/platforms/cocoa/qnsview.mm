@@ -1,39 +1,31 @@
 /****************************************************************************
 **
-** Copyright (C) 2013 Digia Plc and/or its subsidiary(-ies).
-** Contact: http://www.qt-project.org/legal
+** Copyright (C) 2015 The Qt Company Ltd.
+** Contact: http://www.qt.io/licensing/
 **
 ** This file is part of the plugins of the Qt Toolkit.
 **
-** $QT_BEGIN_LICENSE:LGPL$
+** $QT_BEGIN_LICENSE:LGPL21$
 ** Commercial License Usage
 ** Licensees holding valid commercial Qt licenses may use this file in
 ** accordance with the commercial license agreement provided with the
 ** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and Digia.  For licensing terms and
-** conditions see http://qt.digia.com/licensing.  For further information
-** use the contact form at http://qt.digia.com/contact-us.
+** a written agreement between you and The Qt Company. For licensing terms
+** and conditions see http://www.qt.io/terms-conditions. For further
+** information use the contact form at http://www.qt.io/contact-us.
 **
 ** GNU Lesser General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 2.1 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU Lesser General Public License version 2.1 requirements
-** will be met: http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
+** General Public License version 2.1 or version 3 as published by the Free
+** Software Foundation and appearing in the file LICENSE.LGPLv21 and
+** LICENSE.LGPLv3 included in the packaging of this file. Please review the
+** following information to ensure the GNU Lesser General Public License
+** requirements will be met: https://www.gnu.org/licenses/lgpl.html and
+** http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
 **
-** In addition, as a special exception, Digia gives you certain additional
-** rights.  These rights are described in the Digia Qt LGPL Exception
+** As a special exception, The Qt Company gives you certain additional
+** rights. These rights are described in The Qt Company LGPL Exception
 ** version 1.1, included in the file LGPL_EXCEPTION.txt in this package.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3.0 as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU General Public License version 3.0 requirements will be
-** met: http://www.gnu.org/copyleft/gpl.html.
-**
 **
 ** $QT_END_LICENSE$
 **
@@ -57,12 +49,20 @@
 #include <QtCore/QDebug>
 #include <private/qguiapplication_p.h>
 #include "qcocoabackingstore.h"
+#ifndef QT_NO_OPENGL
 #include "qcocoaglcontext.h"
+#endif
 #include "qcocoaintegration.h"
 
 #ifdef QT_COCOA_ENABLE_ACCESSIBILITY_INSPECTOR
 #include <accessibilityinspector.h>
 #endif
+
+Q_LOGGING_CATEGORY(lcQpaTouch, "qt.qpa.input.touch")
+#ifndef QT_NO_GESTURES
+Q_LOGGING_CATEGORY(lcQpaGestures, "qt.qpa.input.gestures")
+#endif
+Q_LOGGING_CATEGORY(lcQpaTablet, "qt.qpa.input.tablet")
 
 static QTouchDevice *touchDevice = 0;
 
@@ -75,7 +75,7 @@ static NSString *_q_NSWindowDidChangeOcclusionStateNotification = nil;
   - (CGFloat)deviceDeltaZ;
 @end
 
-@interface QNSViewMouseMoveHelper : NSObject
+@interface QT_MANGLE_NAMESPACE(QNSViewMouseMoveHelper) : NSObject
 {
     QNSView *view;
 }
@@ -89,7 +89,7 @@ static NSString *_q_NSWindowDidChangeOcclusionStateNotification = nil;
 
 @end
 
-@implementation QNSViewMouseMoveHelper
+@implementation QT_MANGLE_NAMESPACE(QNSViewMouseMoveHelper)
 
 - (id)initWithView:(QNSView *)theView
 {
@@ -143,18 +143,21 @@ static NSString *_q_NSWindowDidChangeOcclusionStateNotification = nil;
         m_frameStrutButtons = Qt::NoButton;
         m_sendKeyEvent = false;
         m_subscribesForGlobalFrameNotifications = false;
+#ifndef QT_NO_OPENGL
         m_glContext = 0;
         m_shouldSetGLContextinDrawRect = false;
+#endif
         currentCustomDragTypes = 0;
         m_sendUpAsRightButton = false;
         m_inputSource = 0;
-        m_mouseMoveHelper = [[QNSViewMouseMoveHelper alloc] initWithView:self];
+        m_mouseMoveHelper = [[QT_MANGLE_NAMESPACE(QNSViewMouseMoveHelper) alloc] initWithView:self];
         m_resendKeyEvent = false;
+        m_scrolling = false;
 
         if (!touchDevice) {
             touchDevice = new QTouchDevice;
             touchDevice->setType(QTouchDevice::TouchPad);
-            touchDevice->setCapabilities(QTouchDevice::Position | QTouchDevice::NormalizedPosition);
+            touchDevice->setCapabilities(QTouchDevice::Position | QTouchDevice::NormalizedPosition | QTouchDevice::MouseEmulation);
             QWindowSystemInterface::registerTouchDevice(touchDevice);
         }
     }
@@ -164,6 +167,7 @@ static NSString *_q_NSWindowDidChangeOcclusionStateNotification = nil;
 - (void)dealloc
 {
     CGImageRelease(m_maskImage);
+    [m_trackingArea release];
     m_maskImage = 0;
     m_window = 0;
     m_subscribesForGlobalFrameNotifications = false;
@@ -185,6 +189,7 @@ static NSString *_q_NSWindowDidChangeOcclusionStateNotification = nil;
     m_window = window;
     m_platformWindow = platformWindow;
     m_sendKeyEvent = false;
+    m_trackingArea = nil;
 
 #ifdef QT_COCOA_ENABLE_ACCESSIBILITY_INSPECTOR
     // prevent rift in space-time continuum, disable
@@ -211,6 +216,13 @@ static NSString *_q_NSWindowDidChangeOcclusionStateNotification = nil;
     return self;
 }
 
+- (void) clearQWindowPointers
+{
+    m_window = 0;
+    m_platformWindow = 0;
+}
+
+#ifndef QT_NO_OPENGL
 - (void) setQCocoaGLContext:(QCocoaGLContext *)context
 {
     m_glContext = context;
@@ -232,6 +244,7 @@ static NSString *_q_NSWindowDidChangeOcclusionStateNotification = nil;
             object:self];
     }
 }
+#endif
 
 - (void) globalFrameChanged:(NSNotification*)notification
 {
@@ -259,10 +272,13 @@ static NSString *_q_NSWindowDidChangeOcclusionStateNotification = nil;
     if (self.window) {
         // This is the case of QWidgetAction's generated QWidget inserted in an NSMenu.
         // 10.9 and newer get the NSWindowDidChangeOcclusionStateNotification
-        if (!_q_NSWindowDidChangeOcclusionStateNotification
-            && [self.window.className isEqualToString:@"NSCarbonMenuWindow"])
+        if ((!_q_NSWindowDidChangeOcclusionStateNotification
+            && [self.window.className isEqualToString:@"NSCarbonMenuWindow"])) {
+            m_exposedOnMoveToWindow = true;
             m_platformWindow->exposeWindow();
-    } else {
+        }
+    } else if (m_exposedOnMoveToWindow) {
+        m_exposedOnMoveToWindow = false;
         m_platformWindow->obscureWindow();
     }
 }
@@ -289,7 +305,7 @@ static NSString *_q_NSWindowDidChangeOcclusionStateNotification = nil;
 
     // For widgets we need to do a bit of trickery as the window
     // to activate is the window of the top-level widget.
-    if (m_window->metaObject()->className() == QStringLiteral("QWidgetWindow")) {
+    if (qstrcmp(m_window->metaObject()->className(), "QWidgetWindow") == 0) {
         while (focusWindow->parent()) {
             focusWindow = focusWindow->parent();
         }
@@ -350,7 +366,12 @@ static NSString *_q_NSWindowDidChangeOcclusionStateNotification = nil;
     if (!m_platformWindow->m_inConstructor) {
         QWindowSystemInterface::handleGeometryChange(m_window, geometry);
         m_platformWindow->updateExposedGeometry();
-        QWindowSystemInterface::flushWindowSystemEvents();
+        // Guard against processing window system events during QWindow::setGeometry
+        // calles, which Qt and Qt applications do not excpect.
+        if (!m_platformWindow->m_inSetGeometry)
+            QWindowSystemInterface::flushWindowSystemEvents();
+        else
+            m_backingStore = 0;
     }
 }
 
@@ -392,10 +413,6 @@ static NSString *_q_NSWindowDidChangeOcclusionStateNotification = nil;
         Qt::WindowState newState = notificationName == NSWindowDidMiniaturizeNotification ?
                     Qt::WindowMinimized : Qt::WindowNoState;
         [self notifyWindowStateChanged:newState];
-        // NSWindowDidOrderOnScreenAndFinishAnimatingNotification is private API, and not
-        // emitted in 10.6, so we bring back the old behavior for that case alone.
-        if (newState == Qt::WindowNoState && QSysInfo::QSysInfo::MacintoshVersion == QSysInfo::MV_10_6)
-            m_platformWindow->exposeWindow();
     } else if ([notificationName isEqualToString: @"NSWindowDidOrderOffScreenNotification"]) {
         m_platformWindow->obscureWindow();
     } else if ([notificationName isEqualToString: @"NSWindowDidOrderOnScreenAndFinishAnimatingNotification"]) {
@@ -404,41 +421,38 @@ static NSString *_q_NSWindowDidChangeOcclusionStateNotification = nil;
                && [notificationName isEqualToString:_q_NSWindowDidChangeOcclusionStateNotification]) {
 #if MAC_OS_X_VERSION_MIN_REQUIRED < MAC_OS_X_VERSION_10_9
 // ### HACK Remove the enum declaration, the warning disabling and the cast further down once 10.8 is unsupported
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wobjc-method-access"
+QT_WARNING_PUSH
+QT_WARNING_DISABLE_CLANG("-Wobjc-method-access")
         enum { NSWindowOcclusionStateVisible = 1UL << 1 };
 #endif
-        // Older versions managed in -[QNSView viewDidMoveToWindow].
-        // Support QWidgetAction in NSMenu. Mavericks only sends this notification.
-        // Ideally we should support this in Qt as well, in order to disable animations
-        // when the window is occluded.
-        if ((NSUInteger)[self.window occlusionState] & NSWindowOcclusionStateVisible)
+        if ((NSUInteger)[self.window occlusionState] & NSWindowOcclusionStateVisible) {
             m_platformWindow->exposeWindow();
+        } else {
+            // Send Obscure events on window occlusion to stop animations. Several
+            // unit tests expect paint and/or expose events for windows that are
+            // sometimes (unpredictably) occlouded: Don't send Obscure events when
+            // running under QTestLib.
+            static bool onTestLib = qt_mac_resolveOption(false, "QT_QTESTLIB_RUNNING");
+            if (!onTestLib)
+                m_platformWindow->obscureWindow();
+        }
 #if MAC_OS_X_VERSION_MIN_REQUIRED < MAC_OS_X_VERSION_10_9
-#pragma clang diagnostic pop
+QT_WARNING_POP
 #endif
     } else if (notificationName == NSWindowDidChangeScreenNotification) {
         if (m_window) {
             NSUInteger screenIndex = [[NSScreen screens] indexOfObject:self.window.screen];
             if (screenIndex != NSNotFound) {
-                m_platformWindow->updateExposedGeometry();
                 QCocoaScreen *cocoaScreen = QCocoaIntegration::instance()->screenAtIndex(screenIndex);
                 QWindowSystemInterface::handleWindowScreenChanged(m_window, cocoaScreen->screen());
+                m_platformWindow->updateExposedGeometry();
             }
         }
-    } else {
-
-#if MAC_OS_X_VERSION_MAX_ALLOWED >= MAC_OS_X_VERSION_10_7
-    if (QSysInfo::QSysInfo::MacintoshVersion >= QSysInfo::MV_10_7) {
-        if (notificationName == NSWindowDidEnterFullScreenNotification
-            || notificationName == NSWindowDidExitFullScreenNotification) {
-            Qt::WindowState newState = notificationName == NSWindowDidEnterFullScreenNotification ?
-                        Qt::WindowFullScreen : Qt::WindowNoState;
-            [self notifyWindowStateChanged:newState];
-        }
-    }
-#endif
-
+    } else if (notificationName == NSWindowDidEnterFullScreenNotification
+               || notificationName == NSWindowDidExitFullScreenNotification) {
+        Qt::WindowState newState = notificationName == NSWindowDidEnterFullScreenNotification ?
+                                   Qt::WindowFullScreen : Qt::WindowNoState;
+        [self notifyWindowStateChanged:newState];
     }
 }
 
@@ -464,9 +478,14 @@ static NSString *_q_NSWindowDidChangeOcclusionStateNotification = nil;
 {
     m_backingStore = backingStore;
     m_backingStoreOffset = offset * m_backingStore->getBackingStoreDevicePixelRatio();
-    foreach (QRect rect, region.rects()) {
+    foreach (QRect rect, region.rects())
         [self setNeedsDisplayInRect:NSMakeRect(rect.x(), rect.y(), rect.width(), rect.height())];
-    }
+}
+
+- (void)clearBackingStore:(QCocoaBackingStore *)backingStore
+{
+    if (backingStore == m_backingStore)
+        m_backingStore = 0;
 }
 
 - (BOOL) hasMask
@@ -476,6 +495,8 @@ static NSString *_q_NSWindowDidChangeOcclusionStateNotification = nil;
 
 - (BOOL) isOpaque
 {
+    if (!m_platformWindow)
+        return true;
     return m_platformWindow->isOpaque();
 }
 
@@ -517,10 +538,12 @@ static NSString *_q_NSWindowDidChangeOcclusionStateNotification = nil;
 
 - (void) drawRect:(NSRect)dirtyRect
 {
+#ifndef QT_NO_OPENGL
     if (m_glContext && m_shouldSetGLContextinDrawRect) {
         [m_glContext->nsOpenGLContext() setView:self];
         m_shouldSetGLContextinDrawRect = false;
     }
+#endif
 
     if (m_platformWindow->m_drawContentBorderGradient)
         NSDrawWindowBackground(dirtyRect);
@@ -563,7 +586,7 @@ static NSString *_q_NSWindowDidChangeOcclusionStateNotification = nil;
         dirtyBackingRect.size.width,
         dirtyBackingRect.size.height
     );
-    CGImageRef bsCGImage = m_backingStore->getBackingStoreCGImage();
+    CGImageRef bsCGImage = qt_mac_toCGImage(m_backingStore->toImage());
     CGImageRef cleanImg = CGImageCreateWithImageInRect(bsCGImage, backingStoreRect);
 
     // Optimization: Copy frame buffer content instead of blending for
@@ -578,10 +601,9 @@ static NSString *_q_NSWindowDidChangeOcclusionStateNotification = nil;
     CGContextRestoreGState(cgContext);
     CGImageRelease(cleanImg);
     CGImageRelease(subMask);
+    CGImageRelease(bsCGImage);
 
     [self invalidateWindowShadowIfNeeded];
-
-    m_backingStore = 0;
 }
 
 - (BOOL) isFlipped
@@ -591,9 +613,10 @@ static NSString *_q_NSWindowDidChangeOcclusionStateNotification = nil;
 
 - (BOOL)becomeFirstResponder
 {
-    if (m_window->flags() & Qt::WindowTransparentForInput)
+    if (m_window && (m_window->flags() & Qt::WindowTransparentForInput) )
         return NO;
-    QWindowSystemInterface::handleWindowActivated([self topLevelWindow]);
+    if (!m_platformWindow->windowIsPopupType())
+        QWindowSystemInterface::handleWindowActivated([self topLevelWindow]);
     return YES;
 }
 
@@ -601,7 +624,7 @@ static NSString *_q_NSWindowDidChangeOcclusionStateNotification = nil;
 {
     if (m_platformWindow->shouldRefuseKeyWindowAndFirstResponder())
         return NO;
-    if (m_window->flags() & Qt::WindowTransparentForInput)
+    if (m_window && (m_window->flags() & Qt::WindowTransparentForInput) )
         return NO;
     if ((m_window->flags() & Qt::ToolTip) == Qt::ToolTip)
         return NO;
@@ -611,7 +634,7 @@ static NSString *_q_NSWindowDidChangeOcclusionStateNotification = nil;
 - (BOOL)acceptsFirstMouse:(NSEvent *)theEvent
 {
     Q_UNUSED(theEvent)
-    if (m_window->flags() & Qt::WindowTransparentForInput)
+    if (m_window && (m_window->flags() & Qt::WindowTransparentForInput) )
         return NO;
     return YES;
 }
@@ -638,16 +661,8 @@ static NSString *_q_NSWindowDidChangeOcclusionStateNotification = nil;
 
     NSWindow *window = [self window];
     NSPoint nsWindowPoint;
-    // Use convertRectToScreen if available (added in 10.7).
-#if MAC_OS_X_VERSION_MAX_ALLOWED >= MAC_OS_X_VERSION_10_7
-    if ([window respondsToSelector:@selector(convertRectFromScreen:)]) {
-        NSRect windowRect = [window convertRectFromScreen:NSMakeRect(mouseLocation.x, mouseLocation.y, 1, 1)];
-        nsWindowPoint = windowRect.origin;                    // NSWindow coordinates
-    } else
-#endif
-    {
-        nsWindowPoint = [window convertScreenToBase:mouseLocation];                    // NSWindow coordinates
-    }
+    NSRect windowRect = [window convertRectFromScreen:NSMakeRect(mouseLocation.x, mouseLocation.y, 1, 1)];
+    nsWindowPoint = windowRect.origin;                    // NSWindow coordinates
     NSPoint nsViewPoint = [self convertPoint: nsWindowPoint fromView: nil]; // NSView/QWindow coordinates
     *qtWindowPoint = QPointF(nsViewPoint.x, nsViewPoint.y);                     // NSView/QWindow coordinates
 
@@ -658,6 +673,19 @@ static NSString *_q_NSWindowDidChangeOcclusionStateNotification = nil;
 {
     m_buttons = Qt::NoButton;
     m_frameStrutButtons = Qt::NoButton;
+}
+
+- (NSPoint) screenMousePoint:(NSEvent *)theEvent
+{
+    NSPoint screenPoint;
+    if (theEvent) {
+        NSPoint windowPoint = [theEvent locationInWindow];
+        NSRect screenRect = [[theEvent window] convertRectToScreen:NSMakeRect(windowPoint.x, windowPoint.y, 1, 1)];
+        screenPoint = screenRect.origin;
+    } else {
+        screenPoint = [NSEvent mouseLocation];
+    }
+    return screenPoint;
 }
 
 - (void)handleMouseEvent:(NSEvent *)theEvent
@@ -674,7 +702,17 @@ static NSString *_q_NSWindowDidChangeOcclusionStateNotification = nil;
             m_platformWindow->m_forwardWindow = 0;
     }
 
-    [targetView convertFromScreen:[NSEvent mouseLocation] toWindowPoint:&qtWindowPoint andScreenPoint:&qtScreenPoint];
+    // Popups implicitly grap mouse events; forward to the active popup if there is one
+    if (QCocoaWindow *popup = QCocoaIntegration::instance()->activePopupWindow()) {
+        // Tooltips must be transparent for mouse events
+        // The bug reference is QTBUG-46379
+        if (!popup->m_windowFlags.testFlag(Qt::ToolTip)) {
+            if (QNSView *popupView = popup->qtView())
+                targetView = popupView;
+        }
+    }
+
+    [targetView convertFromScreen:[self screenMousePoint:theEvent] toWindowPoint:&qtWindowPoint andScreenPoint:&qtScreenPoint];
     ulong timestamp = [theEvent timestamp] * 1000;
 
     QCocoaDrag* nativeDrag = QCocoaIntegration::instance()->drag();
@@ -687,6 +725,10 @@ static NSString *_q_NSWindowDidChangeOcclusionStateNotification = nil;
 - (void)handleFrameStrutMouseEvent:(NSEvent *)theEvent
 {
     // get m_buttons in sync
+    // Don't send frme strut events if we are in the middle of a mouse drag.
+    if (m_buttons != Qt::NoButton)
+        return;
+
     NSEventType ty = [theEvent type];
     switch (ty) {
     case NSLeftMouseDown:
@@ -696,6 +738,12 @@ static NSString *_q_NSWindowDidChangeOcclusionStateNotification = nil;
          m_frameStrutButtons &= ~Qt::LeftButton;
          break;
     case NSRightMouseDown:
+        m_frameStrutButtons |= Qt::RightButton;
+        break;
+    case NSLeftMouseDragged:
+        m_frameStrutButtons |= Qt::LeftButton;
+        break;
+    case NSRightMouseDragged:
         m_frameStrutButtons |= Qt::RightButton;
         break;
     case NSRightMouseUp:
@@ -714,12 +762,13 @@ static NSString *_q_NSWindowDidChangeOcclusionStateNotification = nil;
     NSPoint windowPoint = [theEvent locationInWindow];
 
     int windowScreenY = [window frame].origin.y + [window frame].size.height;
-    int viewScreenY = [window convertBaseToScreen:[self convertPoint:[self frame].origin toView:nil]].y;
+    NSPoint windowCoord = [self convertPoint:[self frame].origin toView:nil];
+    int viewScreenY = [window convertRectToScreen:NSMakeRect(windowCoord.x, windowCoord.y, 0, 0)].origin.y;
     int titleBarHeight = windowScreenY - viewScreenY;
 
     NSPoint nsViewPoint = [self convertPoint: windowPoint fromView: nil];
     QPoint qtWindowPoint = QPoint(nsViewPoint.x, titleBarHeight + nsViewPoint.y);
-    NSPoint screenPoint = [window convertBaseToScreen:windowPoint];
+    NSPoint screenPoint = [window convertRectToScreen:NSMakeRect(windowPoint.x, windowPoint.y, 0, 0)].origin;
     QPoint qtScreenPoint = QPoint(screenPoint.x, qt_mac_flipYCoordinate(screenPoint.y));
 
     ulong timestamp = [theEvent timestamp] * 1000;
@@ -728,24 +777,44 @@ static NSString *_q_NSWindowDidChangeOcclusionStateNotification = nil;
 
 - (void)mouseDown:(NSEvent *)theEvent
 {
-    if (m_window->flags() & Qt::WindowTransparentForInput)
+    if (m_window && (m_window->flags() & Qt::WindowTransparentForInput) )
         return [super mouseDown:theEvent];
     m_sendUpAsRightButton = false;
-    if (m_platformWindow->m_activePopupWindow) {
-        Qt::WindowType type = m_platformWindow->m_activePopupWindow->type();
-        QWindowSystemInterface::handleCloseEvent(m_platformWindow->m_activePopupWindow);
-        QWindowSystemInterface::flushWindowSystemEvents();
-        m_platformWindow->m_activePopupWindow = 0;
-        // Consume the mouse event when closing the popup, except for tool tips
-        // were it's expected that the event is processed normally.
-        if (type != Qt::ToolTip)
-            return;
-    }
-    if ([self hasMarkedText]) {
-        NSInputManager* inputManager = [NSInputManager currentInputManager];
-        if ([inputManager wantsToHandleMouseEvents]) {
-            [inputManager handleMouseEvent:theEvent];
+
+    // Handle any active poup windows; clicking outisde them should close them
+    // all. Don't do anything or clicks inside one of the menus, let Cocoa
+    // handle that case. Note that in practice many windows of the Qt::Popup type
+    // will actually close themselves in this case using logic implemented in
+    // that particular poup type (for example context menus). However, Qt expects
+    // that plain popup QWindows will also be closed, so we implement the logic
+    // here as well.
+    QList<QCocoaWindow *> *popups = QCocoaIntegration::instance()->popupWindowStack();
+    if (!popups->isEmpty()) {
+        // Check if the click is outside all popups.
+        bool inside = false;
+        QPointF qtScreenPoint = qt_mac_flipPoint([self screenMousePoint:theEvent]);
+        for (QList<QCocoaWindow *>::const_iterator it = popups->begin(); it != popups->end(); ++it) {
+            if ((*it)->geometry().contains(qtScreenPoint.toPoint())) {
+                inside = true;
+                break;
+            }
         }
+        // Close the popups if the click was outside.
+        if (!inside) {
+            Qt::WindowType type = QCocoaIntegration::instance()->activePopupWindow()->window()->type();
+            while (QCocoaWindow *popup = QCocoaIntegration::instance()->popPopupWindow()) {
+                QWindowSystemInterface::handleCloseEvent(popup->window());
+                QWindowSystemInterface::flushWindowSystemEvents();
+            }
+            // Consume the mouse event when closing the popup, except for tool tips
+            // were it's expected that the event is processed normally.
+            if (type != Qt::ToolTip)
+                 return;
+        }
+    }
+
+    if ([self hasMarkedText]) {
+        [[NSTextInputContext currentInputContext] handleEvent:theEvent];
     } else {
         if ([QNSView convertKeyModifiers:[theEvent modifierFlags]] & Qt::MetaModifier) {
             m_buttons |= Qt::RightButton;
@@ -759,7 +828,7 @@ static NSString *_q_NSWindowDidChangeOcclusionStateNotification = nil;
 
 - (void)mouseDragged:(NSEvent *)theEvent
 {
-    if (m_window->flags() & Qt::WindowTransparentForInput)
+    if (m_window && (m_window->flags() & Qt::WindowTransparentForInput) )
         return [super mouseDragged:theEvent];
     if (!(m_buttons & (m_sendUpAsRightButton ? Qt::RightButton : Qt::LeftButton)))
         qWarning("QNSView mouseDragged: Internal mouse button tracking invalid (missing Qt::LeftButton)");
@@ -768,7 +837,7 @@ static NSString *_q_NSWindowDidChangeOcclusionStateNotification = nil;
 
 - (void)mouseUp:(NSEvent *)theEvent
 {
-    if (m_window->flags() & Qt::WindowTransparentForInput)
+    if (m_window && (m_window->flags() & Qt::WindowTransparentForInput) )
         return [super mouseUp:theEvent];
     if (m_sendUpAsRightButton) {
         m_buttons &= ~Qt::RightButton;
@@ -783,19 +852,11 @@ static NSString *_q_NSWindowDidChangeOcclusionStateNotification = nil;
 {
     [super updateTrackingAreas];
 
-    // [NSView addTrackingArea] is slow, so bail out early if we can:
-    if (NSIsEmptyRect([self visibleRect]))
-        return;
-
-    // Remove current trakcing areas:
     QCocoaAutoReleasePool pool;
-    if (NSArray *trackingArray = [self trackingAreas]) {
-        NSUInteger size = [trackingArray count];
-        for (NSUInteger i = 0; i < size; ++i) {
-            NSTrackingArea *t = [trackingArray objectAtIndex:i];
-            [self removeTrackingArea:t];
-        }
-    }
+
+    // NSTrackingInVisibleRect keeps care of updating once the tracking is set up, so bail out early
+    if (m_trackingArea && [[self trackingAreas] containsObject:m_trackingArea])
+        return;
 
     // Ideally, we shouldn't have NSTrackingMouseMoved events included below, it should
     // only be turned on if mouseTracking, hover is on or a tool tip is set.
@@ -805,12 +866,12 @@ static NSString *_q_NSWindowDidChangeOcclusionStateNotification = nil;
     // is a performance hit). So it goes.
     NSUInteger trackingOptions = NSTrackingMouseEnteredAndExited | NSTrackingActiveInActiveApp
                                  | NSTrackingInVisibleRect | NSTrackingMouseMoved | NSTrackingCursorUpdate;
-    NSTrackingArea *ta = [[[NSTrackingArea alloc] initWithRect:[self frame]
-                                                      options:trackingOptions
-                                                        owner:m_mouseMoveHelper
-                                                     userInfo:nil]
-                                                                autorelease];
-    [self addTrackingArea:ta];
+    [m_trackingArea release];
+    m_trackingArea = [[NSTrackingArea alloc] initWithRect:[self frame]
+                                                  options:trackingOptions
+                                                    owner:m_mouseMoveHelper
+                                                 userInfo:nil];
+    [self addTrackingArea:m_trackingArea];
 }
 
 -(void)cursorUpdateImpl:(NSEvent *)theEvent
@@ -832,12 +893,12 @@ static NSString *_q_NSWindowDidChangeOcclusionStateNotification = nil;
 
 - (void)mouseMovedImpl:(NSEvent *)theEvent
 {
-    if (m_window->flags() & Qt::WindowTransparentForInput)
+    if (m_window && (m_window->flags() & Qt::WindowTransparentForInput) )
         return;
 
     QPointF windowPoint;
     QPointF screenPoint;
-    [self convertFromScreen:[NSEvent mouseLocation] toWindowPoint:&windowPoint andScreenPoint:&screenPoint];
+    [self convertFromScreen:[self screenMousePoint:theEvent] toWindowPoint:&windowPoint andScreenPoint:&screenPoint];
     QWindow *childWindow = m_platformWindow->childWindowAt(windowPoint.toPoint());
 
     // Top-level windows generate enter-leave events for sub-windows.
@@ -865,7 +926,7 @@ static NSString *_q_NSWindowDidChangeOcclusionStateNotification = nil;
     Q_UNUSED(theEvent)
     m_platformWindow->m_windowUnderMouse = true;
 
-    if (m_window->flags() & Qt::WindowTransparentForInput)
+    if (m_window && (m_window->flags() & Qt::WindowTransparentForInput) )
         return;
 
     // Top-level windows generate enter events for sub-windows.
@@ -884,7 +945,7 @@ static NSString *_q_NSWindowDidChangeOcclusionStateNotification = nil;
     Q_UNUSED(theEvent);
     m_platformWindow->m_windowUnderMouse = false;
 
-    if (m_window->flags() & Qt::WindowTransparentForInput)
+    if (m_window && (m_window->flags() & Qt::WindowTransparentForInput) )
         return;
 
     // Top-level windows generate leave events for sub-windows.
@@ -897,15 +958,16 @@ static NSString *_q_NSWindowDidChangeOcclusionStateNotification = nil;
 
 - (void)rightMouseDown:(NSEvent *)theEvent
 {
-    if (m_window->flags() & Qt::WindowTransparentForInput)
+    if (m_window && (m_window->flags() & Qt::WindowTransparentForInput) )
         return [super rightMouseDown:theEvent];
     m_buttons |= Qt::RightButton;
+    m_sendUpAsRightButton = true;
     [self handleMouseEvent:theEvent];
 }
 
 - (void)rightMouseDragged:(NSEvent *)theEvent
 {
-    if (m_window->flags() & Qt::WindowTransparentForInput)
+    if (m_window && (m_window->flags() & Qt::WindowTransparentForInput) )
         return [super rightMouseDragged:theEvent];
     if (!(m_buttons & Qt::RightButton))
         qWarning("QNSView rightMouseDragged: Internal mouse button tracking invalid (missing Qt::RightButton)");
@@ -914,15 +976,16 @@ static NSString *_q_NSWindowDidChangeOcclusionStateNotification = nil;
 
 - (void)rightMouseUp:(NSEvent *)theEvent
 {
-    if (m_window->flags() & Qt::WindowTransparentForInput)
+    if (m_window && (m_window->flags() & Qt::WindowTransparentForInput) )
         return [super rightMouseUp:theEvent];
     m_buttons &= ~Qt::RightButton;
+    m_sendUpAsRightButton = false;
     [self handleMouseEvent:theEvent];
 }
 
 - (void)otherMouseDown:(NSEvent *)theEvent
 {
-    if (m_window->flags() & Qt::WindowTransparentForInput)
+    if (m_window && (m_window->flags() & Qt::WindowTransparentForInput) )
         return [super otherMouseDown:theEvent];
     m_buttons |= cocoaButton2QtButton([theEvent buttonNumber]);
     [self handleMouseEvent:theEvent];
@@ -930,7 +993,7 @@ static NSString *_q_NSWindowDidChangeOcclusionStateNotification = nil;
 
 - (void)otherMouseDragged:(NSEvent *)theEvent
 {
-    if (m_window->flags() & Qt::WindowTransparentForInput)
+    if (m_window && (m_window->flags() & Qt::WindowTransparentForInput) )
         return [super otherMouseDragged:theEvent];
     if (!(m_buttons & ~(Qt::LeftButton | Qt::RightButton)))
         qWarning("QNSView otherMouseDragged: Internal mouse button tracking invalid (missing Qt::MiddleButton or Qt::ExtraButton*)");
@@ -939,7 +1002,7 @@ static NSString *_q_NSWindowDidChangeOcclusionStateNotification = nil;
 
 - (void)otherMouseUp:(NSEvent *)theEvent
 {
-    if (m_window->flags() & Qt::WindowTransparentForInput)
+    if (m_window && (m_window->flags() & Qt::WindowTransparentForInput) )
         return [super otherMouseUp:theEvent];
     m_buttons &= ~cocoaButton2QtButton([theEvent buttonNumber]);
     [self handleMouseEvent:theEvent];
@@ -989,6 +1052,7 @@ Q_GLOBAL_STATIC(QCocoaTabletDeviceDataHash, tabletDeviceDataHash)
     NSPoint tilt = [theEvent tilt];
     int xTilt = qRound(tilt.x * 60.0);
     int yTilt = qRound(tilt.y * -60.0);
+    Qt::MouseButtons buttons = static_cast<Qt::MouseButtons>(static_cast<uint>([theEvent buttonMask]));
     qreal tangentialPressure = 0;
     qreal rotation = 0;
     int z = 0;
@@ -996,21 +1060,28 @@ Q_GLOBAL_STATIC(QCocoaTabletDeviceDataHash, tabletDeviceDataHash)
         z = [theEvent absoluteZ];
 
     if (deviceData.capabilityMask & 0x0800)
-        tangentialPressure = [theEvent tangentialPressure];
+        tangentialPressure = ([theEvent tangentialPressure] * 2.0) - 1.0;
 
-    rotation = [theEvent rotation];
+    rotation = 360.0 - [theEvent rotation];
+    if (rotation > 180.0)
+        rotation -= 360.0;
 
     Qt::KeyboardModifiers keyboardModifiers = [QNSView convertKeyModifiers:[theEvent modifierFlags]];
 
-    QWindowSystemInterface::handleTabletEvent(m_window, timestamp, down, windowPoint, screenPoint,
-                                              deviceData.device, deviceData.pointerType, pressure, xTilt, yTilt,
+    qCDebug(lcQpaTablet, "event on tablet %d with tool %d type %d unique ID %lld pos %6.1f, %6.1f root pos %6.1f, %6.1f buttons 0x%x pressure %4.2lf tilt %d, %d rotation %6.2lf",
+        deviceId, deviceData.device, deviceData.pointerType, deviceData.uid,
+        windowPoint.x(), windowPoint.y(), screenPoint.x(), screenPoint.y(),
+        static_cast<uint>(buttons), pressure, xTilt, yTilt, rotation);
+
+    QWindowSystemInterface::handleTabletEvent(m_window, timestamp, windowPoint, screenPoint,
+                                              deviceData.device, deviceData.pointerType, buttons, pressure, xTilt, yTilt,
                                               tangentialPressure, rotation, z, deviceData.uid,
                                               keyboardModifiers);
 }
 
 - (void)tabletPoint: (NSEvent *)theEvent
 {
-    if (m_window->flags() & Qt::WindowTransparentForInput)
+    if (m_window && (m_window->flags() & Qt::WindowTransparentForInput) )
         return [super tabletPoint:theEvent];
 
     [self handleTabletEvent: theEvent];
@@ -1058,7 +1129,7 @@ static QTabletEvent::TabletDevice wacomTabletDevice(NSEvent *theEvent)
 
 - (void)tabletProximity: (NSEvent *)theEvent
 {
-    if (m_window->flags() & Qt::WindowTransparentForInput)
+    if (m_window && (m_window->flags() & Qt::WindowTransparentForInput) )
         return [super tabletProximity:theEvent];
 
     ulong timestamp = [theEvent timestamp] * 1000;
@@ -1095,6 +1166,9 @@ static QTabletEvent::TabletDevice wacomTabletDevice(NSEvent *theEvent)
         tabletDeviceDataHash->remove(deviceId);
     }
 
+    qCDebug(lcQpaTablet, "proximity change on tablet %d: current tool %d type %d unique ID %lld",
+        deviceId, deviceData.device, deviceData.pointerType, deviceData.uid);
+
     if (entering) {
         QWindowSystemInterface::handleTabletEnterProximityEvent(timestamp, deviceData.device, deviceData.pointerType, deviceData.uid);
     } else {
@@ -1102,41 +1176,49 @@ static QTabletEvent::TabletDevice wacomTabletDevice(NSEvent *theEvent)
     }
 }
 
+- (bool) shouldSendSingleTouch
+{
+    // QtWidgets expects single-point touch events, QtDeclarative does not.
+    // Until there is an API we solve this by looking at the window class type.
+    return m_window->inherits("QWidgetWindow");
+}
+
 - (void)touchesBeganWithEvent:(NSEvent *)event
 {
     const NSTimeInterval timestamp = [event timestamp];
-    const QList<QWindowSystemInterface::TouchPoint> points = QCocoaTouch::getCurrentTouchPointList(event, /*acceptSingleTouch= ### true or false?*/false);
+    const QList<QWindowSystemInterface::TouchPoint> points = QCocoaTouch::getCurrentTouchPointList(event, [self shouldSendSingleTouch]);
+    qCDebug(lcQpaTouch) << "touchesBeganWithEvent" << points;
     QWindowSystemInterface::handleTouchEvent(m_window, timestamp * 1000, touchDevice, points);
 }
 
 - (void)touchesMovedWithEvent:(NSEvent *)event
 {
     const NSTimeInterval timestamp = [event timestamp];
-    const QList<QWindowSystemInterface::TouchPoint> points = QCocoaTouch::getCurrentTouchPointList(event, /*acceptSingleTouch= ### true or false?*/false);
+    const QList<QWindowSystemInterface::TouchPoint> points = QCocoaTouch::getCurrentTouchPointList(event, [self shouldSendSingleTouch]);
+    qCDebug(lcQpaTouch) << "touchesMovedWithEvent" << points;
     QWindowSystemInterface::handleTouchEvent(m_window, timestamp * 1000, touchDevice, points);
 }
 
 - (void)touchesEndedWithEvent:(NSEvent *)event
 {
     const NSTimeInterval timestamp = [event timestamp];
-    const QList<QWindowSystemInterface::TouchPoint> points = QCocoaTouch::getCurrentTouchPointList(event, /*acceptSingleTouch= ### true or false?*/false);
+    const QList<QWindowSystemInterface::TouchPoint> points = QCocoaTouch::getCurrentTouchPointList(event, [self shouldSendSingleTouch]);
+    qCDebug(lcQpaTouch) << "touchesEndedWithEvent" << points;
     QWindowSystemInterface::handleTouchEvent(m_window, timestamp * 1000, touchDevice, points);
 }
 
 - (void)touchesCancelledWithEvent:(NSEvent *)event
 {
     const NSTimeInterval timestamp = [event timestamp];
-    const QList<QWindowSystemInterface::TouchPoint> points = QCocoaTouch::getCurrentTouchPointList(event, /*acceptSingleTouch= ### true or false?*/false);
+    const QList<QWindowSystemInterface::TouchPoint> points = QCocoaTouch::getCurrentTouchPointList(event, [self shouldSendSingleTouch]);
+    qCDebug(lcQpaTouch) << "touchesCancelledWithEvent" << points;
     QWindowSystemInterface::handleTouchEvent(m_window, timestamp * 1000, touchDevice, points);
 }
 
 #ifndef QT_NO_GESTURES
-//#define QT_COCOA_ENABLE_GESTURE_DEBUG
 - (void)magnifyWithEvent:(NSEvent *)event
 {
-#ifdef QT_COCOA_ENABLE_GESTURE_DEBUG
-    qDebug() << "magnifyWithEvent" << [event magnification];
-#endif
+    qCDebug(lcQpaGestures) << "magnifyWithEvent" << [event magnification];
     const NSTimeInterval timestamp = [event timestamp];
     QPointF windowPoint;
     QPointF screenPoint;
@@ -1149,9 +1231,7 @@ static QTabletEvent::TabletDevice wacomTabletDevice(NSEvent *theEvent)
 - (void)smartMagnifyWithEvent:(NSEvent *)event
 {
     static bool zoomIn = true;
-#ifdef QT_COCOA_ENABLE_GESTURE_DEBUG
-    qDebug() << "smartMagnifyWithEvent" << zoomIn;
-#endif
+    qCDebug(lcQpaGestures) << "smartMagnifyWithEvent" << zoomIn;
     const NSTimeInterval timestamp = [event timestamp];
     QPointF windowPoint;
     QPointF screenPoint;
@@ -1164,9 +1244,7 @@ static QTabletEvent::TabletDevice wacomTabletDevice(NSEvent *theEvent)
 
 - (void)rotateWithEvent:(NSEvent *)event
 {
-#ifdef QT_COCOA_ENABLE_GESTURE_DEBUG
-    qDebug() << "rotateWithEvent" << [event rotation];
-#endif
+    qCDebug(lcQpaGestures) << "rotateWithEvent" << [event rotation];
     const NSTimeInterval timestamp = [event timestamp];
     QPointF windowPoint;
     QPointF screenPoint;
@@ -1177,9 +1255,7 @@ static QTabletEvent::TabletDevice wacomTabletDevice(NSEvent *theEvent)
 
 - (void)swipeWithEvent:(NSEvent *)event
 {
-#ifdef QT_COCOA_ENABLE_GESTURE_DEBUG
-    qDebug() << "swipeWithEvent" << [event deltaX] << [event deltaY];
-#endif
+    qCDebug(lcQpaGestures) << "swipeWithEvent" << [event deltaX] << [event deltaY];
     const NSTimeInterval timestamp = [event timestamp];
     QPointF windowPoint;
     QPointF screenPoint;
@@ -1201,22 +1277,18 @@ static QTabletEvent::TabletDevice wacomTabletDevice(NSEvent *theEvent)
 
 - (void)beginGestureWithEvent:(NSEvent *)event
 {
-#ifdef QT_COCOA_ENABLE_GESTURE_DEBUG
-    qDebug() << "beginGestureWithEvent";
-#endif
     const NSTimeInterval timestamp = [event timestamp];
     QPointF windowPoint;
     QPointF screenPoint;
     [self convertFromScreen:[NSEvent mouseLocation] toWindowPoint:&windowPoint andScreenPoint:&screenPoint];
+    qCDebug(lcQpaGestures) << "beginGestureWithEvent @" << windowPoint;
     QWindowSystemInterface::handleGestureEvent(m_window, timestamp, Qt::BeginNativeGesture,
                                                windowPoint, screenPoint);
 }
 
 - (void)endGestureWithEvent:(NSEvent *)event
 {
-#ifdef QT_COCOA_ENABLE_GESTURE_DEBUG
-    qDebug() << "endGestureWithEvent";
-#endif
+    qCDebug(lcQpaGestures) << "endGestureWithEvent";
     const NSTimeInterval timestamp = [event timestamp];
     QPointF windowPoint;
     QPointF screenPoint;
@@ -1229,54 +1301,38 @@ static QTabletEvent::TabletDevice wacomTabletDevice(NSEvent *theEvent)
 #ifndef QT_NO_WHEELEVENT
 - (void)scrollWheel:(NSEvent *)theEvent
 {
-    if (m_window->flags() & Qt::WindowTransparentForInput)
+    if (m_window && (m_window->flags() & Qt::WindowTransparentForInput) )
         return [super scrollWheel:theEvent];
-    const EventRef carbonEvent = (EventRef)[theEvent eventRef];
-    const UInt32 carbonEventKind = carbonEvent ? ::GetEventKind(carbonEvent) : 0;
-    const bool scrollEvent = carbonEventKind == kEventMouseScroll;
 
     QPoint angleDelta;
-    if (scrollEvent) {
+    Qt::MouseEventSource source = Qt::MouseEventNotSynthesized;
+    if ([theEvent hasPreciseScrollingDeltas]) {
         // The mouse device contains pixel scroll wheel support (Mighty Mouse, Trackpad).
         // Since deviceDelta is delivered as pixels rather than degrees, we need to
         // convert from pixels to degrees in a sensible manner.
         // It looks like 1/4 degrees per pixel behaves most native.
         // (NB: Qt expects the unit for delta to be 8 per degree):
         const int pixelsToDegrees = 2; // 8 * 1/4
-
-#if MAC_OS_X_VERSION_MAX_ALLOWED >= MAC_OS_X_VERSION_10_7
-        if ([theEvent respondsToSelector:@selector(scrollingDeltaX)]) {
-            angleDelta.setX([theEvent scrollingDeltaX] * pixelsToDegrees);
-            angleDelta.setY([theEvent scrollingDeltaY] * pixelsToDegrees);
-        } else
-#endif
-        {
-            angleDelta.setX([theEvent deviceDeltaX] * pixelsToDegrees);
-            angleDelta.setY([theEvent deviceDeltaY] * pixelsToDegrees);
-        }
-
+        angleDelta.setX([theEvent scrollingDeltaX] * pixelsToDegrees);
+        angleDelta.setY([theEvent scrollingDeltaY] * pixelsToDegrees);
+        source = Qt::MouseEventSynthesizedBySystem;
     } else {
-        // carbonEventKind == kEventMouseWheelMoved
         // Remove acceleration, and use either -120 or 120 as delta:
         angleDelta.setX(qBound(-120, int([theEvent deltaX] * 10000), 120));
         angleDelta.setY(qBound(-120, int([theEvent deltaY] * 10000), 120));
     }
 
     QPoint pixelDelta;
-#if MAC_OS_X_VERSION_MAX_ALLOWED >= MAC_OS_X_VERSION_10_7
-    if ([theEvent respondsToSelector:@selector(scrollingDeltaX)]) {
-        if ([theEvent hasPreciseScrollingDeltas]) {
-            pixelDelta.setX([theEvent scrollingDeltaX]);
-            pixelDelta.setY([theEvent scrollingDeltaY]);
-        } else {
-            // docs: "In the case of !hasPreciseScrollingDeltas, multiply the delta with the line width."
-            // scrollingDeltaX seems to return a minimum value of 0.1 in this case, map that to two pixels.
-            const CGFloat lineWithEstimate = 20.0;
-            pixelDelta.setX([theEvent scrollingDeltaX] * lineWithEstimate);
-            pixelDelta.setY([theEvent scrollingDeltaY] * lineWithEstimate);
-        }
+    if ([theEvent hasPreciseScrollingDeltas]) {
+        pixelDelta.setX([theEvent scrollingDeltaX]);
+        pixelDelta.setY([theEvent scrollingDeltaY]);
+    } else {
+        // docs: "In the case of !hasPreciseScrollingDeltas, multiply the delta with the line width."
+        // scrollingDeltaX seems to return a minimum value of 0.1 in this case, map that to two pixels.
+        const CGFloat lineWithEstimate = 20.0;
+        pixelDelta.setX([theEvent scrollingDeltaX] * lineWithEstimate);
+        pixelDelta.setY([theEvent scrollingDeltaY] * lineWithEstimate);
     }
-#endif
 
     QPointF qt_windowPoint;
     QPointF qt_screenPoint;
@@ -1284,48 +1340,41 @@ static QTabletEvent::TabletDevice wacomTabletDevice(NSEvent *theEvent)
     NSTimeInterval timestamp = [theEvent timestamp];
     ulong qt_timestamp = timestamp * 1000;
 
-#if MAC_OS_X_VERSION_MAX_ALLOWED >= MAC_OS_X_VERSION_10_7
-    if ([theEvent respondsToSelector:@selector(scrollingDeltaX)]) {
-        // Prevent keyboard modifier state from changing during scroll event streams.
-        // A two-finger trackpad flick generates a stream of scroll events. We want
-        // the keyboard modifier state to be the state at the beginning of the
-        // flick in order to avoid changing the interpretation of the events
-        // mid-stream. One example of this happening would be when pressing cmd
-        // after scrolling in Qt Creator: not taking the phase into account causes
-        // the end of the event stream to be interpreted as font size changes.
-        NSEventPhase momentumPhase = [theEvent momentumPhase];
-        if (momentumPhase == NSEventPhaseNone) {
-            currentWheelModifiers = [QNSView convertKeyModifiers:[theEvent modifierFlags]];
-        }
+    // Prevent keyboard modifier state from changing during scroll event streams.
+    // A two-finger trackpad flick generates a stream of scroll events. We want
+    // the keyboard modifier state to be the state at the beginning of the
+    // flick in order to avoid changing the interpretation of the events
+    // mid-stream. One example of this happening would be when pressing cmd
+    // after scrolling in Qt Creator: not taking the phase into account causes
+    // the end of the event stream to be interpreted as font size changes.
+    NSEventPhase momentumPhase = [theEvent momentumPhase];
+    if (momentumPhase == NSEventPhaseNone) {
+        currentWheelModifiers = [QNSView convertKeyModifiers:[theEvent modifierFlags]];
+    }
 
-        NSEventPhase phase = [theEvent phase];
-        Qt::ScrollPhase ph = Qt::ScrollUpdate;
+    NSEventPhase phase = [theEvent phase];
+    Qt::ScrollPhase ph = Qt::ScrollUpdate;
 #if MAC_OS_X_VERSION_MAX_ALLOWED >= MAC_OS_X_VERSION_10_8
-        if (QSysInfo::QSysInfo::MacintoshVersion >= QSysInfo::MV_10_8) {
-            // On 10.8 and above, MayBegin is likely to happen.  We treat it the same as an actual begin.
-            if (phase == NSEventPhaseMayBegin)
-                ph = Qt::ScrollBegin;
-        } else
-#endif
-        if (phase == NSEventPhaseBegan) {
-            // On 10.7, MayBegin will not happen, so Began is the actual beginning.
+    if (QSysInfo::QSysInfo::MacintoshVersion >= QSysInfo::MV_10_8) {
+        // On 10.8 and above, MayBegin is likely to happen.  We treat it the same as an actual begin.
+        if (phase == NSEventPhaseMayBegin) {
+            m_scrolling = true;
             ph = Qt::ScrollBegin;
         }
-        if (phase == NSEventPhaseEnded || phase == NSEventPhaseCancelled) {
-            ph = Qt::ScrollEnd;
-        }
-
-        QWindowSystemInterface::handleWheelEvent(m_window, qt_timestamp, qt_windowPoint, qt_screenPoint, pixelDelta, angleDelta, currentWheelModifiers, ph);
-
-        if (momentumPhase == NSEventPhaseEnded || momentumPhase == NSEventPhaseCancelled || momentumPhase == NSEventPhaseNone) {
-            currentWheelModifiers = Qt::NoModifier;
-        }
-    } else
-#endif
-    {
-        QWindowSystemInterface::handleWheelEvent(m_window, qt_timestamp, qt_windowPoint, qt_screenPoint, pixelDelta, angleDelta,
-                                                 [QNSView convertKeyModifiers:[theEvent modifierFlags]]);
     }
+#endif
+    if (phase == NSEventPhaseBegan) {
+        // If MayBegin did not happen, Began is the actual beginning.
+        if (!m_scrolling)
+            ph = Qt::ScrollBegin;
+        m_scrolling = true;
+    } else if (phase == NSEventPhaseEnded || phase == NSEventPhaseCancelled ||
+               momentumPhase == NSEventPhaseEnded || momentumPhase == NSEventPhaseCancelled) {
+        ph = Qt::ScrollEnd;
+        m_scrolling = false;
+    }
+
+    QWindowSystemInterface::handleWheelEvent(m_window, qt_timestamp, qt_windowPoint, qt_screenPoint, pixelDelta, angleDelta, currentWheelModifiers, ph, source);
 }
 #endif //QT_NO_WHEELEVENT
 
@@ -1383,18 +1432,26 @@ static QTabletEvent::TabletDevice wacomTabletDevice(NSEvent *theEvent)
     QString text;
     // ignore text for the U+F700-U+F8FF range. This is used by Cocoa when
     // delivering function keys (e.g. arrow keys, backspace, F1-F35, etc.)
-    if (ch.unicode() < 0xf700 || ch.unicode() > 0xf8ff)
+    if (!(modifiers & (Qt::ControlModifier | Qt::MetaModifier)) && (ch.unicode() < 0xf700 || ch.unicode() > 0xf8ff))
         text = QCFString::toQString(characters);
 
     QWindow *focusWindow = [self topLevelWindow];
 
     if (eventType == QEvent::KeyPress) {
 
-        if (m_composingText.isEmpty())
-            m_sendKeyEvent = !QWindowSystemInterface::tryHandleShortcutEvent(focusWindow, timestamp, keyCode, modifiers, text);
+        if (m_composingText.isEmpty()) {
+            QKeyEvent override(QEvent::ShortcutOverride, keyCode, modifiers,
+                nativeScanCode, nativeVirtualKey, nativeModifiers, text, [nsevent isARepeat], 1);
+            override.setTimestamp(timestamp);
+            m_sendKeyEvent = !QWindowSystemInterface::tryHandleShortcutOverrideEvent(focusWindow, &override);
+        }
 
         QObject *fo = QGuiApplication::focusObject();
         if (m_sendKeyEvent && fo) {
+            // if escape is pressed we don't want interpretKeyEvents to close a dialog. This will be done via QWindowSystemInterface
+            if (keyCode == Qt::Key_Escape)
+                m_platformWindow->m_ignoreWindowShouldClose = true;
+
             QInputMethodQueryEvent queryEvent(Qt::ImEnabled | Qt::ImHints);
             if (QCoreApplication::sendEvent(fo, &queryEvent)) {
                 bool imEnabled = queryEvent.value(Qt::ImEnabled).toBool();
@@ -1404,6 +1461,8 @@ static QTabletEvent::TabletDevice wacomTabletDevice(NSEvent *theEvent)
                     [self interpretKeyEvents:[NSArray arrayWithObject:nsevent]];
                 }
             }
+
+            m_platformWindow->m_ignoreWindowShouldClose = false;;
         }
         if (m_resendKeyEvent)
             m_sendKeyEvent = true;
@@ -1411,7 +1470,7 @@ static QTabletEvent::TabletDevice wacomTabletDevice(NSEvent *theEvent)
 
     if (m_sendKeyEvent && m_composingText.isEmpty())
         QWindowSystemInterface::handleExtendedKeyEvent(focusWindow, timestamp, QEvent::Type(eventType), keyCode, modifiers,
-                                                       nativeScanCode, nativeVirtualKey, nativeModifiers, text, [nsevent isARepeat]);
+                                                       nativeScanCode, nativeVirtualKey, nativeModifiers, text, [nsevent isARepeat], 1, false);
 
     m_sendKeyEvent = false;
     m_resendKeyEvent = false;
@@ -1419,14 +1478,14 @@ static QTabletEvent::TabletDevice wacomTabletDevice(NSEvent *theEvent)
 
 - (void)keyDown:(NSEvent *)nsevent
 {
-    if (m_window->flags() & Qt::WindowTransparentForInput)
+    if (m_window && (m_window->flags() & Qt::WindowTransparentForInput) )
         return [super keyDown:nsevent];
     [self handleKeyEvent:nsevent eventType:int(QEvent::KeyPress)];
 }
 
 - (void)keyUp:(NSEvent *)nsevent
 {
-    if (m_window->flags() & Qt::WindowTransparentForInput)
+    if (m_window && (m_window->flags() & Qt::WindowTransparentForInput) )
         return [super keyUp:nsevent];
     [self handleKeyEvent:nsevent eventType:int(QEvent::KeyRelease)];
 }
@@ -1785,6 +1844,63 @@ static QPoint mapWindowCoordinates(QWindow *source, QWindow *target, QPoint poin
     return NO;
 }
 
+- (BOOL)wantsPeriodicDraggingUpdates
+{
+    // From the documentation:
+    //
+    // "If the destination returns NO, these messages are sent only when the mouse moves
+    //  or a modifier flag changes. Otherwise the destination gets the default behavior,
+    //  where it receives periodic dragging-updated messages even if nothing changes."
+    //
+    // We do not want these constant drag update events while mouse is stationary,
+    // since we do all animations (autoscroll) with timers.
+    return NO;
+}
+
+- (void)updateCursorFromDragResponse:(QPlatformDragQtResponse)response drag:(QCocoaDrag *)drag
+{
+    const QPixmap pixmapCursor = drag->currentDrag()->dragCursor(response.acceptedAction());
+    NSCursor *nativeCursor = nil;
+
+    if (pixmapCursor.isNull()) {
+        switch (response.acceptedAction()) {
+            case Qt::CopyAction:
+                nativeCursor = [NSCursor dragCopyCursor];
+                break;
+            case Qt::LinkAction:
+                nativeCursor = [NSCursor dragLinkCursor];
+                break;
+            case Qt::IgnoreAction:
+                // Uncomment the next lines if forbiden cursor wanted on non droppable targets.
+                /*nativeCursor = [NSCursor operationNotAllowedCursor];
+                break;*/
+            case Qt::MoveAction:
+            default:
+                nativeCursor = [NSCursor arrowCursor];
+                break;
+        }
+    }
+    else {
+        NSImage *nsimage = qt_mac_create_nsimage(pixmapCursor);
+        nativeCursor = [[NSCursor alloc] initWithImage:nsimage hotSpot:NSZeroPoint];
+        [nsimage release];
+    }
+
+    // change the cursor
+    [nativeCursor set];
+
+    // Make sure the cursor is updated correctly if the mouse does not move and window is under cursor
+    // by creating a fake move event
+    const QPoint mousePos(QCursor::pos());
+    CGEventRef moveEvent(CGEventCreateMouseEvent(
+        NULL, kCGEventMouseMoved,
+        CGPointMake(mousePos.x(), mousePos.y()),
+        kCGMouseButtonLeft // ignored
+    ));
+    CGEventPost(kCGHIDEventTap, moveEvent);
+    CFRelease(moveEvent);
+}
+
 - (NSDragOperation)draggingEntered:(id <NSDraggingInfo>)sender
 {
     return [self handleDrag : sender];
@@ -1803,14 +1919,18 @@ static QPoint mapWindowCoordinates(QWindow *source, QWindow *target, QPoint poin
     Qt::DropActions qtAllowed = qt_mac_mapNSDragOperations([sender draggingSourceOperationMask]);
 
     QWindow *target = findEventTargetWindow(m_window);
+    if (!target)
+        return NSDragOperationNone;
 
     // update these so selecting move/copy/link works
     QGuiApplicationPrivate::modifier_buttons = [QNSView convertKeyModifiers: [[NSApp currentEvent] modifierFlags]];
 
     QPlatformDragQtResponse response(false, Qt::IgnoreAction, QRect());
-    if ([sender draggingSource] != nil) {
-        QCocoaDrag* nativeDrag = QCocoaIntegration::instance()->drag();
+    QCocoaDrag* nativeDrag = QCocoaIntegration::instance()->drag();
+    if (nativeDrag->currentDrag()) {
+        // The drag was started from within the application
         response = QWindowSystemInterface::handleDrag(target, nativeDrag->platformDropData(), mapWindowCoordinates(m_window, target, qt_windowPoint), qtAllowed);
+        [self updateCursorFromDragResponse:response drag:nativeDrag];
     } else {
         QCocoaDropData mimeData([sender draggingPasteboard]);
         response = QWindowSystemInterface::handleDrag(target, &mimeData, mapWindowCoordinates(m_window, target, qt_windowPoint), qtAllowed);
@@ -1822,6 +1942,8 @@ static QPoint mapWindowCoordinates(QWindow *source, QWindow *target, QPoint poin
 - (void)draggingExited:(id <NSDraggingInfo>)sender
 {
     QWindow *target = findEventTargetWindow(m_window);
+    if (!target)
+        return;
 
     NSPoint windowPoint = [self convertPoint: [sender draggingLocation] fromView: nil];
     QPoint qt_windowPoint(windowPoint.x, windowPoint.y);
@@ -1834,14 +1956,17 @@ static QPoint mapWindowCoordinates(QWindow *source, QWindow *target, QPoint poin
 - (BOOL)performDragOperation:(id <NSDraggingInfo>)sender
 {
     QWindow *target = findEventTargetWindow(m_window);
+    if (!target)
+        return false;
 
     NSPoint windowPoint = [self convertPoint: [sender draggingLocation] fromView: nil];
     QPoint qt_windowPoint(windowPoint.x, windowPoint.y);
     Qt::DropActions qtAllowed = qt_mac_mapNSDragOperations([sender draggingSourceOperationMask]);
 
     QPlatformDropQtResponse response(false, Qt::IgnoreAction);
-    if ([sender draggingSource] != nil) {
-        QCocoaDrag* nativeDrag = QCocoaIntegration::instance()->drag();
+    QCocoaDrag* nativeDrag = QCocoaIntegration::instance()->drag();
+    if (nativeDrag->currentDrag()) {
+        // The drag was started from within the application
         response = QWindowSystemInterface::handleDrop(target, nativeDrag->platformDropData(), mapWindowCoordinates(m_window, target, qt_windowPoint), qtAllowed);
     } else {
         QCocoaDropData mimeData([sender draggingPasteboard]);
@@ -1859,6 +1984,8 @@ static QPoint mapWindowCoordinates(QWindow *source, QWindow *target, QPoint poin
     Q_UNUSED(img);
     Q_UNUSED(operation);
     QWindow *target = findEventTargetWindow(m_window);
+    if (!target)
+        return;
 
 // keep our state, and QGuiApplication state (buttons member) in-sync,
 // or future mouse events will be processed incorrectly
@@ -1868,7 +1995,7 @@ static QPoint mapWindowCoordinates(QWindow *source, QWindow *target, QPoint poin
     QPoint qtWindowPoint(windowPoint.x, windowPoint.y);
 
     NSWindow *window = [self window];
-    NSPoint screenPoint = [window convertBaseToScreen :point];
+    NSPoint screenPoint = [window convertRectToScreen:NSMakeRect(point.x, point.y, 0, 0)].origin;
     QPoint qtScreenPoint = QPoint(screenPoint.x, qt_mac_flipYCoordinate(screenPoint.y));
 
     QWindowSystemInterface::handleMouseEvent(target, mapWindowCoordinates(m_window, target, qtWindowPoint), qtScreenPoint, m_buttons);

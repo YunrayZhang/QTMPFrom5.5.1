@@ -1,7 +1,7 @@
 /****************************************************************************
 **
-** Copyright (C) 2013 Digia Plc and/or its subsidiary(-ies).
-** Contact: http://www.qt-project.org/legal
+** Copyright (C) 2015 The Qt Company Ltd.
+** Contact: http://www.qt.io/licensing/
 **
 ** This file is part of the examples of the Qt Toolkit.
 **
@@ -17,8 +17,8 @@
 **     notice, this list of conditions and the following disclaimer in
 **     the documentation and/or other materials provided with the
 **     distribution.
-**   * Neither the name of Digia Plc and its Subsidiary(-ies) nor the names
-**     of its contributors may be used to endorse or promote products derived
+**   * Neither the name of The Qt Company Ltd nor the names of its
+**     contributors may be used to endorse or promote products derived
 **     from this software without specific prior written permission.
 **
 **
@@ -95,14 +95,20 @@ void MainWindow::open()
             return;
         }
 
-        MdiChild *child = createMdiChild();
-        if (child->loadFile(fileName)) {
+        if (openFile(fileName))
             statusBar()->showMessage(tr("File loaded"), 2000);
-            child->show();
-        } else {
-            child->close();
-        }
     }
+}
+
+bool MainWindow::openFile(const QString &fileName)
+{
+    MdiChild *child = createMdiChild();
+    const bool succeeded = child->loadFile(fileName);
+    if (succeeded)
+        child->show();
+    else
+        child->close();
+    return succeeded;
 }
 
 void MainWindow::save()

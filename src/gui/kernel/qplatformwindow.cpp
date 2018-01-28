@@ -1,39 +1,31 @@
 /****************************************************************************
 **
-** Copyright (C) 2013 Digia Plc and/or its subsidiary(-ies).
-** Contact: http://www.qt-project.org/legal
+** Copyright (C) 2015 The Qt Company Ltd.
+** Contact: http://www.qt.io/licensing/
 **
 ** This file is part of the QtGui module of the Qt Toolkit.
 **
-** $QT_BEGIN_LICENSE:LGPL$
+** $QT_BEGIN_LICENSE:LGPL21$
 ** Commercial License Usage
 ** Licensees holding valid commercial Qt licenses may use this file in
 ** accordance with the commercial license agreement provided with the
 ** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and Digia.  For licensing terms and
-** conditions see http://qt.digia.com/licensing.  For further information
-** use the contact form at http://qt.digia.com/contact-us.
+** a written agreement between you and The Qt Company. For licensing terms
+** and conditions see http://www.qt.io/terms-conditions. For further
+** information use the contact form at http://www.qt.io/contact-us.
 **
 ** GNU Lesser General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 2.1 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU Lesser General Public License version 2.1 requirements
-** will be met: http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
+** General Public License version 2.1 or version 3 as published by the Free
+** Software Foundation and appearing in the file LICENSE.LGPLv21 and
+** LICENSE.LGPLv3 included in the packaging of this file. Please review the
+** following information to ensure the GNU Lesser General Public License
+** requirements will be met: https://www.gnu.org/licenses/lgpl.html and
+** http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
 **
-** In addition, as a special exception, Digia gives you certain additional
-** rights.  These rights are described in the Digia Qt LGPL Exception
+** As a special exception, The Qt Company gives you certain additional
+** rights. These rights are described in The Qt Company LGPL Exception
 ** version 1.1, included in the file LGPL_EXCEPTION.txt in this package.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3.0 as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU General Public License version 3.0 requirements will be
-** met: http://www.gnu.org/copyleft/gpl.html.
-**
 **
 ** $QT_END_LICENSE$
 **
@@ -87,11 +79,13 @@ QPlatformWindow *QPlatformWindow::parent() const
 }
 
 /*!
-    Returns the platform screen handle corresponding to this platform window.
+    Returns the platform screen handle corresponding to this platform window,
+    or null if the window is not associated with a screen.
 */
 QPlatformScreen *QPlatformWindow::screen() const
 {
-    return window()->screen()->handle();
+    QScreen *scr = window()->screen();
+    return scr ? scr->handle() : Q_NULLPTR;
 }
 
 /*!
@@ -461,7 +455,7 @@ bool QPlatformWindow::frameStrutEventsEnabled() const
 QString QPlatformWindow::formatWindowTitle(const QString &title, const QString &separator)
 {
     QString fullTitle = title;
-    if (QGuiApplicationPrivate::displayName) {
+    if (QGuiApplicationPrivate::displayName && !title.endsWith(*QGuiApplicationPrivate::displayName)) {
         // Append display name, if set.
         if (!fullTitle.isEmpty())
             fullTitle += separator;
@@ -471,6 +465,29 @@ QString QPlatformWindow::formatWindowTitle(const QString &title, const QString &
         fullTitle = QCoreApplication::applicationName();
     }
     return fullTitle;
+}
+
+/*!
+    Helper function for finding the new screen for \a newGeometry in response to
+    a geometry changed event. Returns the new screen if the window was moved to
+    another virtual sibling. If the screen changes, the platform plugin should call
+    QWindowSystemInterface::handleWindowScreenChanged().
+    \note: The current screen will always be returned for child windows since
+    they should never signal screen changes.
+
+    \since 5.4
+    \sa QWindowSystemInterface::handleWindowScreenChanged()
+*/
+QPlatformScreen *QPlatformWindow::screenForGeometry(const QRect &newGeometry) const
+{
+    QPlatformScreen *currentScreen = screen();
+    if (!parent() && currentScreen && !currentScreen->geometry().intersects(newGeometry)) {
+        Q_FOREACH (QPlatformScreen* screen, currentScreen->virtualSiblings()) {
+            if (screen->geometry().intersects(newGeometry))
+                return screen;
+        }
+    }
+    return currentScreen;
 }
 
 /*!
@@ -511,12 +528,14 @@ static inline const QScreen *effectiveScreen(const QWindow *window)
     if (!screen)
         return QGuiApplication::primaryScreen();
     const QList<QScreen *> siblings = screen->virtualSiblings();
+#ifndef QT_NO_CURSOR
     if (siblings.size() > 1) {
         const QPoint referencePoint = window->transientParent() ? window->transientParent()->geometry().center() : QCursor::pos();
         foreach (const QScreen *sibling, siblings)
             if (sibling->geometry().contains(referencePoint))
                 return sibling;
     }
+#endif
     return screen;
 }
 
@@ -575,6 +594,36 @@ QRect QPlatformWindow::initialGeometry(const QWindow *w,
         }
     }
     return rect;
+}
+
+/*!
+    Requests an QEvent::UpdateRequest event. The event will be
+    delivered to the QWindow.
+
+    QPlatformWindow subclasses can re-implement this function to
+    provide display refresh synchronized updates. The event
+    should be delivered using QWindowPrivate::deliverUpdateRequest()
+    to not get out of sync with the the internal state of QWindow.
+
+    The default implementation posts an UpdateRequest event to the
+    window after 5 ms. The additional time is there to give the event
+    loop a bit of idle time to gather system events.
+
+*/
+void QPlatformWindow::requestUpdate()
+{
+    static int timeout = -1;
+    if (timeout == -1) {
+        bool ok = false;
+        timeout = qEnvironmentVariableIntValue("QT_QPA_UPDATE_IDLE_TIME", &ok);
+        if (!ok)
+            timeout = 5;
+    }
+
+    QWindow *w = window();
+    QWindowPrivate *wp = (QWindowPrivate *) QObjectPrivate::get(w);
+    Q_ASSERT(wp->updateTimer == 0);
+    wp->updateTimer = w->startTimer(timeout, Qt::PreciseTimer);
 }
 
 /*!

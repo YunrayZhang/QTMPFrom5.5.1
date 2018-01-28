@@ -1,39 +1,31 @@
 /****************************************************************************
 **
 ** Copyright (C) 2013 BogDan Vatra <bogdan@kde.org>
-** Contact: http://www.qt-project.org/legal
+** Contact: http://www.qt.io/licensing/
 **
 ** This file is part of the plugins of the Qt Toolkit.
 **
-** $QT_BEGIN_LICENSE:LGPL$
+** $QT_BEGIN_LICENSE:LGPL21$
 ** Commercial License Usage
 ** Licensees holding valid commercial Qt licenses may use this file in
 ** accordance with the commercial license agreement provided with the
 ** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and Digia.  For licensing terms and
-** conditions see http://qt.digia.com/licensing.  For further information
-** use the contact form at http://qt.digia.com/contact-us.
+** a written agreement between you and The Qt Company. For licensing terms
+** and conditions see http://www.qt.io/terms-conditions. For further
+** information use the contact form at http://www.qt.io/contact-us.
 **
 ** GNU Lesser General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 2.1 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU Lesser General Public License version 2.1 requirements
-** will be met: http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
+** General Public License version 2.1 or version 3 as published by the Free
+** Software Foundation and appearing in the file LICENSE.LGPLv21 and
+** LICENSE.LGPLv3 included in the packaging of this file. Please review the
+** following information to ensure the GNU Lesser General Public License
+** requirements will be met: https://www.gnu.org/licenses/lgpl.html and
+** http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
 **
-** In addition, as a special exception, Digia gives you certain additional
-** rights.  These rights are described in the Digia Qt LGPL Exception
+** As a special exception, The Qt Company gives you certain additional
+** rights. These rights are described in The Qt Company LGPL Exception
 ** version 1.1, included in the file LGPL_EXCEPTION.txt in this package.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3.0 as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU General Public License version 3.0 requirements will be
-** met: http://www.gnu.org/copyleft/gpl.html.
-**
 **
 ** $QT_END_LICENSE$
 **
@@ -51,6 +43,8 @@ QT_BEGIN_NAMESPACE
 
 namespace QtAndroidDialogHelpers {
 static jclass g_messageDialogHelperClass = 0;
+
+static const char QtMessageHandlerHelperClassName[] = "org/qtproject/qt5/android/QtMessageDialogHelper";
 
 QAndroidPlatformMessageDialogHelper::QAndroidPlatformMessageDialogHelper()
     :m_buttonId(-1)
@@ -103,16 +97,31 @@ bool QAndroidPlatformMessageDialogHelper::show(Qt::WindowFlags windowFlags
     if (!str.isEmpty())
         m_javaMessageDialog.callMethod<void>("setDetailedText", "(Ljava/lang/String;)V", QJNIObjectPrivate::fromString(str).object());
 
-    for (int i = QPlatformDialogHelper::FirstButton; i < QPlatformDialogHelper::LastButton; i<<=1) {
-        if ( opt->standardButtons() & i ) {
-            const QString text = QGuiApplicationPrivate::platformTheme()->standardButtonText(i);
-            m_javaMessageDialog.callMethod<void>("addButton", "(ILjava/lang/String;)V", i, QJNIObjectPrivate::fromString(text).object());
-        }
+    // http://developer.android.com/design/building-blocks/dialogs.html
+    // dismissive action on the left, affirmative on the right
+    // There don't seem to be more fine-grained rules, but the OS X layout
+    // at least conforms to this one rule and makes the rest deterministic.
+    const int * currentLayout = buttonLayout(Qt::Horizontal, MacLayout);
+    while (*currentLayout != QPlatformDialogHelper::EOL) {
+        int role = (*currentLayout & ~QPlatformDialogHelper::Reverse);
+        addButtons(opt, static_cast<ButtonRole>(role));
+        ++currentLayout;
     }
 
     m_javaMessageDialog.callMethod<void>("show", "(J)V", jlong(static_cast<QObject*>(this)));
     m_shown = true;
     return true;
+}
+
+void QAndroidPlatformMessageDialogHelper::addButtons(QSharedPointer<QMessageDialogOptions> opt, ButtonRole role)
+{
+    for (int i = QPlatformDialogHelper::FirstButton; i < QPlatformDialogHelper::LastButton; i<<=1) {
+        StandardButton b = static_cast<StandardButton>(i);
+        if (buttonRole(b) == role && (opt->standardButtons() & i)) {
+            const QString text = QGuiApplicationPrivate::platformTheme()->standardButtonText(b);
+            m_javaMessageDialog.callMethod<void>("addButton", "(ILjava/lang/String;)V", i, QJNIObjectPrivate::fromString(text).object());
+        }
+    }
 }
 
 void QAndroidPlatformMessageDialogHelper::hide()
@@ -156,10 +165,10 @@ static JNINativeMethod methods[] = {
 
 bool registerNatives(JNIEnv *env)
 {
-    jclass clazz = QtAndroid::findClass("org.qtproject.qt5.android.QtMessageDialogHelper", env);
+    jclass clazz = QJNIEnvironmentPrivate::findClass(QtMessageHandlerHelperClassName, env);
     if (!clazz) {
         __android_log_print(ANDROID_LOG_FATAL, QtAndroid::qtTagText(), QtAndroid::classErrorMsgFmt()
-                            , "org/qtproject/qt5/android/QtMessageDialogHelper");
+                            , QtMessageHandlerHelperClassName);
         return false;
     }
     g_messageDialogHelperClass = static_cast<jclass>(env->NewGlobalRef(clazz));

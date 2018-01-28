@@ -1,8 +1,8 @@
 /****************************************************************************
 **
-** Copyright (C) 2013 Digia Plc and/or its subsidiary(-ies).
+** Copyright (C) 2015 The Qt Company Ltd.
 ** Copyright (C) 2012 Rick Stockton <rickstockton@reno-computerhelp.com>
-** Contact: http://www.qt-project.org/legal
+** Contact: http://www.qt.io/licensing/
 **
 ** This file is part of the examples of the Qt Toolkit.
 **
@@ -18,8 +18,8 @@
 **     notice, this list of conditions and the following disclaimer in
 **     the documentation and/or other materials provided with the
 **     distribution.
-**   * Neither the name of Digia Plc and its Subsidiary(-ies) nor the names
-**     of its contributors may be used to endorse or promote products derived
+**   * Neither the name of The Qt Company Ltd nor the names of its
+**     contributors may be used to endorse or promote products derived
 **     from this software without specific prior written permission.
 **
 **
@@ -41,10 +41,8 @@
 #ifndef BUTTONTESTER_H
 #define BUTTONTESTER_H
 
-#include <QtWidgets>
 #include <QTextEdit>
 #include <QString>
-#include <QDebug>
 #include <QMouseEvent>
 #include <QWheelEvent>
 
@@ -53,11 +51,11 @@ class ButtonTester : public QTextEdit
     Q_OBJECT
 
 protected:
-    void    mousePressEvent(QMouseEvent *event);
-    void    mouseReleaseEvent(QMouseEvent *event);
-    void    mouseDoubleClickEvent(QMouseEvent *event);
+    void    mousePressEvent(QMouseEvent *event) Q_DECL_OVERRIDE;
+    void    mouseReleaseEvent(QMouseEvent *event) Q_DECL_OVERRIDE;
+    void    mouseDoubleClickEvent(QMouseEvent *event) Q_DECL_OVERRIDE;
 #ifndef QT_NO_WHEELEVENT
-    void    wheelEvent(QWheelEvent * event);
+    void    wheelEvent(QWheelEvent * event) Q_DECL_OVERRIDE;
 #endif
     int     buttonByNumber(const Qt::MouseButton button);
     QString enumNameFromValue(const Qt::MouseButton button);

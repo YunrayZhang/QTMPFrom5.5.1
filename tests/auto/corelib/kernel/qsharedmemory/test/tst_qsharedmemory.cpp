@@ -1,39 +1,31 @@
 /****************************************************************************
 **
-** Copyright (C) 2013 Digia Plc and/or its subsidiary(-ies).
-** Contact: http://www.qt-project.org/legal
+** Copyright (C) 2015 The Qt Company Ltd.
+** Contact: http://www.qt.io/licensing/
 **
 ** This file is part of the test suite of the Qt Toolkit.
 **
-** $QT_BEGIN_LICENSE:LGPL$
+** $QT_BEGIN_LICENSE:LGPL21$
 ** Commercial License Usage
 ** Licensees holding valid commercial Qt licenses may use this file in
 ** accordance with the commercial license agreement provided with the
 ** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and Digia.  For licensing terms and
-** conditions see http://qt.digia.com/licensing.  For further information
-** use the contact form at http://qt.digia.com/contact-us.
+** a written agreement between you and The Qt Company. For licensing terms
+** and conditions see http://www.qt.io/terms-conditions. For further
+** information use the contact form at http://www.qt.io/contact-us.
 **
 ** GNU Lesser General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 2.1 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU Lesser General Public License version 2.1 requirements
-** will be met: http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
+** General Public License version 2.1 or version 3 as published by the Free
+** Software Foundation and appearing in the file LICENSE.LGPLv21 and
+** LICENSE.LGPLv3 included in the packaging of this file. Please review the
+** following information to ensure the GNU Lesser General Public License
+** requirements will be met: https://www.gnu.org/licenses/lgpl.html and
+** http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
 **
-** In addition, as a special exception, Digia gives you certain additional
-** rights.  These rights are described in the Digia Qt LGPL Exception
+** As a special exception, The Qt Company gives you certain additional
+** rights. These rights are described in The Qt Company LGPL Exception
 ** version 1.1, included in the file LGPL_EXCEPTION.txt in this package.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3.0 as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU General Public License version 3.0 requirements will be
-** met: http://www.gnu.org/copyleft/gpl.html.
-**
 **
 ** $QT_END_LICENSE$
 **
@@ -82,7 +74,7 @@ private slots:
     void removeWhileAttached();
 #endif
     void emptyMemory();
-#if !defined(Q_OS_WIN) && !defined(QT_NO_PROCESS)
+#if !defined(Q_OS_WIN)
     void readOnly();
 #endif
 
@@ -98,10 +90,8 @@ private slots:
     void simpleThreadedProducerConsumer();
 
     // with processes
-#ifndef QT_NO_PROCESS
     void simpleProcessProducerConsumer_data();
     void simpleProcessProducerConsumer();
-#endif
 
     // extreme cases
     void useTooMuchMemory();
@@ -114,7 +104,7 @@ private slots:
     void uniqueKey();
 
 protected:
-    QString helperBinary();
+    static QString helperBinary();
     int remove(const QString &key);
 
     QString rememberKey(const QString &key)
@@ -131,10 +121,14 @@ protected:
     QStringList keys;
     QList<QSharedMemory*> jail;
     QSharedMemory *existingSharedMemory;
+
+private:
+    const QString m_helperBinary;
 };
 
-tst_QSharedMemory::tst_QSharedMemory() :
-    existingSharedMemory(0)
+tst_QSharedMemory::tst_QSharedMemory()
+    : existingSharedMemory(0)
+    , m_helperBinary(tst_QSharedMemory::helperBinary())
 {
 }
 
@@ -144,7 +138,7 @@ tst_QSharedMemory::~tst_QSharedMemory()
 
 void tst_QSharedMemory::initTestCase()
 {
-    QVERIFY2(!helperBinary().isEmpty(), "Could not find helper binary");
+    QVERIFY2(!m_helperBinary.isEmpty(), "Could not find helper binary");
 }
 
 void tst_QSharedMemory::init()
@@ -177,8 +171,12 @@ void tst_QSharedMemory::cleanup()
 #ifndef Q_OS_WIN
 #include <private/qsharedmemory_p.h>
 #include <sys/types.h>
+#ifndef QT_POSIX_IPC
 #include <sys/ipc.h>
 #include <sys/shm.h>
+#else
+#include <sys/mman.h>
+#endif // QT_POSIX_IPC
 #include <errno.h>
 #endif
 
@@ -193,7 +191,10 @@ QString tst_QSharedMemory::helperBinary()
 
 int tst_QSharedMemory::remove(const QString &key)
 {
-#ifndef Q_OS_WIN
+#ifdef Q_OS_WIN
+    Q_UNUSED(key);
+    return 0;
+#else
     // On unix the shared memory might exists from a previously failed test
     // or segfault, remove it it does
     if (key.isEmpty())
@@ -206,6 +207,7 @@ int tst_QSharedMemory::remove(const QString &key)
         return -2;
     }
 
+#ifndef QT_POSIX_IPC
     int unix_key = ftok(fileName.toLatin1().constData(), 'Q');
     if (-1 == unix_key) {
         qDebug() << "ftok failed";
@@ -223,11 +225,15 @@ int tst_QSharedMemory::remove(const QString &key)
         qDebug() << "shmctl failed";
         return -5;
     }
-    return QFile::remove(fileName);
 #else
-    Q_UNUSED(key);
-    return 0;
-#endif
+    if (shm_unlink(QFile::encodeName(fileName).constData()) == -1) {
+        qDebug() << "shm_unlink failed";
+        return -5;
+    }
+#endif // QT_POSIX_IPC
+
+    return QFile::remove(fileName);
+#endif // Q_OS_WIN
 }
 
 /*!
@@ -449,16 +455,20 @@ void tst_QSharedMemory::emptyMemory()
     by writing to data and causing a segfault.
 */
 // This test opens a crash dialog on Windows.
-#if !defined(Q_OS_WIN) && !defined(QT_NO_PROCESS)
+#if !defined(Q_OS_WIN)
 void tst_QSharedMemory::readOnly()
 {
+#ifdef QT_NO_PROCESS
+    QSKIP("No qprocess support", SkipAll);
+#else
     rememberKey("readonly_segfault");
     // ### on windows disable the popup somehow
     QProcess p;
-    p.start(helperBinary(), QStringList("readonly_segfault"));
+    p.start(m_helperBinary, QStringList("readonly_segfault"));
     p.setProcessChannelMode(QProcess::ForwardedChannels);
     p.waitForFinished();
     QCOMPARE(p.error(), QProcess::Crashed);
+#endif
 }
 #endif
 
@@ -730,15 +740,16 @@ void tst_QSharedMemory::simpleThreadedProducerConsumer()
     }
 }
 
-#ifndef QT_NO_PROCESS
 void tst_QSharedMemory::simpleProcessProducerConsumer_data()
 {
+#ifndef QT_NO_PROCESS
     QTest::addColumn<int>("processes");
     int tries = 5;
     for (int i = 0; i < tries; ++i) {
         QTest::newRow("1 process") << 1;
         QTest::newRow("5 processes") << 5;
     }
+#endif
 }
 
 /*!
@@ -746,6 +757,9 @@ void tst_QSharedMemory::simpleProcessProducerConsumer_data()
  */
 void tst_QSharedMemory::simpleProcessProducerConsumer()
 {
+#ifdef QT_NO_PROCESS
+    QSKIP("No qprocess support", SkipAll);
+#else
     QFETCH(int, processes);
 
     QSKIP("This test is unstable: QTBUG-25655");
@@ -753,7 +767,7 @@ void tst_QSharedMemory::simpleProcessProducerConsumer()
     rememberKey("market");
 
     QProcess producer;
-    producer.start(helperBinary(), QStringList("producer"));
+    producer.start(m_helperBinary, QStringList("producer"));
     QVERIFY2(producer.waitForStarted(), "Could not start helper binary");
     QVERIFY2(producer.waitForReadyRead(), "Helper process failed to create shared memory segment: " +
              producer.readAllStandardError());
@@ -764,7 +778,7 @@ void tst_QSharedMemory::simpleProcessProducerConsumer()
     for (int i = 0; i < processes; ++i) {
         QProcess *p = new QProcess;
         p->setProcessChannelMode(QProcess::ForwardedChannels);
-        p->start(helperBinary(), consumerArguments);
+        p->start(m_helperBinary, consumerArguments);
         if (p->waitForStarted(2000))
             consumers.append(p);
         else
@@ -789,8 +803,8 @@ void tst_QSharedMemory::simpleProcessProducerConsumer()
     producer.write("", 1);
     producer.waitForBytesWritten();
     QVERIFY(producer.waitForFinished(5000));
-}
 #endif
+}
 
 void tst_QSharedMemory::uniqueKey_data()
 {

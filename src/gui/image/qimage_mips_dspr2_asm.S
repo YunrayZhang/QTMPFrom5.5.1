@@ -1,39 +1,31 @@
 /****************************************************************************
 **
 ** Copyright (C) 2013 Imagination Technologies Limited, www.imgtec.com
-** Contact: http://www.qt-project.org/legal
+** Contact: http://www.qt.io/licensing/
 **
 ** This file is part of the QtGui module of the Qt Toolkit.
 **
-** $QT_BEGIN_LICENSE:LGPL$
+** $QT_BEGIN_LICENSE:LGPL21$
 ** Commercial License Usage
 ** Licensees holding valid commercial Qt licenses may use this file in
 ** accordance with the commercial license agreement provided with the
 ** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and Digia.  For licensing terms and
-** conditions see http://qt.digia.com/licensing.  For further information
-** use the contact form at http://qt.digia.com/contact-us.
+** a written agreement between you and The Qt Company. For licensing terms
+** and conditions see http://www.qt.io/terms-conditions. For further
+** information use the contact form at http://www.qt.io/contact-us.
 **
 ** GNU Lesser General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 2.1 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU Lesser General Public License version 2.1 requirements
-** will be met: http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
+** General Public License version 2.1 or version 3 as published by the Free
+** Software Foundation and appearing in the file LICENSE.LGPLv21 and
+** LICENSE.LGPLv3 included in the packaging of this file. Please review the
+** following information to ensure the GNU Lesser General Public License
+** requirements will be met: https://www.gnu.org/licenses/lgpl.html and
+** http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
 **
-** In addition, as a special exception, Digia gives you certain additional
-** rights.  These rights are described in the Digia Qt LGPL Exception
+** As a special exception, The Qt Company gives you certain additional
+** rights. These rights are described in The Qt Company LGPL Exception
 ** version 1.1, included in the file LGPL_EXCEPTION.txt in this package.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3.0 as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU General Public License version 3.0 requirements will be
-** met: http://www.gnu.org/copyleft/gpl.html.
-**
 **
 ** $QT_END_LICENSE$
 **
@@ -205,3 +197,95 @@ LEAF_MIPS_DSPR2(premultiply_argb_inplace_mips_asm)
 
 END(premultiply_argb_inplace_mips_asm)
 
+
+LEAF_MIPS_DSPR2(qt_convert_rgb888_to_rgb32_mips_dspr2_asm)
+/*
+ * Parameters:
+ *   a0 - dst *a8r8g8b8
+ *   a1 - src *r8g8b8
+ *   a2 - len
+ *
+ * R G B r  g b R G  B r g b  R G B r  g b . . .  -- input
+ * -------  -------  -------  -------  -------
+ * _ R G B  _ r g b  _ R G B  _ r g b  _ R G . .  -- output
+ *
+ * Register usage:
+ *   a2 - tail (len % 4) == (len & 0x3)
+ *   t0 - batches (len / 4) == (len >> 2)
+ *   t1-t7, s1-s3 - temporary
+ */
+
+    srl   t0, a2, 2     /* batches = len / 4 */
+    andi  a2, a2, 0x3   /* tail = len % 4 */
+
+    beqz  t0, 5f        /* if !batches: tail */
+     lui  t7, 0xff00    /* [FF 00 00 00] */
+    SAVE_REGS_ON_STACK 8, s1, s2, s3, s0, v0, v1
+
+1:  pref    4, 0 (a1)   /* hint: read-streamed */
+    pref    5, 0 (a0)   /* hint: prepare-write */
+    addiu  t0, t0, -1   /* batches-- */
+
+    lbu    t1,  0 (a1)  /* [__ __ __ R1] */
+    lbu    t2,  1 (a1)  /* [__ __ __ G1] */
+    lbu    t3,  2 (a1)  /* [__ __ __ B1] */
+
+    lbu    t4,  3 (a1)  /* [__ __ __ r2] */
+    lbu    t5,  4 (a1)  /* [__ __ __ g2] */
+    lbu    t6,  5 (a1)  /* [__ __ __ b2] */
+
+    lbu    s1,  6 (a1)  /* [__ __ __ R3] */
+    lbu    s2,  7 (a1)  /* [__ __ __ G3] */
+    lbu    s3,  8 (a1)  /* [__ __ __ B3] */
+
+    lbu    s0,  9 (a1)  /* [__ __ __ r4] */
+    lbu    v0, 10 (a1)  /* [__ __ __ g4] */
+    lbu    v1, 11 (a1)  /* [__ __ __ b4] */
+
+    append t1, t2, 8    /* [__ __ R1 G1] */
+    append t4, t5, 8    /* [__ __ r2 g2] */
+    append s1, s2, 8    /* [__ __ R3 G3] */
+    append s0, v0, 8    /* [__ __ r4 g4] */
+    append t1, t3, 8    /* [__ R1 G1 B1] */
+    append t4, t6, 8    /* [__ r2 g2 b2] */
+    append s1, s3, 8    /* [__ R3 G4 B3] */
+    append s0, v1, 8    /* [__ r4 g4 b4] */
+    or     t1, t1, t7   /* [FF R1 G1 B1] */
+    or     t4, t4, t7   /* [FF r2 g2 b2] */
+    or     s1, s1, t7   /* [FF R3 G3 B3] */
+    or     s0, s0, t7   /* [FF r4 g4 b4] */
+
+    sw     t1,  0 (a0)
+    sw     t4,  4 (a0)
+    sw     s1,  8 (a0)
+    sw     s0, 12 (a0)
+
+    addiu  a1, a1, 12   /* src += 4*3 */
+    bnez   t0, 1b       /* if batches: loop */
+     addiu a0, a0, 16   /* dst += 4 */
+
+    RESTORE_REGS_FROM_STACK 8, s1, s2, s3, s0, v0, v1
+
+    /* handle remaining "tail" (a2) items */
+5:  beqz   a2, 0f
+     lui   t0, 0xff00   /* [FF __ __ __] */
+
+1:  lbu    t1, 0 (a1)   /* [__ __ __ RR] */
+    lbu    t2, 1 (a1)   /* [__ __ __ GG] */
+    lbu    t3, 2 (a1)   /* [__ __ __ BB] */
+    sll    t1, t1, 16   /* [__ RR __ __] */
+    sll    t2, t2,  8   /* [__ __ GG __] */
+    or     t0, t0, t1   /* [FF RR __ __] */
+    or     t2, t2, t3   /* [__ __ GG BB] */
+    addi   a2, a2, -1   /* len--         */
+    or     t0, t0, t2   /* [FF RR GG BB] */
+    addiu  a1, a1,  3   /* src += 3      */
+    sw     t0, 0 (a0)
+    addiu  a0, a0,  4   /* dst++         */
+    bnez   a2, 1b       /* if tail: loop */
+     lui   t0, 0xff00   /* [FF __ __ __] */
+
+0:  jr ra
+     nop
+
+END(qt_convert_rgb888_to_rgb32_mips_dspr2_asm)

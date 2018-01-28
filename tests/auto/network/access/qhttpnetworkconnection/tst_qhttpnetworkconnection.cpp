@@ -1,39 +1,31 @@
 /****************************************************************************
 **
-** Copyright (C) 2013 Digia Plc and/or its subsidiary(-ies).
-** Contact: http://www.qt-project.org/legal
+** Copyright (C) 2015 The Qt Company Ltd.
+** Contact: http://www.qt.io/licensing/
 **
 ** This file is part of the test suite of the Qt Toolkit.
 **
-** $QT_BEGIN_LICENSE:LGPL$
+** $QT_BEGIN_LICENSE:LGPL21$
 ** Commercial License Usage
 ** Licensees holding valid commercial Qt licenses may use this file in
 ** accordance with the commercial license agreement provided with the
 ** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and Digia.  For licensing terms and
-** conditions see http://qt.digia.com/licensing.  For further information
-** use the contact form at http://qt.digia.com/contact-us.
+** a written agreement between you and The Qt Company. For licensing terms
+** and conditions see http://www.qt.io/terms-conditions. For further
+** information use the contact form at http://www.qt.io/contact-us.
 **
 ** GNU Lesser General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 2.1 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU Lesser General Public License version 2.1 requirements
-** will be met: http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
+** General Public License version 2.1 or version 3 as published by the Free
+** Software Foundation and appearing in the file LICENSE.LGPLv21 and
+** LICENSE.LGPLv3 included in the packaging of this file. Please review the
+** following information to ensure the GNU Lesser General Public License
+** requirements will be met: https://www.gnu.org/licenses/lgpl.html and
+** http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
 **
-** In addition, as a special exception, Digia gives you certain additional
-** rights.  These rights are described in the Digia Qt LGPL Exception
+** As a special exception, The Qt Company gives you certain additional
+** rights. These rights are described in The Qt Company LGPL Exception
 ** version 1.1, included in the file LGPL_EXCEPTION.txt in this package.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3.0 as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU General Public License version 3.0 requirements will be
-** met: http://www.gnu.org/copyleft/gpl.html.
-**
 **
 ** $QT_END_LICENSE$
 **
@@ -44,6 +36,7 @@
 #include "private/qhttpnetworkconnection_p.h"
 #include "private/qnoncontiguousbytedevice_p.h"
 #include <QAuthenticator>
+#include <QTcpServer>
 
 #include "../../../network-settings.h"
 
@@ -114,6 +107,8 @@ private Q_SLOTS:
 
     void getAndThenDeleteObject();
     void getAndThenDeleteObject_data();
+
+    void overlappingCloseAndWrite();
 };
 
 tst_QHttpNetworkConnection::tst_QHttpNetworkConnection()
@@ -1120,6 +1115,57 @@ void tst_QHttpNetworkConnection::getAndThenDeleteObject()
     }
 }
 
+class TestTcpServer : public QTcpServer
+{
+    Q_OBJECT
+public:
+    TestTcpServer() : errorCodeReports(0)
+    {
+        connect(this, &QTcpServer::newConnection, this, &TestTcpServer::onNewConnection);
+        QVERIFY(listen(QHostAddress::LocalHost));
+    }
+
+    int errorCodeReports;
+
+public slots:
+    void onNewConnection()
+    {
+        QTcpSocket *socket = nextPendingConnection();
+        if (!socket)
+            return;
+        // close socket instantly!
+        connect(socket, &QTcpSocket::readyRead, socket, &QTcpSocket::close);
+    }
+
+    void onReply(QNetworkReply::NetworkError code)
+    {
+        QCOMPARE(code, QNetworkReply::RemoteHostClosedError);
+        ++errorCodeReports;
+    }
+};
+
+void tst_QHttpNetworkConnection::overlappingCloseAndWrite()
+{
+    // server accepts connections, but closes the socket instantly
+    TestTcpServer server;
+    QNetworkAccessManager accessManager;
+
+    // ten requests are scheduled. All should result in an RemoteHostClosed...
+    QUrl url;
+    url.setScheme(QStringLiteral("http"));
+    url.setHost(server.serverAddress().toString());
+    url.setPort(server.serverPort());
+    for (int i = 0; i < 10; ++i) {
+        QNetworkRequest request(url);
+        QNetworkReply *reply = accessManager.get(request);
+        // Not using Qt5 connection syntax here because of overly baroque syntax to discern between
+        // different error() methods.
+        QObject::connect(reply, SIGNAL(error(QNetworkReply::NetworkError)),
+                         &server, SLOT(onReply(QNetworkReply::NetworkError)));
+    }
+
+    QTRY_COMPARE(server.errorCodeReports, 10);
+}
 
 
 QTEST_MAIN(tst_QHttpNetworkConnection)

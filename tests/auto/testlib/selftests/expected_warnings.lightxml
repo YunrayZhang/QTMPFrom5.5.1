@@ -1,5 +1,6 @@
 <Environment>
     <QtVersion>@INSERT_QT_VERSION_HERE@</QtVersion>
+    <QtBuild/>
     <QTestVersion>@INSERT_QT_VERSION_HERE@</QTestVersion>
 </Environment>
 <TestFunction name="initTestCase">
@@ -18,6 +19,12 @@
 </Message>
 <Message type="qdebug" file="" line="0">
     <Description><![CDATA[Debug]]></Description>
+</Message>
+<Message type="qinfo" file="" line="0">
+    <Description><![CDATA[Info]]></Description>
+</Message>
+<Message type="qinfo" file="" line="0">
+    <Description><![CDATA[Info]]></Description>
 </Message>
 <Message type="qdebug" file="" line="0">
     <Description><![CDATA[Baba]]></Description>

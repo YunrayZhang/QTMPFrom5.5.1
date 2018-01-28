@@ -1,7 +1,7 @@
 /****************************************************************************
 **
 ** Copyright (C) 2011 Thiago Macieira <thiago@kde.org>
-** Contact: http://www.qt-project.org/legal
+** Contact: http://www.qt.io/licensing/
 **
 ** This file is part of the QtCore module of the Qt Toolkit.
 **
@@ -17,8 +17,8 @@
 **     notice, this list of conditions and the following disclaimer in
 **     the documentation and/or other materials provided with the
 **     distribution.
-**   * Neither the name of Digia Plc and its Subsidiary(-ies) nor the names
-**     of its contributors may be used to endorse or promote products derived
+**   * Neither the name of The Qt Company Ltd nor the names of its
+**     contributors may be used to endorse or promote products derived
 **     from this software without specific prior written permission.
 **
 **
@@ -50,7 +50,7 @@ private Q_SLOTS:
     void api();
     void constVolatile();
     void exception();
-    void threadedException();
+    void catchExceptionAndRetry();
     void threadStressTest();
     void afterDestruction();
 };
@@ -142,7 +142,7 @@ void tst_QGlobalStatic::exception()
 
 QBasicAtomicInt exceptionControlVar = Q_BASIC_ATOMIC_INITIALIZER(1);
 Q_GLOBAL_STATIC_WITH_ARGS(ThrowingType, exceptionGS, (exceptionControlVar))
-void tst_QGlobalStatic::threadedException()
+void tst_QGlobalStatic::catchExceptionAndRetry()
 {
     if (exceptionControlVar.load() != 1)
         QSKIP("This test cannot be run more than once");

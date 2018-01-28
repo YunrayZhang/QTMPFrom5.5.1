@@ -1,39 +1,31 @@
 /****************************************************************************
 **
-** Copyright (C) 2013 Digia Plc and/or its subsidiary(-ies).
-** Contact: http://www.qt-project.org/legal
+** Copyright (C) 2015 The Qt Company Ltd.
+** Contact: http://www.qt.io/licensing/
 **
 ** This file is part of the plugins of the Qt Toolkit.
 **
-** $QT_BEGIN_LICENSE:LGPL$
+** $QT_BEGIN_LICENSE:LGPL21$
 ** Commercial License Usage
 ** Licensees holding valid commercial Qt licenses may use this file in
 ** accordance with the commercial license agreement provided with the
 ** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and Digia.  For licensing terms and
-** conditions see http://qt.digia.com/licensing.  For further information
-** use the contact form at http://qt.digia.com/contact-us.
+** a written agreement between you and The Qt Company. For licensing terms
+** and conditions see http://www.qt.io/terms-conditions. For further
+** information use the contact form at http://www.qt.io/contact-us.
 **
 ** GNU Lesser General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 2.1 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU Lesser General Public License version 2.1 requirements
-** will be met: http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
+** General Public License version 2.1 or version 3 as published by the Free
+** Software Foundation and appearing in the file LICENSE.LGPLv21 and
+** LICENSE.LGPLv3 included in the packaging of this file. Please review the
+** following information to ensure the GNU Lesser General Public License
+** requirements will be met: https://www.gnu.org/licenses/lgpl.html and
+** http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
 **
-** In addition, as a special exception, Digia gives you certain additional
-** rights.  These rights are described in the Digia Qt LGPL Exception
+** As a special exception, The Qt Company gives you certain additional
+** rights. These rights are described in The Qt Company LGPL Exception
 ** version 1.1, included in the file LGPL_EXCEPTION.txt in this package.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3.0 as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU General Public License version 3.0 requirements will be
-** met: http://www.gnu.org/copyleft/gpl.html.
-**
 **
 ** $QT_END_LICENSE$
 **
@@ -63,6 +55,26 @@ QT_BEGIN_NAMESPACE
 /*****************************************************************************
    QMacPasteboard code
 *****************************************************************************/
+
+class QMacMimeData : public QMimeData
+{
+public:
+    QVariant variantData(const QString &mime) { return retrieveData(mime, QVariant::Invalid); }
+private:
+    QMacMimeData();
+};
+
+QMacPasteboard::Promise::Promise(int itemId, QMacInternalPasteboardMime *c, QString m, QMacMimeData *md, int o, DataRequestType drt)
+    : itemId(itemId), offset(o), convertor(c), mime(m), dataRequestType(drt)
+{
+    // Request the data from the application immediately for eager requests.
+    if (dataRequestType == QMacPasteboard::EagerRequest) {
+        variantData = md->variantData(m);
+        mimeData = 0;
+    } else {
+        mimeData = md;
+    }
+}
 
 QMacPasteboard::QMacPasteboard(PasteboardRef p, uchar mt)
 {
@@ -103,6 +115,11 @@ QMacPasteboard::~QMacPasteboard()
     // commit all promises for paste after exit close
     for (int i = 0; i < promises.count(); ++i) {
         const Promise &promise = promises.at(i);
+        // At this point app teardown has started and control is somewhere in the Q[Core]Application
+        // destructor. Skip "lazy" promises where the application has not provided data;
+        // the application will generally not be in a state to provide it.
+        if (promise.dataRequestType == LazyRequest)
+            continue;
         QCFString flavor = QCFString(promise.convertor->flavorFor(promise.mime));
         NSInteger pbItemId = promise.itemId;
         promiseKeeper(paste, reinterpret_cast<PasteboardItemID>(pbItemId), flavor, this);
@@ -155,7 +172,17 @@ OSStatus QMacPasteboard::promiseKeeper(PasteboardRef paste, PasteboardItemID id,
            qPrintable(flavorAsQString), qPrintable(promise.convertor->convertorName()), promise.offset);
 #endif
 
-    QList<QByteArray> md = promise.convertor->convertFromMime(promise.mime, promise.data, flavorAsQString);
+    // Get the promise data. If this is a "lazy" promise call variantData()
+    // to request the data from the application.
+    QVariant promiseData;
+    if (promise.dataRequestType == LazyRequest) {
+        if (!promise.mimeData.isNull())
+            promiseData = promise.mimeData->variantData(promise.mime);
+    } else {
+        promiseData = promise.variantData;
+    }
+
+    QList<QByteArray> md = promise.convertor->convertFromMime(promise.mime, promiseData, flavorAsQString);
     if (md.size() <= promise.offset)
         return cantGetFlavorErr;
     const QByteArray &ba = md[promise.offset];
@@ -266,16 +293,8 @@ QMimeData
     return mime;
 }
 
-class QMacMimeData : public QMimeData
-{
-public:
-    QVariant variantData(const QString &mime) { return retrieveData(mime, QVariant::Invalid); }
-private:
-    QMacMimeData();
-};
-
 void
-QMacPasteboard::setMimeData(QMimeData *mime_src)
+QMacPasteboard::setMimeData(QMimeData *mime_src, DataRequestType dataRequestType)
 {
     if (!paste)
         return;
@@ -308,16 +327,21 @@ QMacPasteboard::setMimeData(QMimeData *mime_src)
                 // Hack: The Rtf handler converts incoming Rtf to Html. We do
                 // not want to convert outgoing Html to Rtf but instead keep
                 // posting it as Html. Skip the Rtf handler here.
-                if (c->convertorName() == QStringLiteral("Rtf"))
+                if (c->convertorName() == QLatin1String("Rtf"))
                     continue;
                 QString flavor(c->flavorFor(mimeType));
                 if (!flavor.isEmpty()) {
-                    QVariant mimeData = static_cast<QMacMimeData*>(mime_src)->variantData(mimeType);
+                    QMacMimeData *mimeData = static_cast<QMacMimeData*>(mime_src);
 
                     int numItems = c->count(mime_src);
                     for (int item = 0; item < numItems; ++item) {
                         const NSInteger itemID = item+1; //id starts at 1
-                        promises.append(QMacPasteboard::Promise(itemID, c, mimeType, mimeData, item));
+                        //QMacPasteboard::Promise promise = (dataRequestType == QMacPasteboard::EagerRequest) ?
+                        //    QMacPasteboard::Promise::eagerPromise(itemID, c, mimeType, mimeData, item) :
+                        //    QMacPasteboard::Promise::lazyPromise(itemID, c, mimeType, mimeData, item);
+
+                        QMacPasteboard::Promise promise(itemID, c, mimeType, mimeData, item, dataRequestType);
+                        promises.append(promise);
                         PasteboardPutItemFlavor(paste, reinterpret_cast<PasteboardItemID>(itemID), QCFString(flavor), 0, kPasteboardFlavorNoFlags);
 #ifdef DEBUG_PASTEBOARD
                         qDebug(" -  adding %d %s [%s] <%s> [%d]",

@@ -1,39 +1,31 @@
 /****************************************************************************
 **
-** Copyright (C) 2013 Digia Plc and/or its subsidiary(-ies).
-** Contact: http://www.qt-project.org/legal
+** Copyright (C) 2015 The Qt Company Ltd.
+** Contact: http://www.qt.io/licensing/
 **
 ** This file is part of the plugins of the Qt Toolkit.
 **
-** $QT_BEGIN_LICENSE:LGPL$
+** $QT_BEGIN_LICENSE:LGPL21$
 ** Commercial License Usage
 ** Licensees holding valid commercial Qt licenses may use this file in
 ** accordance with the commercial license agreement provided with the
 ** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and Digia.  For licensing terms and
-** conditions see http://qt.digia.com/licensing.  For further information
-** use the contact form at http://qt.digia.com/contact-us.
+** a written agreement between you and The Qt Company. For licensing terms
+** and conditions see http://www.qt.io/terms-conditions. For further
+** information use the contact form at http://www.qt.io/contact-us.
 **
 ** GNU Lesser General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 2.1 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU Lesser General Public License version 2.1 requirements
-** will be met: http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
+** General Public License version 2.1 or version 3 as published by the Free
+** Software Foundation and appearing in the file LICENSE.LGPLv21 and
+** LICENSE.LGPLv3 included in the packaging of this file. Please review the
+** following information to ensure the GNU Lesser General Public License
+** requirements will be met: https://www.gnu.org/licenses/lgpl.html and
+** http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
 **
-** In addition, as a special exception, Digia gives you certain additional
-** rights.  These rights are described in the Digia Qt LGPL Exception
+** As a special exception, The Qt Company gives you certain additional
+** rights. These rights are described in The Qt Company LGPL Exception
 ** version 1.1, included in the file LGPL_EXCEPTION.txt in this package.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3.0 as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU General Public License version 3.0 requirements will be
-** met: http://www.gnu.org/copyleft/gpl.html.
-**
 **
 ** $QT_END_LICENSE$
 **
@@ -213,22 +205,32 @@ static qt_mac_enum_mapper qt_mac_keyboard_symbols[] = {
 };
 
 static qt_mac_enum_mapper qt_mac_keyvkey_symbols[] = { //real scan codes
-    { 122, QT_MAC_MAP_ENUM(Qt::Key_F1) },
-    { 120, QT_MAC_MAP_ENUM(Qt::Key_F2) },
-    { 99,  QT_MAC_MAP_ENUM(Qt::Key_F3) },
-    { 118, QT_MAC_MAP_ENUM(Qt::Key_F4) },
-    { 96,  QT_MAC_MAP_ENUM(Qt::Key_F5) },
-    { 97,  QT_MAC_MAP_ENUM(Qt::Key_F6) },
-    { 98,  QT_MAC_MAP_ENUM(Qt::Key_F7) },
-    { 100, QT_MAC_MAP_ENUM(Qt::Key_F8) },
-    { 101, QT_MAC_MAP_ENUM(Qt::Key_F9) },
-    { 109, QT_MAC_MAP_ENUM(Qt::Key_F10) },
-    { 103, QT_MAC_MAP_ENUM(Qt::Key_F11) },
-    { 111, QT_MAC_MAP_ENUM(Qt::Key_F12) },
-    { 105, QT_MAC_MAP_ENUM(Qt::Key_F13) },
-    { 107, QT_MAC_MAP_ENUM(Qt::Key_F14) },
-    { 113, QT_MAC_MAP_ENUM(Qt::Key_F15) },
-    { 106, QT_MAC_MAP_ENUM(Qt::Key_F16) },
+    { kVK_F1, QT_MAC_MAP_ENUM(Qt::Key_F1) },
+    { kVK_F2, QT_MAC_MAP_ENUM(Qt::Key_F2) },
+    { kVK_F3, QT_MAC_MAP_ENUM(Qt::Key_F3) },
+    { kVK_F4, QT_MAC_MAP_ENUM(Qt::Key_F4) },
+    { kVK_F5, QT_MAC_MAP_ENUM(Qt::Key_F5) },
+    { kVK_F6, QT_MAC_MAP_ENUM(Qt::Key_F6) },
+    { kVK_F7, QT_MAC_MAP_ENUM(Qt::Key_F7) },
+    { kVK_F8, QT_MAC_MAP_ENUM(Qt::Key_F8) },
+    { kVK_F9, QT_MAC_MAP_ENUM(Qt::Key_F9) },
+    { kVK_F10, QT_MAC_MAP_ENUM(Qt::Key_F10) },
+    { kVK_F11, QT_MAC_MAP_ENUM(Qt::Key_F11) },
+    { kVK_F12, QT_MAC_MAP_ENUM(Qt::Key_F12) },
+    { kVK_F13, QT_MAC_MAP_ENUM(Qt::Key_F13) },
+    { kVK_F14, QT_MAC_MAP_ENUM(Qt::Key_F14) },
+    { kVK_F15, QT_MAC_MAP_ENUM(Qt::Key_F15) },
+    { kVK_F16, QT_MAC_MAP_ENUM(Qt::Key_F16) },
+    { kVK_Return, QT_MAC_MAP_ENUM(Qt::Key_Return) },
+    { kVK_Tab, QT_MAC_MAP_ENUM(Qt::Key_Tab) },
+    { kVK_Escape, QT_MAC_MAP_ENUM(Qt::Key_Escape) },
+    { kVK_Help, QT_MAC_MAP_ENUM(Qt::Key_Help) },
+    { kVK_UpArrow, QT_MAC_MAP_ENUM(Qt::Key_Up) },
+    { kVK_DownArrow, QT_MAC_MAP_ENUM(Qt::Key_Down) },
+    { kVK_LeftArrow, QT_MAC_MAP_ENUM(Qt::Key_Left) },
+    { kVK_RightArrow, QT_MAC_MAP_ENUM(Qt::Key_Right) },
+    { kVK_PageUp, QT_MAC_MAP_ENUM(Qt::Key_PageUp) },
+    { kVK_PageDown, QT_MAC_MAP_ENUM(Qt::Key_PageDown) },
     {   0, QT_MAC_MAP_ENUM(0) }
 };
 

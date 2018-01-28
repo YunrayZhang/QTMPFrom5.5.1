@@ -1,39 +1,31 @@
 /****************************************************************************
 **
-** Copyright (C) 2013 Digia Plc and/or its subsidiary(-ies).
-** Contact: http://www.qt-project.org/legal
+** Copyright (C) 2015 The Qt Company Ltd.
+** Contact: http://www.qt.io/licensing/
 **
 ** This file is part of the QtCore module of the Qt Toolkit.
 **
-** $QT_BEGIN_LICENSE:LGPL$
+** $QT_BEGIN_LICENSE:LGPL21$
 ** Commercial License Usage
 ** Licensees holding valid commercial Qt licenses may use this file in
 ** accordance with the commercial license agreement provided with the
 ** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and Digia.  For licensing terms and
-** conditions see http://qt.digia.com/licensing.  For further information
-** use the contact form at http://qt.digia.com/contact-us.
+** a written agreement between you and The Qt Company. For licensing terms
+** and conditions see http://www.qt.io/terms-conditions. For further
+** information use the contact form at http://www.qt.io/contact-us.
 **
 ** GNU Lesser General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 2.1 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU Lesser General Public License version 2.1 requirements
-** will be met: http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
+** General Public License version 2.1 or version 3 as published by the Free
+** Software Foundation and appearing in the file LICENSE.LGPLv21 and
+** LICENSE.LGPLv3 included in the packaging of this file. Please review the
+** following information to ensure the GNU Lesser General Public License
+** requirements will be met: https://www.gnu.org/licenses/lgpl.html and
+** http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
 **
-** In addition, as a special exception, Digia gives you certain additional
-** rights.  These rights are described in the Digia Qt LGPL Exception
+** As a special exception, The Qt Company gives you certain additional
+** rights. These rights are described in The Qt Company LGPL Exception
 ** version 1.1, included in the file LGPL_EXCEPTION.txt in this package.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3.0 as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU General Public License version 3.0 requirements will be
-** met: http://www.gnu.org/copyleft/gpl.html.
-**
 **
 ** $QT_END_LICENSE$
 **
@@ -42,6 +34,8 @@
 #define QT_NO_CAST_FROM_ASCII
 
 #include "qmimetypeparser_p.h"
+
+#ifndef QT_NO_MIMETYPE
 
 #include "qmimetype_p.h"
 #include "qmimemagicrulematcher_p.h"
@@ -159,8 +153,8 @@ QMimeTypeParserBase::ParseState QMimeTypeParserBase::nextState(ParseState curren
     return ParseError;
 }
 
-// Parse int number from an (attribute) string)
-static bool parseNumber(const QString &n, int *target, QString *errorMessage)
+// Parse int number from an (attribute) string
+bool QMimeTypeParserBase::parseNumber(const QString &n, int *target, QString *errorMessage)
 {
     bool ok;
     *target = n.toInt(&ok);
@@ -171,37 +165,14 @@ static bool parseNumber(const QString &n, int *target, QString *errorMessage)
     return true;
 }
 
-// Evaluate a magic match rule like
-//  <match value="must be converted with BinHex" type="string" offset="11"/>
-//  <match value="0x9501" type="big16" offset="0:64"/>
 #ifndef QT_NO_XMLSTREAMREADER
-static bool createMagicMatchRule(const QXmlStreamAttributes &atts,
-                                 QString *errorMessage, QMimeMagicRule *&rule)
+static QMimeMagicRule *createMagicMatchRule(const QXmlStreamAttributes &atts, QString *errorMessage)
 {
     const QString type = atts.value(QLatin1String(matchTypeAttributeC)).toString();
-    QMimeMagicRule::Type magicType = QMimeMagicRule::type(type.toLatin1());
-    if (magicType == QMimeMagicRule::Invalid) {
-        qWarning("%s: match type %s is not supported.", Q_FUNC_INFO, type.toUtf8().constData());
-        return true;
-    }
     const QString value = atts.value(QLatin1String(matchValueAttributeC)).toString();
-    if (value.isEmpty()) {
-        *errorMessage = QString::fromLatin1("Empty match value detected.");
-        return false;
-    }
-    // Parse for offset as "1" or "1:10"
-    int startPos, endPos;
-    const QString offsetS = atts.value(QLatin1String(matchOffsetAttributeC)).toString();
-    const int colonIndex = offsetS.indexOf(QLatin1Char(':'));
-    const QString startPosS = colonIndex == -1 ? offsetS : offsetS.mid(0, colonIndex);
-    const QString endPosS   = colonIndex == -1 ? offsetS : offsetS.mid(colonIndex + 1);
-    if (!parseNumber(startPosS, &startPos, errorMessage) || !parseNumber(endPosS, &endPos, errorMessage))
-        return false;
+    const QString offsets = atts.value(QLatin1String(matchOffsetAttributeC)).toString();
     const QString mask = atts.value(QLatin1String(matchMaskAttributeC)).toString();
-
-    rule = new QMimeMagicRule(magicType, value.toUtf8(), startPos, endPos, mask.toLatin1());
-
-    return true;
+    return new QMimeMagicRule(type, value.toUtf8(), offsets, mask.toLatin1(), errorMessage);
 }
 #endif
 
@@ -289,9 +260,10 @@ bool QMimeTypeParserBase::parse(QIODevice *dev, const QString &fileName, QString
             }
                 break;
             case ParseMagicMatchRule: {
-                QMimeMagicRule *rule = 0;
-                if (!createMagicMatchRule(atts, errorMessage, rule))
-                    return false;
+                QString magicErrorMessage;
+                QMimeMagicRule *rule = createMagicMatchRule(atts, &magicErrorMessage);
+                if (!rule->isValid())
+                    qWarning("QMimeDatabase: Error parsing %s\n%s", qPrintable(fileName), qPrintable(magicErrorMessage));
                 QList<QMimeMagicRule> *ruleList;
                 if (currentRules.isEmpty())
                     ruleList = &rules;
@@ -349,3 +321,5 @@ bool QMimeTypeParserBase::parse(QIODevice *dev, const QString &fileName, QString
 }
 
 QT_END_NAMESPACE
+
+#endif // QT_NO_MIMETYPE

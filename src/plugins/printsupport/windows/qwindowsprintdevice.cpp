@@ -1,39 +1,31 @@
 /****************************************************************************
 **
 ** Copyright (C) 2014 John Layt <jlayt@kde.org>
-** Contact: http://www.qt-project.org/legal
+** Contact: http://www.qt.io/licensing/
 **
 ** This file is part of the plugins of the Qt Toolkit.
 **
-** $QT_BEGIN_LICENSE:LGPL$
+** $QT_BEGIN_LICENSE:LGPL21$
 ** Commercial License Usage
 ** Licensees holding valid commercial Qt licenses may use this file in
 ** accordance with the commercial license agreement provided with the
 ** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and Digia.  For licensing terms and
-** conditions see http://qt.digia.com/licensing.  For further information
-** use the contact form at http://qt.digia.com/contact-us.
+** a written agreement between you and The Qt Company. For licensing terms
+** and conditions see http://www.qt.io/terms-conditions. For further
+** information use the contact form at http://www.qt.io/contact-us.
 **
 ** GNU Lesser General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 2.1 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU Lesser General Public License version 2.1 requirements
-** will be met: http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
+** General Public License version 2.1 or version 3 as published by the Free
+** Software Foundation and appearing in the file LICENSE.LGPLv21 and
+** LICENSE.LGPLv3 included in the packaging of this file. Please review the
+** following information to ensure the GNU Lesser General Public License
+** requirements will be met: https://www.gnu.org/licenses/lgpl.html and
+** http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
 **
-** In addition, as a special exception, Digia gives you certain additional
-** rights.  These rights are described in the Digia Qt LGPL Exception
+** As a special exception, The Qt Company gives you certain additional
+** rights. These rights are described in The Qt Company LGPL Exception
 ** version 1.1, included in the file LGPL_EXCEPTION.txt in this package.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3.0 as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU General Public License version 3.0 requirements will be
-** met: http://www.gnu.org/copyleft/gpl.html.
-**
 **
 ** $QT_END_LICENSE$
 **
@@ -50,6 +42,8 @@
 QT_BEGIN_NAMESPACE
 
 #ifndef QT_NO_PRINTER
+
+QT_WARNING_DISABLE_GCC("-Wsign-compare")
 
 extern qreal qt_pointMultiplier(QPageLayout::Unit unit);
 
@@ -119,26 +113,9 @@ QWindowsPrintDevice::QWindowsPrintDevice(const QString &id)
     }
 }
 
-QWindowsPrintDevice::QWindowsPrintDevice(const QWindowsPrintDevice &other)
-    : QPlatformPrintDevice(other)
-{
-    OpenPrinter((LPWSTR)other.m_id.utf16(), &m_hPrinter, NULL);
-}
-
 QWindowsPrintDevice::~QWindowsPrintDevice()
 {
     ClosePrinter(m_hPrinter);
-}
-
-QWindowsPrintDevice &QWindowsPrintDevice::operator=(const QWindowsPrintDevice &other)
-{
-    OpenPrinter((LPWSTR)other.m_id.utf16(), &m_hPrinter, NULL);
-    return *this;
-}
-
-bool QWindowsPrintDevice::operator==(const QWindowsPrintDevice &other) const
-{
-    return (m_id == other.m_id);
 }
 
 bool QWindowsPrintDevice::isValid() const
@@ -252,8 +229,20 @@ QMarginsF QWindowsPrintDevice::printableMargins(const QPageSize &pageSize,
     if (GetPrinter(m_hPrinter, 2, buffer.data(), needed, &needed)) {
         PPRINTER_INFO_2 info = reinterpret_cast<PPRINTER_INFO_2>(buffer.data());
         DEVMODE *devMode = info->pDevMode;
-        if (!devMode)
-            return margins;
+        bool separateDevMode = false;
+        if (!devMode) {
+            // GetPrinter() didn't include the DEVMODE. Get it a different way.
+            LONG result = DocumentProperties(NULL, m_hPrinter, (LPWSTR)m_id.utf16(),
+                                             NULL, NULL, 0);
+            devMode = (DEVMODE *)malloc(result);
+            separateDevMode = true;
+            result = DocumentProperties(NULL, m_hPrinter, (LPWSTR)m_id.utf16(),
+                                        devMode, NULL, DM_OUT_BUFFER);
+            if (result != IDOK) {
+                free(devMode);
+                return margins;
+            }
+        }
 
         HDC pDC = CreateDC(NULL, (LPWSTR)m_id.utf16(), NULL, devMode);
         if (pageSize.id() == QPageSize::Custom || pageSize.windowsId() <= 0 || pageSize.windowsId() > DMPAPER_LAST) {
@@ -279,7 +268,9 @@ QMarginsF QWindowsPrintDevice::printableMargins(const QPageSize &pageSize,
         const qreal rightMargin = physicalWidth - leftMargin - printableWidth;
         const qreal bottomMargin = physicalHeight - topMargin - printableHeight;
         margins = QMarginsF(leftMargin, topMargin, rightMargin, bottomMargin);
-        ReleaseDC(NULL, pDC);
+        if (separateDevMode)
+            free(devMode);
+        DeleteDC(pDC);
     }
     return margins;
 }
@@ -288,11 +279,11 @@ void QWindowsPrintDevice::loadResolutions() const
 {
     DWORD resCount = DeviceCapabilities((LPWSTR)m_id.utf16(), NULL, DC_ENUMRESOLUTIONS, NULL, NULL);
     if (int(resCount) > 0) {
-        QScopedArrayPointer<LONG> resolutions(new LONG[resCount*sizeof(LONG)]);
+        QScopedArrayPointer<LONG> resolutions(new LONG[resCount*2]);
         // Get the details and match the default paper size
         if (DeviceCapabilities((LPWSTR)m_id.utf16(), NULL, DC_ENUMRESOLUTIONS, (LPWSTR)resolutions.data(), NULL) == resCount) {
-            for (int i = 0; i < int(resCount); ++i)
-                m_resolutions.append(resolutions[i]);
+            for (int i = 0; i < int(resCount * 2); i += 2)
+                m_resolutions.append(resolutions[i+1]);
         }
     }
     m_haveResolutions = true;
@@ -386,6 +377,7 @@ void QWindowsPrintDevice::loadDuplexModes() const
     DWORD duplex = DeviceCapabilities((LPWSTR)m_id.utf16(), NULL, DC_DUPLEX, NULL, NULL);
     if (int(duplex) == 1) {
         // TODO Assume if duplex flag supports both modes
+        m_duplexModes.append(QPrint::DuplexAuto);
         m_duplexModes.append(QPrint::DuplexLongSide);
         m_duplexModes.append(QPrint::DuplexShortSide);
     }

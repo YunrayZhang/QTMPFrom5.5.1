@@ -1,39 +1,31 @@
 /****************************************************************************
 **
-** Copyright (C) 2013 Digia Plc and/or its subsidiary(-ies).
-** Contact: http://www.qt-project.org/legal
+** Copyright (C) 2015 The Qt Company Ltd.
+** Contact: http://www.qt.io/licensing/
 **
 ** This file is part of the qmake application of the Qt Toolkit.
 **
-** $QT_BEGIN_LICENSE:LGPL$
+** $QT_BEGIN_LICENSE:LGPL21$
 ** Commercial License Usage
 ** Licensees holding valid commercial Qt licenses may use this file in
 ** accordance with the commercial license agreement provided with the
 ** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and Digia.  For licensing terms and
-** conditions see http://qt.digia.com/licensing.  For further information
-** use the contact form at http://qt.digia.com/contact-us.
+** a written agreement between you and The Qt Company. For licensing terms
+** and conditions see http://www.qt.io/terms-conditions. For further
+** information use the contact form at http://www.qt.io/contact-us.
 **
 ** GNU Lesser General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 2.1 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU Lesser General Public License version 2.1 requirements
-** will be met: http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
+** General Public License version 2.1 or version 3 as published by the Free
+** Software Foundation and appearing in the file LICENSE.LGPLv21 and
+** LICENSE.LGPLv3 included in the packaging of this file. Please review the
+** following information to ensure the GNU Lesser General Public License
+** requirements will be met: https://www.gnu.org/licenses/lgpl.html and
+** http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
 **
-** In addition, as a special exception, Digia gives you certain additional
-** rights.  These rights are described in the Digia Qt LGPL Exception
+** As a special exception, The Qt Company gives you certain additional
+** rights. These rights are described in The Qt Company LGPL Exception
 ** version 1.1, included in the file LGPL_EXCEPTION.txt in this package.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3.0 as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU General Public License version 3.0 requirements will be
-** met: http://www.gnu.org/copyleft/gpl.html.
-**
 **
 ** $QT_END_LICENSE$
 **
@@ -222,12 +214,12 @@ static QString windowsErrorCode()
                   NULL);
     QString ret = QString::fromWCharArray(string);
     LocalFree((HLOCAL)string);
-    return ret;
+    return ret.trimmed();
 }
 #endif
 
-static QString
-quoteValue(const ProString &val)
+QString
+QMakeEvaluator::quoteValue(const ProString &val)
 {
     QString ret;
     ret.reserve(val.size());
@@ -370,7 +362,7 @@ QMakeEvaluator::writeFile(const QString &ctx, const QString &fn, QIODevice::Open
 {
     QString errStr;
     if (!m_vfs->writeFile(fn, mode, contents, &errStr)) {
-        evalError(fL1S("Cannot write %1file %2: %3.")
+        evalError(fL1S("Cannot write %1file %2: %3")
                   .arg(ctx, QDir::toNativeSeparators(fn), errStr));
         return ReturnFalse;
     }
@@ -437,8 +429,9 @@ QByteArray QMakeEvaluator::getCommandOutput(const QString &args) const
 
 void QMakeEvaluator::populateDeps(
         const ProStringList &deps, const ProString &prefix, const ProStringList &suffixes,
+        const ProString &priosfx,
         QHash<ProKey, QSet<ProKey> > &dependencies, ProValueMap &dependees,
-        ProStringList &rootSet) const
+        QMultiMap<int, ProString> &rootSet) const
 {
     foreach (const ProString &item, deps)
         if (!dependencies.contains(item.toKey())) {
@@ -447,13 +440,13 @@ void QMakeEvaluator::populateDeps(
             foreach (const ProString &suffix, suffixes)
                 depends += values(ProKey(prefix + item + suffix));
             if (depends.isEmpty()) {
-                rootSet << item;
+                rootSet.insert(first(ProKey(prefix + item + priosfx)).toInt(), item);
             } else {
                 foreach (const ProString &dep, depends) {
                     dset.insert(dep.toKey());
                     dependees[dep.toKey()] << item;
                 }
-                populateDeps(depends, prefix, suffixes, dependencies, dependees, rootSet);
+                populateDeps(depends, prefix, suffixes, priosfx, dependencies, dependees, rootSet);
             }
         }
 }
@@ -974,27 +967,31 @@ ProStringList QMakeEvaluator::evaluateBuiltinExpand(
         break;
     case E_SORT_DEPENDS:
     case E_RESOLVE_DEPENDS:
-        if (args.count() < 1 || args.count() > 3) {
-            evalError(fL1S("%1(var, [prefix, [suffixes]]) requires one to three arguments.")
+        if (args.count() < 1 || args.count() > 4) {
+            evalError(fL1S("%1(var, [prefix, [suffixes, [prio-suffix]]]) requires one to four arguments.")
                       .arg(func.toQString(m_tmp1)));
         } else {
             QHash<ProKey, QSet<ProKey> > dependencies;
             ProValueMap dependees;
-            ProStringList rootSet;
+            QMultiMap<int, ProString> rootSet;
             ProStringList orgList = values(args.at(0).toKey());
-            populateDeps(orgList, (args.count() < 2 ? ProString() : args.at(1)),
+            ProString prefix = args.count() < 2 ? ProString() : args.at(1);
+            ProString priosfx = args.count() < 4 ? ProString(".priority") : args.at(3);
+            populateDeps(orgList, prefix,
                          args.count() < 3 ? ProStringList(ProString(".depends"))
                                           : split_value_list(args.at(2).toQString(m_tmp2)),
-                         dependencies, dependees, rootSet);
-            for (int i = 0; i < rootSet.size(); ++i) {
-                const ProString &item = rootSet.at(i);
+                         priosfx, dependencies, dependees, rootSet);
+            while (!rootSet.isEmpty()) {
+                QMultiMap<int, ProString>::iterator it = rootSet.begin();
+                const ProString item = *it;
+                rootSet.erase(it);
                 if ((func_t == E_RESOLVE_DEPENDS) || orgList.contains(item))
                     ret.prepend(item);
                 foreach (const ProString &dep, dependees[item.toKey()]) {
                     QSet<ProKey> &dset = dependencies[dep.toKey()];
-                    dset.remove(rootSet.at(i).toKey()); // *Don't* use 'item' - rootSet may have changed!
+                    dset.remove(item.toKey());
                     if (dset.isEmpty())
-                        rootSet << dep;
+                        rootSet.insert(first(ProKey(prefix + dep + priosfx)).toInt(), dep);
                 }
             }
         }
@@ -1124,7 +1121,7 @@ QMakeEvaluator::VisitReturn QMakeEvaluator::evaluateBuiltinConditional(
     switch (func_t) {
     case T_DEFINED: {
         if (args.count() < 1 || args.count() > 2) {
-            evalError(fL1S("defined(function, [\"test\"|\"replace\"])"
+            evalError(fL1S("defined(function, [\"test\"|\"replace\"|\"var\"])"
                            " requires one or two arguments."));
             return ReturnFalse;
         }
@@ -1205,15 +1202,13 @@ QMakeEvaluator::VisitReturn QMakeEvaluator::evaluateBuiltinConditional(
             VisitReturn ret = ReturnFalse;
             ProFile *pro = m_parser->parsedProBlock(args.join(statics.field_sep),
                                                     m_current.pro->fileName(), m_current.line);
-            if (pro) {
-                if (m_cumulative || pro->isOk()) {
-                    m_locationStack.push(m_current);
-                    visitProBlock(pro, pro->tokPtr());
-                    ret = ReturnTrue; // This return value is not too useful, but that's qmake
-                    m_current = m_locationStack.pop();
-                }
-                pro->deref();
+            if (m_cumulative || pro->isOk()) {
+                m_locationStack.push(m_current);
+                visitProBlock(pro, pro->tokPtr());
+                ret = ReturnTrue; // This return value is not too useful, but that's qmake
+                m_current = m_locationStack.pop();
             }
+            pro->deref();
             return ret;
         }
     case T_IF: {
@@ -1587,7 +1582,7 @@ QMakeEvaluator::VisitReturn QMakeEvaluator::evaluateBuiltinConditional(
                                   GENERIC_READ, FILE_SHARE_READ,
                                   NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
         if (rHand == INVALID_HANDLE_VALUE) {
-            evalError(fL1S("Cannot open() reference file %1: %2.").arg(rfn, windowsErrorCode()));
+            evalError(fL1S("Cannot open reference file %1: %2").arg(rfn, windowsErrorCode()));
             return ReturnFalse;
         }
         FILETIME ft;
@@ -1597,7 +1592,7 @@ QMakeEvaluator::VisitReturn QMakeEvaluator::evaluateBuiltinConditional(
                                   GENERIC_WRITE, FILE_SHARE_READ,
                                   NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
         if (wHand == INVALID_HANDLE_VALUE) {
-            evalError(fL1S("Cannot open() %1: %2.").arg(tfn, windowsErrorCode()));
+            evalError(fL1S("Cannot open %1: %2").arg(tfn, windowsErrorCode()));
             return ReturnFalse;
         }
         SetFileTime(wHand, 0, 0, &ft);
@@ -1692,7 +1687,7 @@ QMakeEvaluator::VisitReturn QMakeEvaluator::evaluateBuiltinConditional(
                         if (mode == CacheAdd)
                             newval += diffval;
                         else
-                            removeEach(&newval, diffval);
+                            newval.removeEach(diffval);
                     }
                     if (oldval != newval) {
                         if (target != TargetStash || !m_stashfile.isEmpty()) {

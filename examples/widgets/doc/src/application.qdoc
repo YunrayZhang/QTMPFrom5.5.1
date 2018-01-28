@@ -1,7 +1,7 @@
 /****************************************************************************
 **
-** Copyright (C) 2013 Digia Plc and/or its subsidiary(-ies).
-** Contact: http://www.qt-project.org/legal
+** Copyright (C) 2015 The Qt Company Ltd.
+** Contact: http://www.qt.io/licensing/
 **
 ** This file is part of the documentation of the Qt Toolkit.
 **
@@ -10,15 +10,15 @@
 ** Licensees holding valid commercial Qt licenses may use this file in
 ** accordance with the commercial license agreement provided with the
 ** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and Digia.  For licensing terms and
-** conditions see http://qt.digia.com/licensing.  For further information
-** use the contact form at http://qt.digia.com/contact-us.
+** a written agreement between you and The Qt Company. For licensing terms
+** and conditions see http://www.qt.io/terms-conditions. For further
+** information use the contact form at http://www.qt.io/contact-us.
 **
 ** GNU Free Documentation License Usage
 ** Alternatively, this file may be used under the terms of the GNU Free
 ** Documentation License version 1.3 as published by the Free Software
 ** Foundation and appearing in the file included in the packaging of
-** this file.  Please review the following information to ensure
+** this file. Please review the following information to ensure
 ** the GNU Free Documentation License version 1.3 requirements
 ** will be met: http://www.gnu.org/copyleft/fdl.html.
 ** $QT_END_LICENSE$
@@ -75,12 +75,12 @@
 
     \snippet mainwindows/application/mainwindow.cpp 0
 
-    We start by including \c <QtGui>, a header file that contains the
-    definition of all classes in the Qt Core and Qt GUI
+    We start by including \c <QtWidgets>, a header file that contains the
+    definition of all classes in the Qt Core, Qt GUI and Qt Widgets
     modules. This saves us from the trouble of having to include
     every class individually. We also include \c mainwindow.h.
 
-    You might wonder why we don't include \c <QtGui> in \c
+    You might wonder why we don't include \c <QtWidgets> in \c
     mainwindow.h and be done with it. The reason is that including
     such a large header from another header file can rapidly degrade
     performances. Here, it wouldn't do any harm, but it's still
@@ -232,7 +232,7 @@
 
     Just before we create the \uicontrol{Help} menu, we call
     QMenuBar::addSeparator(). This has no effect for most widget
-    styles (e.g., Windows and Mac OS X styles), but for some
+    styles (e.g., Windows and OS X styles), but for some
     styles this makes sure that \uicontrol{Help} is pushed to the right
     side of the menu bar.
 
@@ -258,7 +258,7 @@
     load the user's preferences and other application settings. The
     QSettings class provides a high-level interface for storing
     settings permanently on disk. On Windows, it uses the (in)famous
-    Windows registry; on Mac OS X, it uses the native XML-based
+    Windows registry; on OS X, it uses the native XML-based
     CFPreferences API; on Unix/X11, it uses text files.
 
     The QSettings constructor takes arguments that identify your
@@ -310,7 +310,7 @@
 
     We start by opening the file in read-only mode. The QFile::Text
     flag indicates that the file is a text file, not a binary file.
-    On Unix and Mac OS X, this makes no difference, but on Windows,
+    On Unix and OS X, this makes no difference, but on Windows,
     it ensures that the "\\r\\n" end-of-line sequence is converted to
     "\\n" when reading.
 

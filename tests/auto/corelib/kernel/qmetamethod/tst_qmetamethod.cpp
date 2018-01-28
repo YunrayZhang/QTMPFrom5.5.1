@@ -1,39 +1,32 @@
 /****************************************************************************
 **
-** Copyright (C) 2013 Digia Plc and/or its subsidiary(-ies).
-** Contact: http://www.qt-project.org/legal
+** Copyright (C) 2015 The Qt Company Ltd.
+** Copyright (C) 2014 Olivier Goffart <ogoffart@woboq.com>
+** Contact: http://www.qt.io/licensing/
 **
 ** This file is part of the test suite of the Qt Toolkit.
 **
-** $QT_BEGIN_LICENSE:LGPL$
+** $QT_BEGIN_LICENSE:LGPL21$
 ** Commercial License Usage
 ** Licensees holding valid commercial Qt licenses may use this file in
 ** accordance with the commercial license agreement provided with the
 ** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and Digia.  For licensing terms and
-** conditions see http://qt.digia.com/licensing.  For further information
-** use the contact form at http://qt.digia.com/contact-us.
+** a written agreement between you and The Qt Company. For licensing terms
+** and conditions see http://www.qt.io/terms-conditions. For further
+** information use the contact form at http://www.qt.io/contact-us.
 **
 ** GNU Lesser General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 2.1 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU Lesser General Public License version 2.1 requirements
-** will be met: http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
+** General Public License version 2.1 or version 3 as published by the Free
+** Software Foundation and appearing in the file LICENSE.LGPLv21 and
+** LICENSE.LGPLv3 included in the packaging of this file. Please review the
+** following information to ensure the GNU Lesser General Public License
+** requirements will be met: https://www.gnu.org/licenses/lgpl.html and
+** http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
 **
-** In addition, as a special exception, Digia gives you certain additional
-** rights.  These rights are described in the Digia Qt LGPL Exception
+** As a special exception, The Qt Company gives you certain additional
+** rights. These rights are described in The Qt Company LGPL Exception
 ** version 1.1, included in the file LGPL_EXCEPTION.txt in this package.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3.0 as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU General Public License version 3.0 requirements will be
-** met: http://www.gnu.org/copyleft/gpl.html.
-**
 **
 ** $QT_END_LICENSE$
 **
@@ -58,6 +51,8 @@ private slots:
     void comparisonOperators();
 
     void fromSignal();
+
+    void gadget();
 };
 
 struct CustomType { };
@@ -734,6 +729,52 @@ void tst_QMetaMethod::fromSignal()
 
 #undef FROMSIGNAL_HELPER
 }
+
+class MyGadget {
+    Q_GADGET
+public:
+    QString m_value;
+    Q_INVOKABLE void setValue(const QString &value) { m_value = value; }
+    Q_INVOKABLE QString getValue() { return m_value; }
+};
+
+void tst_QMetaMethod::gadget()
+{
+    int idx;
+
+    idx = MyGadget::staticMetaObject.indexOfMethod("setValue(QString)");
+    QVERIFY(idx >= 0);
+    QMetaMethod setValueMethod = MyGadget::staticMetaObject.method(idx);
+    QVERIFY(setValueMethod.isValid());
+
+    idx = MyGadget::staticMetaObject.indexOfMethod("getValue()");
+    QVERIFY(idx >= 0);
+    QMetaMethod getValueMethod = MyGadget::staticMetaObject.method(idx);
+    QVERIFY(getValueMethod.isValid());
+
+    {
+        MyGadget gadget;
+        QString string;
+
+        QVERIFY(getValueMethod.invokeOnGadget(&gadget, Q_RETURN_ARG(QString, string)));
+        QCOMPARE(string, gadget.m_value);
+
+        QVERIFY(setValueMethod.invokeOnGadget(&gadget, Q_ARG(QString, QLatin1String("hello"))));
+        QCOMPARE(gadget.m_value, QLatin1String("hello"));
+
+        QVERIFY(getValueMethod.invokeOnGadget(&gadget, Q_RETURN_ARG(QString, string)));
+        QCOMPARE(string, gadget.m_value);
+    }
+
+    {
+        // Call with null should not crash
+        MyGadget *gadget = Q_NULLPTR;
+        QString string;
+        QVERIFY(!setValueMethod.invokeOnGadget(gadget, Q_ARG(QString, QLatin1String("hi"))));
+        QVERIFY(!getValueMethod.invokeOnGadget(gadget, Q_RETURN_ARG(QString, string)));
+    }
+}
+
 
 QTEST_MAIN(tst_QMetaMethod)
 #include "tst_qmetamethod.moc"

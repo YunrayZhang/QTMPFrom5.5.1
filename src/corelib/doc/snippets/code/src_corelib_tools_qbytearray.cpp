@@ -1,7 +1,7 @@
 /****************************************************************************
 **
-** Copyright (C) 2013 Digia Plc and/or its subsidiary(-ies).
-** Contact: http://www.qt-project.org/legal
+** Copyright (C) 2015 The Qt Company Ltd.
+** Contact: http://www.qt.io/licensing/
 **
 ** This file is part of the documentation of the Qt Toolkit.
 **
@@ -17,8 +17,8 @@
 **     notice, this list of conditions and the following disclaimer in
 **     the documentation and/or other materials provided with the
 **     distribution.
-**   * Neither the name of Digia Plc and its Subsidiary(-ies) nor the names
-**     of its contributors may be used to endorse or promote products derived
+**   * Neither the name of The Qt Company Ltd nor the names of its
+**     contributors may be used to endorse or promote products derived
 **     from this software without specific prior written permission.
 **
 **
@@ -286,16 +286,16 @@ QByteArray z = x.mid(5);        // z == "pineapples"
 
 
 //! [30]
-QByteArray x("Qt by DIGIA");
+QByteArray x("Qt by THE QT COMPANY");
 QByteArray y = x.toLower();
-// y == "qt by digia"
+// y == "qt by the qt company"
 //! [30]
 
 
 //! [31]
-QByteArray x("Qt by DIGIA");
+QByteArray x("Qt by THE QT COMPANY");
 QByteArray y = x.toUpper();
-// y == "QT BY DIGIA"
+// y == "QT BY THE QT COMPANY"
 //! [31]
 
 
@@ -354,10 +354,10 @@ text.toBase64();        // returns "UXQgaXMgZ3JlYXQh"
 
 //! [39bis]
 QByteArray text("<p>Hello?</p>");
-text.toBase64(QByteArray::Base64 | QByteArray::OmitTrailingEquals);      // returns "PHA+SGVsbG8/PC9wPg"
-text.toBase64(QByteArray::Base64);                                       // returns "PHA+SGVsbG8/PC9wPg=="
-text.toBase64(QByteArray::Base64Url);                                    // returns "PHA-SGVsbG8_PC9wPg=="
-text.toBase64(QByteArray::Base64Url | QByteArray::OmitTrailingEquals);   // returns "PHA-SGVsbG8_PC9wPg"
+text.toBase64(QByteArray::Base64Encoding | QByteArray::OmitTrailingEquals);      // returns "PHA+SGVsbG8/PC9wPg"
+text.toBase64(QByteArray::Base64Encoding);                                       // returns "PHA+SGVsbG8/PC9wPg=="
+text.toBase64(QByteArray::Base64UrlEncoding);                                    // returns "PHA-SGVsbG8_PC9wPg=="
+text.toBase64(QByteArray::Base64UrlEncoding | QByteArray::OmitTrailingEquals);   // returns "PHA-SGVsbG8_PC9wPg"
 //! [39bis]
 
 

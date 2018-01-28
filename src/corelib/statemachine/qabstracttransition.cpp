@@ -1,39 +1,31 @@
 /****************************************************************************
 **
-** Copyright (C) 2013 Digia Plc and/or its subsidiary(-ies).
-** Contact: http://www.qt-project.org/legal
+** Copyright (C) 2015 The Qt Company Ltd.
+** Contact: http://www.qt.io/licensing/
 **
 ** This file is part of the QtCore module of the Qt Toolkit.
 **
-** $QT_BEGIN_LICENSE:LGPL$
+** $QT_BEGIN_LICENSE:LGPL21$
 ** Commercial License Usage
 ** Licensees holding valid commercial Qt licenses may use this file in
 ** accordance with the commercial license agreement provided with the
 ** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and Digia.  For licensing terms and
-** conditions see http://qt.digia.com/licensing.  For further information
-** use the contact form at http://qt.digia.com/contact-us.
+** a written agreement between you and The Qt Company. For licensing terms
+** and conditions see http://www.qt.io/terms-conditions. For further
+** information use the contact form at http://www.qt.io/contact-us.
 **
 ** GNU Lesser General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 2.1 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU Lesser General Public License version 2.1 requirements
-** will be met: http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
+** General Public License version 2.1 or version 3 as published by the Free
+** Software Foundation and appearing in the file LICENSE.LGPLv21 and
+** LICENSE.LGPLv3 included in the packaging of this file. Please review the
+** following information to ensure the GNU Lesser General Public License
+** requirements will be met: https://www.gnu.org/licenses/lgpl.html and
+** http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
 **
-** In addition, as a special exception, Digia gives you certain additional
-** rights.  These rights are described in the Digia Qt LGPL Exception
+** As a special exception, The Qt Company gives you certain additional
+** rights. These rights are described in The Qt Company LGPL Exception
 ** version 1.1, included in the file LGPL_EXCEPTION.txt in this package.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3.0 as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU General Public License version 3.0 requirements will be
-** met: http://www.gnu.org/copyleft/gpl.html.
-**
 **
 ** $QT_END_LICENSE$
 **
@@ -109,7 +101,35 @@ QT_BEGIN_NAMESPACE
     parallel group state.
 */
 
+/*!
+    \property QAbstractTransition::transitionType
+
+    \brief indicates whether this transition is an internal transition, or an external transition.
+
+    Internal and external transitions behave the same, except for the case of a transition whose
+    source state is a compound state and whose target(s) is a descendant of the source. In such a
+    case, an internal transition will not exit and re-enter its source state, while an external one
+    will.
+
+    By default, the type is an external transition.
+*/
+
+/*!
+  \enum QAbstractTransition::TransitionType
+
+  This enum specifies the kind of transition. By default, the type is an external transition.
+
+  \value ExternalTransition Any state that is the source state of a transition (which is not a
+                            target-less transition) is left, and re-entered when necessary.
+  \value InternalTransition If the target state of a transition is a sub-state of a compound state,
+                            and that compound state is the source state, an internal transition will
+                            not leave the source state.
+
+  \sa QAbstractTransition::transitionType
+*/
+
 QAbstractTransitionPrivate::QAbstractTransitionPrivate()
+    : transitionType(QAbstractTransition::ExternalTransition)
 {
 }
 
@@ -201,10 +221,15 @@ QAbstractState *QAbstractTransition::targetState() const
 void QAbstractTransition::setTargetState(QAbstractState* target)
 {
     Q_D(QAbstractTransition);
+    if ((d->targetStates.size() == 1 && target == d->targetStates.at(0).data()) ||
+         (d->targetStates.isEmpty() && target == 0)) {
+        return;
+    }
     if (!target)
         d->targetStates.clear();
     else
         setTargetStates(QList<QAbstractState*>() << target);
+    emit targetStateChanged(QPrivateSignal());
 }
 
 /*!
@@ -229,18 +254,44 @@ QList<QAbstractState*> QAbstractTransition::targetStates() const
 void QAbstractTransition::setTargetStates(const QList<QAbstractState*> &targets)
 {
     Q_D(QAbstractTransition);
-
+    QList<QPointer<QAbstractState> > copy(d->targetStates);
+    bool sameList = true;
     for (int i = 0; i < targets.size(); ++i) {
         QAbstractState *target = targets.at(i);
         if (!target) {
             qWarning("QAbstractTransition::setTargetStates: target state(s) cannot be null");
             return;
+        } else {
+            sameList &= copy.removeOne(target);
         }
     }
+
+    sameList &= copy.isEmpty();
 
     d->targetStates.clear();
     for (int i = 0; i < targets.size(); ++i)
         d->targetStates.append(targets.at(i));
+
+    if (!sameList)
+        emit targetStatesChanged(QPrivateSignal());
+}
+
+/*!
+  Returns the type of the transition.
+*/
+QAbstractTransition::TransitionType QAbstractTransition::transitionType() const
+{
+    Q_D(const QAbstractTransition);
+    return d->transitionType;
+}
+
+/*!
+  Sets the type of the transition to \a type.
+*/
+void QAbstractTransition::setTransitionType(TransitionType type)
+{
+    Q_D(QAbstractTransition);
+    d->transitionType = type;
 }
 
 /*!
@@ -321,6 +372,24 @@ QList<QAbstractAnimation*> QAbstractTransition::animations() const
 
   This signal is emitted when the transition has been triggered (after
   onTransition() has been called).
+*/
+
+/*!
+  \fn QAbstractTransition::targetStateChanged()
+  \since 5.4
+
+  This signal is emitted when the targetState property is changed.
+
+  \sa QAbstractTransition::targetState
+*/
+
+/*!
+  \fn QAbstractTransition::targetStatesChanged()
+  \since 5.4
+
+  This signal is emitted when the targetStates property is changed.
+
+  \sa QAbstractTransition::targetStates
 */
 
 /*!

@@ -1,39 +1,31 @@
 /****************************************************************************
 **
-** Copyright (C) 2013 Digia Plc and/or its subsidiary(-ies).
-** Contact: http://www.qt-project.org/legal
+** Copyright (C) 2015 The Qt Company Ltd.
+** Contact: http://www.qt.io/licensing/
 **
 ** This file is part of the QtGui module of the Qt Toolkit.
 **
-** $QT_BEGIN_LICENSE:LGPL$
+** $QT_BEGIN_LICENSE:LGPL21$
 ** Commercial License Usage
 ** Licensees holding valid commercial Qt licenses may use this file in
 ** accordance with the commercial license agreement provided with the
 ** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and Digia.  For licensing terms and
-** conditions see http://qt.digia.com/licensing.  For further information
-** use the contact form at http://qt.digia.com/contact-us.
+** a written agreement between you and The Qt Company. For licensing terms
+** and conditions see http://www.qt.io/terms-conditions. For further
+** information use the contact form at http://www.qt.io/contact-us.
 **
 ** GNU Lesser General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 2.1 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU Lesser General Public License version 2.1 requirements
-** will be met: http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
+** General Public License version 2.1 or version 3 as published by the Free
+** Software Foundation and appearing in the file LICENSE.LGPLv21 and
+** LICENSE.LGPLv3 included in the packaging of this file. Please review the
+** following information to ensure the GNU Lesser General Public License
+** requirements will be met: https://www.gnu.org/licenses/lgpl.html and
+** http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
 **
-** In addition, as a special exception, Digia gives you certain additional
-** rights.  These rights are described in the Digia Qt LGPL Exception
+** As a special exception, The Qt Company gives you certain additional
+** rights. These rights are described in The Qt Company LGPL Exception
 ** version 1.1, included in the file LGPL_EXCEPTION.txt in this package.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3.0 as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU General Public License version 3.0 requirements will be
-** met: http://www.gnu.org/copyleft/gpl.html.
-**
 **
 ** $QT_END_LICENSE$
 **
@@ -65,7 +57,6 @@
 
 QT_BEGIN_NAMESPACE
 
-class QRawFontPrivate;
 class QCoreTextFontEngine : public QFontEngine
 {
 public:
@@ -73,46 +64,48 @@ public:
     QCoreTextFontEngine(CGFontRef font, const QFontDef &def);
     ~QCoreTextFontEngine();
 
-    virtual glyph_t glyphIndex(uint ucs4) const;
-    virtual bool stringToCMap(const QChar *str, int len, QGlyphLayout *glyphs, int *nglyphs, ShaperFlags flags) const;
-    virtual void recalcAdvances(QGlyphLayout *, ShaperFlags) const;
+    glyph_t glyphIndex(uint ucs4) const Q_DECL_OVERRIDE;
+    bool stringToCMap(const QChar *str, int len, QGlyphLayout *glyphs, int *nglyphs, ShaperFlags flags) const Q_DECL_OVERRIDE;
+    void recalcAdvances(QGlyphLayout *, ShaperFlags) const Q_DECL_OVERRIDE;
 
-    virtual glyph_metrics_t boundingBox(const QGlyphLayout &glyphs);
-    virtual glyph_metrics_t boundingBox(glyph_t glyph);
+    glyph_metrics_t boundingBox(const QGlyphLayout &glyphs) Q_DECL_OVERRIDE;
+    glyph_metrics_t boundingBox(glyph_t glyph) Q_DECL_OVERRIDE;
 
-    virtual QFixed ascent() const;
-    virtual QFixed descent() const;
-    virtual QFixed leading() const;
-    virtual QFixed xHeight() const;
-    virtual qreal maxCharWidth() const;
-    virtual QFixed averageCharWidth() const;
+    QFixed ascent() const Q_DECL_OVERRIDE;
+    QFixed descent() const Q_DECL_OVERRIDE;
+    QFixed leading() const Q_DECL_OVERRIDE;
+    QFixed xHeight() const Q_DECL_OVERRIDE;
+    qreal maxCharWidth() const Q_DECL_OVERRIDE;
+    QFixed averageCharWidth() const Q_DECL_OVERRIDE;
 
-    virtual void addGlyphsToPath(glyph_t *glyphs, QFixedPoint *positions, int numGlyphs,
-                                 QPainterPath *path, QTextItem::RenderFlags);
+    void addGlyphsToPath(glyph_t *glyphs, QFixedPoint *positions, int numGlyphs,
+                         QPainterPath *path, QTextItem::RenderFlags) Q_DECL_OVERRIDE;
 
-    virtual bool canRender(const QChar *string, int len) const;
+    bool canRender(const QChar *string, int len) const Q_DECL_OVERRIDE;
 
-    virtual int synthesized() const { return synthesisFlags; }
-    virtual bool supportsSubPixelPositions() const { return true; }
+    int synthesized() const Q_DECL_OVERRIDE { return synthesisFlags; }
+    bool supportsSubPixelPositions() const Q_DECL_OVERRIDE { return true; }
 
     void draw(CGContextRef ctx, qreal x, qreal y, const QTextItemInt &ti, int paintDeviceHeight);
 
-    virtual FaceId faceId() const;
-    virtual bool getSfntTableData(uint /*tag*/, uchar * /*buffer*/, uint * /*length*/) const;
-    virtual void getUnscaledGlyph(glyph_t glyph, QPainterPath *path, glyph_metrics_t *metrics);
-    virtual QImage alphaMapForGlyph(glyph_t, QFixed subPixelPosition);
-    virtual QImage alphaMapForGlyph(glyph_t glyph, QFixed subPixelPosition, const QTransform &t);
-    virtual QImage alphaRGBMapForGlyph(glyph_t, QFixed subPixelPosition, const QTransform &t);
-    glyph_metrics_t alphaMapBoundingBox(glyph_t glyph, QFixed, const QTransform &matrix, GlyphFormat);
-    virtual QImage bitmapForGlyph(glyph_t, QFixed subPixelPosition, const QTransform &t);
-    virtual qreal minRightBearing() const;
-    virtual qreal minLeftBearing() const;
-    virtual QFixed emSquareSize() const;
+    FaceId faceId() const Q_DECL_OVERRIDE;
+    bool getSfntTableData(uint /*tag*/, uchar * /*buffer*/, uint * /*length*/) const Q_DECL_OVERRIDE;
+    void getUnscaledGlyph(glyph_t glyph, QPainterPath *path, glyph_metrics_t *metrics) Q_DECL_OVERRIDE;
+    QImage alphaMapForGlyph(glyph_t, QFixed subPixelPosition) Q_DECL_OVERRIDE;
+    QImage alphaMapForGlyph(glyph_t glyph, QFixed subPixelPosition, const QTransform &t) Q_DECL_OVERRIDE;
+    QImage alphaRGBMapForGlyph(glyph_t, QFixed subPixelPosition, const QTransform &t) Q_DECL_OVERRIDE;
+    glyph_metrics_t alphaMapBoundingBox(glyph_t glyph, QFixed, const QTransform &matrix, GlyphFormat) Q_DECL_OVERRIDE;
+    QImage bitmapForGlyph(glyph_t, QFixed subPixelPosition, const QTransform &t) Q_DECL_OVERRIDE;
+    qreal minRightBearing() const Q_DECL_OVERRIDE;
+    qreal minLeftBearing() const Q_DECL_OVERRIDE;
+    QFixed emSquareSize() const Q_DECL_OVERRIDE;
 
-    bool supportsTransformation(const QTransform &transform) const;
+    bool supportsTransformation(const QTransform &transform) const Q_DECL_OVERRIDE;
 
-    virtual QFontEngine *cloneWithSize(qreal pixelSize) const;
-    virtual int glyphMargin(QFontEngine::GlyphFormat format) { Q_UNUSED(format); return 0; }
+    QFontEngine *cloneWithSize(qreal pixelSize) const Q_DECL_OVERRIDE;
+    int glyphMargin(QFontEngine::GlyphFormat format) Q_DECL_OVERRIDE { Q_UNUSED(format); return 0; }
+
+    QFontEngine::Properties properties() const Q_DECL_OVERRIDE;
 
     static bool supportsColorGlyphs()
     {
@@ -129,12 +122,12 @@ public:
 #endif
     }
 
+    static bool ct_getSfntTable(void *user_data, uint tag, uchar *buffer, uint *length);
+    static QFont::Weight qtWeightFromCFWeight(float value);
+
     static int antialiasingThreshold;
     static QFontEngine::GlyphFormat defaultGlyphFormat;
-
 private:
-    friend class QRawFontPrivate;
-
     void init();
     QImage imageForGlyph(glyph_t glyph, QFixed subPixelPosition, bool colorful, const QTransform &m);
     CTFontRef ctfont;
@@ -142,6 +135,7 @@ private:
     int synthesisFlags;
     CGAffineTransform transform;
     QFixed avgCharWidth;
+    QFontEngine::FaceId face_id;
 };
 
 CGAffineTransform qt_transform_from_fontdef(const QFontDef &fontDef);

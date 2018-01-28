@@ -1,39 +1,31 @@
 /****************************************************************************
 **
-** Copyright (C) 2013 Digia Plc and/or its subsidiary(-ies).
-** Contact: http://www.qt-project.org/legal
+** Copyright (C) 2015 The Qt Company Ltd.
+** Contact: http://www.qt.io/licensing/
 **
 ** This file is part of the QtWidgets module of the Qt Toolkit.
 **
-** $QT_BEGIN_LICENSE:LGPL$
+** $QT_BEGIN_LICENSE:LGPL21$
 ** Commercial License Usage
 ** Licensees holding valid commercial Qt licenses may use this file in
 ** accordance with the commercial license agreement provided with the
 ** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and Digia.  For licensing terms and
-** conditions see http://qt.digia.com/licensing.  For further information
-** use the contact form at http://qt.digia.com/contact-us.
+** a written agreement between you and The Qt Company. For licensing terms
+** and conditions see http://www.qt.io/terms-conditions. For further
+** information use the contact form at http://www.qt.io/contact-us.
 **
 ** GNU Lesser General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 2.1 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU Lesser General Public License version 2.1 requirements
-** will be met: http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
+** General Public License version 2.1 or version 3 as published by the Free
+** Software Foundation and appearing in the file LICENSE.LGPLv21 and
+** LICENSE.LGPLv3 included in the packaging of this file. Please review the
+** following information to ensure the GNU Lesser General Public License
+** requirements will be met: https://www.gnu.org/licenses/lgpl.html and
+** http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
 **
-** In addition, as a special exception, Digia gives you certain additional
-** rights.  These rights are described in the Digia Qt LGPL Exception
+** As a special exception, The Qt Company gives you certain additional
+** rights. These rights are described in The Qt Company LGPL Exception
 ** version 1.1, included in the file LGPL_EXCEPTION.txt in this package.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3.0 as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU General Public License version 3.0 requirements will be
-** met: http://www.gnu.org/copyleft/gpl.html.
-**
 **
 ** $QT_END_LICENSE$
 **
@@ -384,8 +376,9 @@ QSize QToolButton::minimumSizeHint() const
 
     The default is Qt::ToolButtonIconOnly.
 
-    To have the style of toolbuttons follow the system settings (as available
-    in GNOME and KDE desktop environments), set this property to Qt::ToolButtonFollowStyle.
+    To have the style of toolbuttons follow the system settings, set this property to Qt::ToolButtonFollowStyle.
+    On Unix, the user settings from the desktop environment will be used.
+    On other platforms, Qt::ToolButtonFollowStyle means icon only.
 
     QToolButton automatically connects this slot to the relevant
     signal in the QMainWindow in which is resides.
@@ -643,6 +636,9 @@ void QToolButton::setMenu(QMenu* menu)
 {
     Q_D(QToolButton);
 
+    if (d->menuAction == (menu ? menu->menuAction() : 0))
+        return;
+
     if (d->menuAction)
         removeAction(d->menuAction);
 
@@ -737,9 +733,9 @@ void QToolButtonPrivate::popupTimerDone()
         horizontal = false;
 #endif
     QPoint p;
-    QRect screen = QApplication::desktop()->availableGeometry(q);
+    const QRect rect = q->rect(); // Find screen via point in case of QGraphicsProxyWidget.
+    QRect screen = QApplication::desktop()->availableGeometry(q->mapToGlobal(rect.center()));
     QSize sh = ((QToolButton*)(QMenu*)actualMenu)->receivers(SIGNAL(aboutToShow()))? QSize() : actualMenu->sizeHint();
-    QRect rect = q->rect();
     if (horizontal) {
         if (q->isRightToLeft()) {
             if (q->mapToGlobal(QPoint(0, rect.bottom())).y() + sh.height() <= screen.height()) {
@@ -867,7 +863,7 @@ QToolButton::ToolButtonPopupMode QToolButton::popupMode() const
 
     The default is disabled (i.e. false).
 
-    This property is currently ignored on Mac OS X when using QMacStyle.
+    This property is currently ignored on OS X when using QMacStyle.
 */
 void QToolButton::setAutoRaise(bool enable)
 {
@@ -901,7 +897,12 @@ void QToolButton::setDefaultAction(QAction *action)
         return;
     if (!actions().contains(action))
         addAction(action);
-    setText(action->iconText());
+    QString buttonText = action->iconText();
+    // If iconText() is generated from text(), we need to escape any '&'s so they
+    // don't turn into shortcuts
+    if (QActionPrivate::get(action)->iconText.isEmpty())
+        buttonText.replace(QLatin1String("&"), QLatin1String("&&"));
+    setText(buttonText);
     setIcon(action->icon());
 #ifndef QT_NO_TOOLTIP
     setToolTip(action->toolTip());

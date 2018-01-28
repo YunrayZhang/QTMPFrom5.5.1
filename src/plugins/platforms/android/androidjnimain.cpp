@@ -1,76 +1,60 @@
 /****************************************************************************
 **
 ** Copyright (C) 2014 BogDan Vatra <bogdan@kde.org>
-** Copyright (C) 2013 Digia Plc and/or its subsidiary(-ies).
-** Contact: http://www.qt-project.org/legal
+** Copyright (C) 2015 The Qt Company Ltd.
+** Contact: http://www.qt.io/licensing/
 **
 ** This file is part of the plugins of the Qt Toolkit.
 **
-** $QT_BEGIN_LICENSE:LGPL$
+** $QT_BEGIN_LICENSE:LGPL21$
 ** Commercial License Usage
 ** Licensees holding valid commercial Qt licenses may use this file in
 ** accordance with the commercial license agreement provided with the
 ** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and Digia.  For licensing terms and
-** conditions see http://qt.digia.com/licensing.  For further information
-** use the contact form at http://qt.digia.com/contact-us.
+** a written agreement between you and The Qt Company. For licensing terms
+** and conditions see http://www.qt.io/terms-conditions. For further
+** information use the contact form at http://www.qt.io/contact-us.
 **
 ** GNU Lesser General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 2.1 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU Lesser General Public License version 2.1 requirements
-** will be met: http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
+** General Public License version 2.1 or version 3 as published by the Free
+** Software Foundation and appearing in the file LICENSE.LGPLv21 and
+** LICENSE.LGPLv3 included in the packaging of this file. Please review the
+** following information to ensure the GNU Lesser General Public License
+** requirements will be met: https://www.gnu.org/licenses/lgpl.html and
+** http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
 **
-** In addition, as a special exception, Digia gives you certain additional
-** rights.  These rights are described in the Digia Qt LGPL Exception
+** As a special exception, The Qt Company gives you certain additional
+** rights. These rights are described in The Qt Company LGPL Exception
 ** version 1.1, included in the file LGPL_EXCEPTION.txt in this package.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3.0 as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU General Public License version 3.0 requirements will be
-** met: http://www.gnu.org/copyleft/gpl.html.
-**
 **
 ** $QT_END_LICENSE$
 **
 ****************************************************************************/
 
-#include <QtGui/private/qguiapplication_p.h>
-
 #include <dlfcn.h>
 #include <pthread.h>
-#include <qcoreapplication.h>
-#include <qimage.h>
-#include <qpoint.h>
 #include <qplugin.h>
-#include <qsemaphore.h>
-#include <qmutex.h>
 #include <qdebug.h>
-#include <qglobal.h>
-#include <qobjectdefs.h>
-#include <QtCore/private/qjni_p.h>
-#include <stdlib.h>
 
 #include "androidjnimain.h"
 #include "androidjniaccessibility.h"
 #include "androidjniinput.h"
 #include "androidjniclipboard.h"
 #include "androidjnimenu.h"
+#include "androiddeadlockprotector.h"
 #include "qandroidplatformdialoghelpers.h"
 #include "qandroidplatformintegration.h"
-
-#include <qabstracteventdispatcher.h>
+#include "qandroidassetsfileenginehandler.h"
 
 #include <android/bitmap.h>
 #include <android/asset_manager_jni.h>
-#include "qandroidassetsfileenginehandler.h"
+#include "qandroideventdispatcher.h"
 #include <android/api-level.h>
+
 #include <QtCore/private/qjnihelpers_p.h>
+#include <QtCore/private/qjni_p.h>
+#include <QtGui/private/qguiapplication_p.h>
 
 #include <qpa/qwindowsysteminterface.h>
 
@@ -78,42 +62,40 @@ Q_IMPORT_PLUGIN(QAndroidPlatformIntegrationPlugin)
 
 QT_BEGIN_NAMESPACE
 
-static JavaVM *m_javaVM = NULL;
-static jclass m_applicationClass  = NULL;
-static jobject m_classLoaderObject = NULL;
-static jmethodID m_loadClassMethodID = NULL;
-static AAssetManager *m_assetManager = NULL;
-static jobject m_resourcesObj;
-static jobject m_activityObject = NULL;
-static jmethodID m_createSurfaceMethodID = 0;
-static jmethodID m_insertNativeViewMethodID = 0;
-static jmethodID m_setSurfaceGeometryMethodID = 0;
-static jmethodID m_destroySurfaceMethodID = 0;
+static JavaVM *m_javaVM = nullptr;
+static jclass m_applicationClass  = nullptr;
+static jobject m_classLoaderObject = nullptr;
+static jmethodID m_loadClassMethodID = nullptr;
+static AAssetManager *m_assetManager = nullptr;
+static jobject m_resourcesObj = nullptr;
+static jobject m_activityObject = nullptr;
+static jmethodID m_createSurfaceMethodID = nullptr;
+static jmethodID m_setSurfaceGeometryMethodID = nullptr;
+static jmethodID m_destroySurfaceMethodID = nullptr;
 
 static bool m_activityActive = true; // defaults to true because when the platform plugin is
                                      // initialized, QtActivity::onResume() has already been called
 
-static jclass m_bitmapClass  = 0;
-static jmethodID m_createBitmapMethodID = 0;
-static jobject m_ARGB_8888_BitmapConfigValue = 0;
-static jobject m_RGB_565_BitmapConfigValue = 0;
+static jclass m_bitmapClass  = nullptr;
+static jmethodID m_createBitmapMethodID = nullptr;
+static jobject m_ARGB_8888_BitmapConfigValue = nullptr;
+static jobject m_RGB_565_BitmapConfigValue = nullptr;
 
-jmethodID m_setFullScreenMethodID = 0;
 static bool m_statusBarShowing = true;
 
-static jclass m_bitmapDrawableClass = 0;
-static jmethodID m_bitmapDrawableConstructorMethodID = 0;
+static jclass m_bitmapDrawableClass = nullptr;
+static jmethodID m_bitmapDrawableConstructorMethodID = nullptr;
 
 extern "C" typedef int (*Main)(int, char **); //use the standard main method to start the application
-static Main m_main = NULL;
-static void *m_mainLibraryHnd = NULL;
+static Main m_main = nullptr;
+static void *m_mainLibraryHnd = nullptr;
 static QList<QByteArray> m_applicationParams;
 
 struct SurfaceData
 {
     ~SurfaceData() { delete surface; }
-    QJNIObjectPrivate *surface = 0;
-    AndroidSurfaceClient *client = 0;
+    QJNIObjectPrivate *surface = nullptr;
+    AndroidSurfaceClient *client = nullptr;
 };
 
 QHash<int, AndroidSurfaceClient *> m_surfaces;
@@ -121,11 +103,8 @@ QHash<int, AndroidSurfaceClient *> m_surfaces;
 static QMutex m_surfacesMutex;
 static int m_surfaceId = 1;
 
-static QSemaphore m_quitAppSemaphore;
-static QSemaphore m_pauseApplicationSemaphore;
-static QMutex m_pauseApplicationMutex;
 
-static QAndroidPlatformIntegration *m_androidPlatformIntegration = 0;
+static QAndroidPlatformIntegration *m_androidPlatformIntegration = nullptr;
 
 static int m_desktopWidthPixels  = 0;
 static int m_desktopHeightPixels = 0;
@@ -133,7 +112,7 @@ static double m_scaledDensity = 0;
 
 static volatile bool m_pauseApplication;
 
-static AndroidAssetsFileEngineHandler *m_androidAssetsFileEngineHandler = 0;
+static AndroidAssetsFileEngineHandler *m_androidAssetsFileEngineHandler = nullptr;
 
 
 
@@ -183,14 +162,6 @@ namespace QtAndroid
         return m_javaVM;
     }
 
-    jclass findClass(const QString &className, JNIEnv *env)
-    {
-        return static_cast<jclass>(env->CallObjectMethod(m_classLoaderObject,
-                                                         m_loadClassMethodID,
-                                                         env->NewString(reinterpret_cast<const jchar *>(className.constData()),
-                                                                        jsize(className.length()))));
-    }
-
     AAssetManager *assetManager()
     {
         return m_assetManager;
@@ -211,13 +182,7 @@ namespace QtAndroid
         if (m_statusBarShowing)
             return;
 
-        QtAndroid::AttachedJNIEnv env;
-        if (env.jniEnv == 0) {
-            qWarning("Failed to get JNI Environment.");
-            return;
-        }
-
-        env.jniEnv->CallStaticVoidMethod(m_applicationClass, m_setFullScreenMethodID, false);
+        QJNIObjectPrivate::callStaticMethod<void>(m_applicationClass, "setFullScreen", "(Z)V", false);
         m_statusBarShowing = true;
     }
 
@@ -226,13 +191,7 @@ namespace QtAndroid
         if (!m_statusBarShowing)
             return;
 
-        QtAndroid::AttachedJNIEnv env;
-        if (env.jniEnv == 0) {
-            qWarning("Failed to get JNI Environment.");
-            return;
-        }
-
-        env.jniEnv->CallStaticVoidMethod(m_applicationClass, m_setFullScreenMethodID, true);
+        QJNIObjectPrivate::callStaticMethod<void>(m_applicationClass, "setFullScreen", "(Z)V", true);
         m_statusBarShowing = false;
     }
 
@@ -365,33 +324,33 @@ namespace QtAndroid
 
     int insertNativeView(jobject view, const QRect &geometry)
     {
-        QJNIEnvironmentPrivate env;
-        if (!env)
-            return 0;
-
         m_surfacesMutex.lock();
         const int surfaceId = m_surfaceId++;
+        m_surfaces[surfaceId] = nullptr; // dummy
         m_surfacesMutex.unlock();
 
         jint x = 0, y = 0, w = -1, h = -1;
-        if (!geometry.isNull()) {
-            x = geometry.x();
-            y = geometry.y();
-            w = std::max(geometry.width(), 1);
-            h = std::max(geometry.height(), 1);
-        }
+        if (!geometry.isNull())
+            geometry.getRect(&x, &y, &w, &h);
 
-        env->CallStaticVoidMethod(m_applicationClass,
-                                  m_insertNativeViewMethodID,
-                                  surfaceId,
-                                  view,
-                                  x, y, w, h);
+        QJNIObjectPrivate::callStaticMethod<void>(m_applicationClass,
+                                                  "insertNativeView",
+                                                  "(ILandroid/view/View;IIII)V",
+                                                  surfaceId,
+                                                  view,
+                                                  x,
+                                                  y,
+                                                  qMax(w, 1),
+                                                  qMax(h, 1));
 
         return surfaceId;
     }
 
     void setSurfaceGeometry(int surfaceId, const QRect &geometry)
     {
+        if (surfaceId == -1)
+            return;
+
         QJNIEnvironmentPrivate env;
         if (!env)
             return;
@@ -411,6 +370,9 @@ namespace QtAndroid
 
     void destroySurface(int surfaceId)
     {
+        if (surfaceId == -1)
+            return;
+
         QMutexLocker lock(&m_surfacesMutex);
         const auto &it = m_surfaces.find(surfaceId);
         if (it != m_surfaces.end())
@@ -425,12 +387,40 @@ namespace QtAndroid
                                      surfaceId);
     }
 
+    void bringChildToFront(int surfaceId)
+    {
+        if (surfaceId == -1)
+            return;
+
+        QJNIObjectPrivate::callStaticMethod<void>(m_applicationClass,
+                                                  "bringChildToFront",
+                                                  "(I)V",
+                                                  surfaceId);
+    }
+
+    void bringChildToBack(int surfaceId)
+    {
+        if (surfaceId == -1)
+            return;
+
+        QJNIObjectPrivate::callStaticMethod<void>(m_applicationClass,
+                                                  "bringChildToBack",
+                                                  "(I)V",
+                                                  surfaceId);
+    }
+
+    bool blockEventLoopsWhenSuspended()
+    {
+        static bool block = qEnvironmentVariableIntValue("QT_BLOCK_EVENT_LOOPS_WHEN_SUSPENDED");
+        return block;
+    }
+
 } // namespace QtAndroid
 
 
 static jboolean startQtAndroidPlugin(JNIEnv* /*env*/, jobject /*object*//*, jobject applicationAssetManager*/)
 {
-    m_androidPlatformIntegration = 0;
+    m_androidPlatformIntegration = nullptr;
     m_androidAssetsFileEngineHandler = new AndroidAssetsFileEngineHandler();
     return true;
 }
@@ -450,21 +440,20 @@ static void *startMainMethod(void */*data*/)
             qWarning() << "dlclose failed:" << dlerror();
     }
 
-    QtAndroid::AttachedJNIEnv env;
-    if (!env.jniEnv)
-        return 0;
+    if (m_applicationClass)
+        QJNIObjectPrivate::callStaticMethod<void>(m_applicationClass, "quitApp", "()V");
 
-    if (m_applicationClass) {
-        jmethodID quitApp = env.jniEnv->GetStaticMethodID(m_applicationClass, "quitApp", "()V");
-        env.jniEnv->CallStaticVoidMethod(m_applicationClass, quitApp);
-    }
+    // All attached threads should be detached before returning from this function.
+    JavaVM *vm = QtAndroidPrivate::javaVM();
+    if (vm != 0)
+        vm->DetachCurrentThread();
 
     return 0;
 }
 
 static jboolean startQtApplication(JNIEnv *env, jobject /*object*/, jstring paramsString, jstring environmentString)
 {
-    m_mainLibraryHnd = NULL;
+    m_mainLibraryHnd = nullptr;
     { // Set env. vars
         const char *nativeString = env->GetStringUTFChars(environmentString, 0);
         const QList<QByteArray> envVars = QByteArray(nativeString).split('\t');
@@ -490,7 +479,7 @@ static jboolean startQtApplication(JNIEnv *env, jobject /*object*/, jstring para
         // Obtain a handle to the main library (the library that contains the main() function).
         // This library should already be loaded, and calling dlopen() will just return a reference to it.
         m_mainLibraryHnd = dlopen(m_applicationParams.first().data(), 0);
-        if (m_mainLibraryHnd == NULL) {
+        if (m_mainLibraryHnd == nullptr) {
             qCritical() << "dlopen failed:" << dlerror();
             return false;
         }
@@ -507,15 +496,16 @@ static jboolean startQtApplication(JNIEnv *env, jobject /*object*/, jstring para
     }
 
     pthread_t appThread;
-    return pthread_create(&appThread, NULL, startMainMethod, NULL) == 0;
+    return pthread_create(&appThread, nullptr, startMainMethod, nullptr) == 0;
 }
 
 
 static void quitQtAndroidPlugin(JNIEnv *env, jclass /*clazz*/)
 {
     Q_UNUSED(env);
-    m_androidPlatformIntegration = 0;
+    m_androidPlatformIntegration = nullptr;
     delete m_androidAssetsFileEngineHandler;
+    m_androidAssetsFileEngineHandler = nullptr;
 }
 
 static void terminateQt(JNIEnv *env, jclass /*clazz*/)
@@ -534,14 +524,18 @@ static void terminateQt(JNIEnv *env, jclass /*clazz*/)
         env->DeleteGlobalRef(m_RGB_565_BitmapConfigValue);
     if (m_bitmapDrawableClass)
         env->DeleteGlobalRef(m_bitmapDrawableClass);
-    m_androidPlatformIntegration = 0;
+    m_androidPlatformIntegration = nullptr;
     delete m_androidAssetsFileEngineHandler;
+    m_androidAssetsFileEngineHandler = nullptr;
 }
 
 static void setSurface(JNIEnv *env, jobject /*thiz*/, jint id, jobject jSurface, jint w, jint h)
 {
     QMutexLocker lock(&m_surfacesMutex);
     const auto &it = m_surfaces.find(id);
+    if (it.value() == nullptr) // This should never happen...
+        return;
+
     if (it == m_surfaces.end()) {
         qWarning()<<"Can't find surface" << id;
         return;
@@ -584,11 +578,11 @@ static void updateWindow(JNIEnv */*env*/, jobject /*thiz*/)
     if (!m_androidPlatformIntegration)
         return;
 
-    if (QGuiApplication::instance() != 0) {
+    if (QGuiApplication::instance() != nullptr) {
         foreach (QWindow *w, QGuiApplication::topLevelWindows()) {
             QRect availableGeometry = w->screen()->availableGeometry();
             if (w->geometry().width() > 0 && w->geometry().height() > 0 && availableGeometry.width() > 0 && availableGeometry.height() > 0)
-                QWindowSystemInterface::handleExposeEvent(w, QRegion(w->geometry()));
+                QWindowSystemInterface::handleExposeEvent(w, QRegion(QRect(QPoint(), w->geometry().size())));
         }
     }
 
@@ -601,10 +595,35 @@ static void updateApplicationState(JNIEnv */*env*/, jobject /*thiz*/, jint state
 {
     m_activityActive = (state == Qt::ApplicationActive);
 
-    if (!m_androidPlatformIntegration || !QGuiApplicationPrivate::platformIntegration())
+    if (!m_main || !m_androidPlatformIntegration || !QGuiApplicationPrivate::platformIntegration()) {
+        QAndroidPlatformIntegration::setDefaultApplicationState(Qt::ApplicationState(state));
         return;
+    }
 
-    QWindowSystemInterface::handleApplicationStateChanged(Qt::ApplicationState(state));
+    if (state <= Qt::ApplicationInactive) {
+        // NOTE: sometimes we will receive two consecutive suspended notifications,
+        // In the second suspended notification, QWindowSystemInterface::flushWindowSystemEvents()
+        // will deadlock since the dispatcher has been stopped in the first suspended notification.
+        // To avoid the deadlock we simply return if we found the event dispatcher has been stopped.
+        if (QAndroidEventDispatcherStopper::instance()->stopped())
+            return;
+
+        // Don't send timers and sockets events anymore if we are going to hide all windows
+        QAndroidEventDispatcherStopper::instance()->goingToStop(true);
+        QCoreApplication::processEvents();
+        QWindowSystemInterface::handleApplicationStateChanged(Qt::ApplicationState(state));
+        {
+            AndroidDeadlockProtector protector;
+            if (protector.acquire())
+                QWindowSystemInterface::flushWindowSystemEvents();
+        }
+        if (state == Qt::ApplicationSuspended)
+            QAndroidEventDispatcherStopper::instance()->stopAll();
+    } else {
+        QAndroidEventDispatcherStopper::instance()->startAll();
+        QWindowSystemInterface::handleApplicationStateChanged(Qt::ApplicationState(state));
+        QAndroidEventDispatcherStopper::instance()->goingToStop(false);
+    }
 }
 
 static void handleOrientationChanged(JNIEnv */*env*/, jobject /*thiz*/, jint newRotation, jint nativeOrientation)
@@ -648,6 +667,11 @@ static void onActivityResult(JNIEnv */*env*/, jclass /*cls*/,
     QtAndroidPrivate::handleActivityResult(requestCode, resultCode, data);
 }
 
+static void onNewIntent(JNIEnv *env, jclass /*cls*/, jobject data)
+{
+    QtAndroidPrivate::handleNewIntent(env, data);
+}
+
 static JNINativeMethod methods[] = {
     {"startQtAndroidPlugin", "()Z", (void *)startQtAndroidPlugin},
     {"startQtApplication", "(Ljava/lang/String;Ljava/lang/String;)V", (void *)startQtApplication},
@@ -658,7 +682,8 @@ static JNINativeMethod methods[] = {
     {"updateWindow", "()V", (void *)updateWindow},
     {"updateApplicationState", "(I)V", (void *)updateApplicationState},
     {"handleOrientationChanged", "(II)V", (void *)handleOrientationChanged},
-    {"onActivityResult", "(IILandroid/content/Intent;)V", (void *)onActivityResult}
+    {"onActivityResult", "(IILandroid/content/Intent;)V", (void *)onActivityResult},
+    {"onNewIntent", "(Landroid/content/Intent;)V", (void *)onNewIntent}
 };
 
 #define FIND_AND_CHECK_CLASS(CLASS_NAME) \
@@ -701,7 +726,6 @@ static int registerNatives(JNIEnv *env)
     jclass clazz;
     FIND_AND_CHECK_CLASS("org/qtproject/qt5/android/QtNative");
     m_applicationClass = static_cast<jclass>(env->NewGlobalRef(clazz));
-    GET_AND_CHECK_STATIC_METHOD(m_setFullScreenMethodID, m_applicationClass, "setFullScreen", "(Z)V");
 
     if (env->RegisterNatives(m_applicationClass, methods, sizeof(methods) / sizeof(methods[0])) < 0) {
         __android_log_print(ANDROID_LOG_FATAL,"Qt", "RegisterNatives failed");
@@ -709,7 +733,6 @@ static int registerNatives(JNIEnv *env)
     }
 
     GET_AND_CHECK_STATIC_METHOD(m_createSurfaceMethodID, m_applicationClass, "createSurface", "(IZIIIII)V");
-    GET_AND_CHECK_STATIC_METHOD(m_insertNativeViewMethodID, m_applicationClass, "insertNativeView", "(ILandroid/view/View;IIII)V");
     GET_AND_CHECK_STATIC_METHOD(m_setSurfaceGeometryMethodID, m_applicationClass, "setSurfaceGeometry", "(IIIII)V");
     GET_AND_CHECK_STATIC_METHOD(m_destroySurfaceMethodID, m_applicationClass, "destroySurface", "(I)V");
 
@@ -767,8 +790,8 @@ Q_DECL_EXPORT jint JNICALL JNI_OnLoad(JavaVM *vm, void */*reserved*/)
 
     __android_log_print(ANDROID_LOG_INFO, "Qt", "qt start");
     UnionJNIEnvToVoid uenv;
-    uenv.venv = NULL;
-    m_javaVM = 0;
+    uenv.venv = nullptr;
+    m_javaVM = nullptr;
 
     if (vm->GetEnv(&uenv.venv, JNI_VERSION_1_4) != JNI_OK) {
         __android_log_print(ANDROID_LOG_FATAL, "Qt", "GetEnv failed");

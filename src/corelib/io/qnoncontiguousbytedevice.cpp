@@ -1,39 +1,31 @@
 /****************************************************************************
 **
-** Copyright (C) 2013 Digia Plc and/or its subsidiary(-ies).
-** Contact: http://www.qt-project.org/legal
+** Copyright (C) 2015 The Qt Company Ltd.
+** Contact: http://www.qt.io/licensing/
 **
 ** This file is part of the QtCore module of the Qt Toolkit.
 **
-** $QT_BEGIN_LICENSE:LGPL$
+** $QT_BEGIN_LICENSE:LGPL21$
 ** Commercial License Usage
 ** Licensees holding valid commercial Qt licenses may use this file in
 ** accordance with the commercial license agreement provided with the
 ** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and Digia.  For licensing terms and
-** conditions see http://qt.digia.com/licensing.  For further information
-** use the contact form at http://qt.digia.com/contact-us.
+** a written agreement between you and The Qt Company. For licensing terms
+** and conditions see http://www.qt.io/terms-conditions. For further
+** information use the contact form at http://www.qt.io/contact-us.
 **
 ** GNU Lesser General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 2.1 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU Lesser General Public License version 2.1 requirements
-** will be met: http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
+** General Public License version 2.1 or version 3 as published by the Free
+** Software Foundation and appearing in the file LICENSE.LGPLv21 and
+** LICENSE.LGPLv3 included in the packaging of this file. Please review the
+** following information to ensure the GNU Lesser General Public License
+** requirements will be met: https://www.gnu.org/licenses/lgpl.html and
+** http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
 **
-** In addition, as a special exception, Digia gives you certain additional
-** rights.  These rights are described in the Digia Qt LGPL Exception
+** As a special exception, The Qt Company gives you certain additional
+** rights. These rights are described in The Qt Company LGPL Exception
 ** version 1.1, included in the file LGPL_EXCEPTION.txt in this package.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3.0 as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU General Public License version 3.0 requirements will be
-** met: http://www.gnu.org/copyleft/gpl.html.
-**
 **
 ** $QT_END_LICENSE$
 **
@@ -102,17 +94,7 @@ QT_BEGIN_NAMESPACE
     Moves the internal read pointer back to the beginning.
     Returns \c false if this was not possible.
 
-    \sa atEnd(), disableReset()
-
-    \internal
-*/
-/*!
-    \fn void QNonContiguousByteDevice::disableReset()
-
-    Disable the reset() call, e.g. it will always
-    do nothing and return false.
-
-    \sa reset()
+    \sa atEnd()
 
     \internal
 */
@@ -139,17 +121,12 @@ QT_BEGIN_NAMESPACE
     \internal
 */
 
-QNonContiguousByteDevice::QNonContiguousByteDevice() : QObject((QObject*)0), resetDisabled(false)
+QNonContiguousByteDevice::QNonContiguousByteDevice() : QObject((QObject*)0)
 {
 }
 
 QNonContiguousByteDevice::~QNonContiguousByteDevice()
 {
-}
-
-void QNonContiguousByteDevice::disableReset()
-{
-    resetDisabled = true;
 }
 
 // FIXME we should scrap this whole implementation and instead change the ByteArrayImpl to be able to cope with sub-arrays?
@@ -184,8 +161,6 @@ bool QNonContiguousByteDeviceBufferImpl::atEnd()
 
 bool QNonContiguousByteDeviceBufferImpl::reset()
 {
-    if (resetDisabled)
-        return false;
     return arrayImpl->reset();
 }
 
@@ -232,9 +207,6 @@ bool QNonContiguousByteDeviceByteArrayImpl::atEnd()
 
 bool QNonContiguousByteDeviceByteArrayImpl::reset()
 {
-    if (resetDisabled)
-        return false;
-
     currentPosition = 0;
     return true;
 }
@@ -242,6 +214,11 @@ bool QNonContiguousByteDeviceByteArrayImpl::reset()
 qint64 QNonContiguousByteDeviceByteArrayImpl::size()
 {
     return byteArray->size();
+}
+
+qint64 QNonContiguousByteDeviceByteArrayImpl::pos()
+{
+    return currentPosition;
 }
 
 QNonContiguousByteDeviceRingBufferImpl::QNonContiguousByteDeviceRingBufferImpl(QSharedPointer<QRingBuffer> rb)
@@ -281,11 +258,13 @@ bool QNonContiguousByteDeviceRingBufferImpl::atEnd()
     return currentPosition >= size();
 }
 
+qint64 QNonContiguousByteDeviceRingBufferImpl::pos()
+{
+    return currentPosition;
+}
+
 bool QNonContiguousByteDeviceRingBufferImpl::reset()
 {
-    if (resetDisabled)
-        return false;
-
     currentPosition = 0;
     return true;
 }
@@ -386,8 +365,6 @@ bool QNonContiguousByteDeviceIoDeviceImpl::atEnd()
 
 bool QNonContiguousByteDeviceIoDeviceImpl::reset()
 {
-    if (resetDisabled)
-        return false;
     bool reset = (initialPosition == 0) ? device->reset() : device->seek(initialPosition);
     if (reset) {
         eof = false; // assume eof is false, it will be true after a read has been attempted
@@ -412,6 +389,14 @@ qint64 QNonContiguousByteDeviceIoDeviceImpl::size()
         return -1;
 
     return device->size() - initialPosition;
+}
+
+qint64 QNonContiguousByteDeviceIoDeviceImpl::pos()
+{
+    if (device->isSequential())
+        return -1;
+
+    return device->pos();
 }
 
 QByteDeviceWrappingIoDevice::QByteDeviceWrappingIoDevice(QNonContiguousByteDevice *bd) : QIODevice((QObject*)0)
@@ -506,6 +491,25 @@ QNonContiguousByteDevice* QNonContiguousByteDeviceFactory::create(QIODevice *dev
 }
 
 /*!
+    Create a QNonContiguousByteDevice out of a QIODevice, return it in a QSharedPointer.
+    For QFile, QBuffer and all other QIODevice, sequential or not.
+
+    \internal
+*/
+QSharedPointer<QNonContiguousByteDevice> QNonContiguousByteDeviceFactory::createShared(QIODevice *device)
+{
+    // shortcut if it is a QBuffer
+    if (QBuffer *buffer = qobject_cast<QBuffer*>(device))
+        return QSharedPointer<QNonContiguousByteDeviceBufferImpl>::create(buffer);
+
+    // ### FIXME special case if device is a QFile that supports map()
+    // then we can actually deal with the file without using read/peek
+
+    // generic QIODevice
+    return QSharedPointer<QNonContiguousByteDeviceIoDeviceImpl>::create(device); // FIXME
+}
+
+/*!
     \fn static QNonContiguousByteDevice* QNonContiguousByteDeviceFactory::create(QSharedPointer<QRingBuffer> ringBuffer)
 
     Create a QNonContiguousByteDevice out of a QRingBuffer.
@@ -518,6 +522,16 @@ QNonContiguousByteDevice* QNonContiguousByteDeviceFactory::create(QSharedPointer
 }
 
 /*!
+    Create a QNonContiguousByteDevice out of a QRingBuffer, return it in a QSharedPointer.
+
+    \internal
+*/
+QSharedPointer<QNonContiguousByteDevice> QNonContiguousByteDeviceFactory::createShared(QSharedPointer<QRingBuffer> ringBuffer)
+{
+    return QSharedPointer<QNonContiguousByteDeviceRingBufferImpl>::create(qMove(ringBuffer));
+}
+
+/*!
     \fn static QNonContiguousByteDevice* QNonContiguousByteDeviceFactory::create(QByteArray *byteArray)
 
     Create a QNonContiguousByteDevice out of a QByteArray.
@@ -527,6 +541,16 @@ QNonContiguousByteDevice* QNonContiguousByteDeviceFactory::create(QSharedPointer
 QNonContiguousByteDevice* QNonContiguousByteDeviceFactory::create(QByteArray *byteArray)
 {
     return new QNonContiguousByteDeviceByteArrayImpl(byteArray);
+}
+
+/*!
+    Create a QNonContiguousByteDevice out of a QByteArray.
+
+    \internal
+*/
+QSharedPointer<QNonContiguousByteDevice> QNonContiguousByteDeviceFactory::createShared(QByteArray *byteArray)
+{
+    return QSharedPointer<QNonContiguousByteDeviceByteArrayImpl>::create(byteArray);
 }
 
 /*!

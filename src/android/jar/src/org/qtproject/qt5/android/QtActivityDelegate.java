@@ -1,40 +1,32 @@
 /****************************************************************************
 **
 ** Copyright (C) 2014 BogDan Vatra <bogdan@kde.org>
-** Copyright (C) 2013 Digia Plc and/or its subsidiary(-ies).
-** Contact: http://www.qt-project.org/legal
+** Copyright (C) 2015 The Qt Company Ltd.
+** Contact: http://www.qt.io/licensing/
 **
 ** This file is part of the Android port of the Qt Toolkit.
 **
-** $QT_BEGIN_LICENSE:LGPL$
+** $QT_BEGIN_LICENSE:LGPL21$
 ** Commercial License Usage
 ** Licensees holding valid commercial Qt licenses may use this file in
 ** accordance with the commercial license agreement provided with the
 ** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and Digia.  For licensing terms and
-** conditions see http://qt.digia.com/licensing.  For further information
-** use the contact form at http://qt.digia.com/contact-us.
+** a written agreement between you and The Qt Company. For licensing terms
+** and conditions see http://www.qt.io/terms-conditions. For further
+** information use the contact form at http://www.qt.io/contact-us.
 **
 ** GNU Lesser General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 2.1 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU Lesser General Public License version 2.1 requirements
-** will be met: http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
+** General Public License version 2.1 or version 3 as published by the Free
+** Software Foundation and appearing in the file LICENSE.LGPLv21 and
+** LICENSE.LGPLv3 included in the packaging of this file. Please review the
+** following information to ensure the GNU Lesser General Public License
+** requirements will be met: https://www.gnu.org/licenses/lgpl.html and
+** http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
 **
-** In addition, as a special exception, Digia gives you certain additional
-** rights.  These rights are described in the Digia Qt LGPL Exception
+** As a special exception, The Qt Company gives you certain additional
+** rights. These rights are described in The Qt Company LGPL Exception
 ** version 1.1, included in the file LGPL_EXCEPTION.txt in this package.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3.0 as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU General Public License version 3.0 requirements will be
-** met: http://www.gnu.org/copyleft/gpl.html.
-**
 **
 ** $QT_END_LICENSE$
 **
@@ -45,16 +37,19 @@ package org.qtproject.qt5.android;
 import android.app.Activity;
 import android.content.Context;
 import android.content.Intent;
+import android.content.pm.ActivityInfo;
 import android.content.pm.PackageManager;
 import android.content.pm.PackageManager.NameNotFoundException;
 import android.content.res.Configuration;
 import android.graphics.drawable.ColorDrawable;
-import android.graphics.Rect;
+import android.net.LocalServerSocket;
+import android.net.LocalSocket;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.ResultReceiver;
 import android.text.method.MetaKeyKeyListener;
+import android.util.Base64;
 import android.util.DisplayMetrics;
 import android.util.Log;
 import android.util.TypedValue;
@@ -71,11 +66,14 @@ import android.view.ViewGroup;
 import android.view.WindowManager;
 import android.view.inputmethod.InputMethodManager;
 
+import java.io.BufferedReader;
+import java.io.DataOutputStream;
 import java.io.File;
 import java.io.FileWriter;
+import java.io.InputStreamReader;
 import java.io.IOException;
+import java.lang.reflect.Constructor;
 import java.lang.reflect.Method;
-import java.lang.System;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Iterator;
@@ -99,6 +97,7 @@ public class QtActivityDelegate
     private static final String APPLICATION_PARAMETERS_KEY = "application.parameters";
     private static final String STATIC_INIT_CLASSES_KEY = "static.init.classes";
     private static final String NECESSITAS_API_LEVEL_KEY = "necessitas.api.level";
+    private static final String EXTRACT_STYLE_KEY = "extract.android.style";
 
     private static String m_environmentVariables = null;
     private static String m_applicationParameters = null;
@@ -109,6 +108,7 @@ public class QtActivityDelegate
     private String m_mainLib;
     private long m_metaState;
     private int m_lastChar = 0;
+    private int m_softInputMode = 0;
     private boolean m_fullScreen = false;
     private boolean m_started = false;
     private HashMap<Integer, QtSurface> m_surfaces = null;
@@ -119,7 +119,6 @@ public class QtActivityDelegate
     private boolean m_quitApp = true;
     private Process m_debuggerProcess = null; // debugger process
     private View m_dummyView = null;
-
     private boolean m_keyboardIsVisible = false;
     public boolean m_backKeyPressedSent = false;
     private long m_showHideTimeStamp = System.nanoTime();
@@ -245,10 +244,18 @@ public class QtActivityDelegate
         if (m_imm == null)
             return;
 
-        if (height > m_layout.getHeight() * 2 / 3)
-            m_activity.getWindow().setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_STATE_UNCHANGED | WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE);
-        else
-            m_activity.getWindow().setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_STATE_UNCHANGED | WindowManager.LayoutParams.SOFT_INPUT_ADJUST_PAN);
+        if (m_softInputMode != 0) {
+            m_activity.getWindow().setSoftInputMode(m_softInputMode);
+            // softInputIsHidden is true if SOFT_INPUT_STATE_HIDDEN or SOFT_INPUT_STATE_ALWAYS_HIDDEN is set.
+            final boolean softInputIsHidden = (m_softInputMode & WindowManager.LayoutParams.SOFT_INPUT_STATE_HIDDEN) != 0;
+            if (softInputIsHidden)
+               return;
+        } else {
+            if (height > m_layout.getHeight() * 2 / 3)
+                m_activity.getWindow().setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_STATE_UNCHANGED | WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE);
+            else
+                m_activity.getWindow().setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_STATE_UNCHANGED | WindowManager.LayoutParams.SOFT_INPUT_ADJUST_PAN);
+        }
 
         int initialCapsMode = 0;
         int imeOptions = android.view.inputmethod.EditorInfo.IME_ACTION_DONE;
@@ -262,28 +269,29 @@ public class QtActivityDelegate
             }
 
             if (Build.VERSION.SDK_INT > 10 && (inputHints & ImhHiddenText) != 0)
-                inputType |= 0x10;
+                inputType |= 0x10 /* TYPE_NUMBER_VARIATION_PASSWORD */;
         } else if ((inputHints & ImhDialableCharactersOnly) != 0) {
             inputType = android.text.InputType.TYPE_CLASS_PHONE;
         } else if ((inputHints & (ImhDate | ImhTime)) != 0) {
             inputType = android.text.InputType.TYPE_CLASS_DATETIME;
-            if ((inputHints & ImhDate) != 0)
-                inputType |= android.text.InputType.TYPE_DATETIME_VARIATION_DATE;
-            if ((inputHints & ImhTime) != 0)
-                inputType |= android.text.InputType.TYPE_DATETIME_VARIATION_TIME;
+            if ((inputHints & (ImhDate | ImhTime)) != (ImhDate | ImhTime)) {
+                if ((inputHints & ImhDate) != 0)
+                    inputType |= android.text.InputType.TYPE_DATETIME_VARIATION_DATE;
+                if ((inputHints & ImhTime) != 0)
+                    inputType |= android.text.InputType.TYPE_DATETIME_VARIATION_TIME;
+            } // else {  TYPE_DATETIME_VARIATION_NORMAL(0) }
         } else { // CLASS_TEXT
-            if ((inputHints & ImhHiddenText) != 0) {
+            if ((inputHints & (ImhEmailCharactersOnly | ImhUrlCharactersOnly)) != 0) {
+                if ((inputHints & ImhUrlCharactersOnly) != 0) {
+                    inputType |= android.text.InputType.TYPE_TEXT_VARIATION_URI;
+                    imeOptions = android.view.inputmethod.EditorInfo.IME_ACTION_GO;
+                } else if ((inputHints & ImhEmailCharactersOnly) != 0) {
+                    inputType |= android.text.InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS;
+                }
+            } else if ((inputHints & ImhHiddenText) != 0) {
                 inputType |= android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD;
-            } else if ((inputHints & (ImhNoAutoUppercase | ImhNoPredictiveText | ImhSensitiveData)) != 0) {
+            } else if ((inputHints & ImhSensitiveData) != 0 || (inputHints & ImhNoPredictiveText) != 0) {
                 inputType |= android.text.InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD;
-            }
-
-            if ((inputHints & ImhEmailCharactersOnly) != 0)
-                inputType |= android.text.InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS;
-
-            if ((inputHints & ImhUrlCharactersOnly) != 0) {
-                inputType |= android.text.InputType.TYPE_TEXT_VARIATION_URI;
-                imeOptions = android.view.inputmethod.EditorInfo.IME_ACTION_GO;
             }
 
             if ((inputHints & ImhMultiLine) != 0)
@@ -297,8 +305,10 @@ public class QtActivityDelegate
                 inputType |= android.text.InputType.TYPE_TEXT_FLAG_CAP_SENTENCES;
             }
 
-            if ((inputHints & ImhNoPredictiveText) != 0 || (inputHints & ImhSensitiveData) != 0)
+            if ((inputHints & ImhNoPredictiveText) != 0 || (inputHints & ImhSensitiveData) != 0
+                || (inputHints & ImhHiddenText) != 0) {
                 inputType |= android.text.InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS;
+            }
         }
 
         if ((inputHints & ImhMultiLine) != 0)
@@ -308,9 +318,7 @@ public class QtActivityDelegate
         m_editText.setImeOptions(imeOptions);
         m_editText.setInputType(inputType);
 
-        m_layout.removeView(m_editText);
-        m_layout.addView(m_editText, new QtLayout.LayoutParams(width, height, x, y));
-        m_editText.bringToFront();
+        m_layout.setLayoutParams(m_editText, new QtLayout.LayoutParams(width, height, x, y), false);
         m_editText.requestFocus();
         m_editText.postDelayed(new Runnable() {
             @Override
@@ -422,6 +430,11 @@ public class QtActivityDelegate
         if (null == m_mainLib && libraries.size() > 0)
             m_mainLib = libraries.get(libraries.size() - 1);
 
+        if (loaderParams.containsKey(EXTRACT_STYLE_KEY)) {
+            String path = loaderParams.getString(EXTRACT_STYLE_KEY);
+            new ExtractStyle(m_activity, path);
+        }
+
         try {
             m_super_dispatchKeyEvent = m_activity.getClass().getMethod("super_dispatchKeyEvent", KeyEvent.class);
             m_super_onRestoreInstanceState = m_activity.getClass().getMethod("super_onRestoreInstanceState", Bundle.class);
@@ -463,13 +476,72 @@ public class QtActivityDelegate
         else
             m_applicationParameters = "";
 
+        try {
+            m_softInputMode = m_activity.getPackageManager().getActivityInfo(m_activity.getComponentName(), 0).softInputMode;
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+
         return true;
     }
 
-    public void debugLog(String msg)
+    public static void debugLog(String msg)
     {
         Log.i(QtNative.QtTAG, "DEBUGGER: " + msg);
     }
+
+    private class DebugWaitRunnable implements Runnable {
+
+        public DebugWaitRunnable(String pingPongSocket) throws  IOException {
+            socket = new LocalServerSocket(pingPongSocket);
+        }
+
+        public boolean wasFailure;
+        private LocalServerSocket socket;
+
+        public void run() {
+            final int napTime = 200; // milliseconds between file accesses
+            final int timeOut = 30000; // ms until we give up on ping and pong
+            final int maxAttempts = timeOut / napTime;
+
+            try {
+                LocalSocket connectionFromClient = socket.accept();
+                debugLog("Debug socket accepted");
+                BufferedReader inFromClient =
+                        new BufferedReader(new InputStreamReader(connectionFromClient.getInputStream()));
+                DataOutputStream outToClient = new DataOutputStream(connectionFromClient.getOutputStream());
+                outToClient.writeBytes("" + android.os.Process.myPid());
+
+                for (int i = 0; i < maxAttempts; i++) {
+                    String clientData = inFromClient.readLine();
+                    debugLog("Incoming socket " + clientData);
+                    if (!clientData.isEmpty())
+                        break;
+
+                    if (connectionFromClient.isClosed()) {
+                        wasFailure = true;
+                        break;
+                    }
+                    Thread.sleep(napTime);
+                }
+            } catch (IOException ioEx) {
+                ioEx.printStackTrace();
+                wasFailure = true;
+                Log.e(QtNative.QtTAG,"Can't start debugger" + ioEx.getMessage());
+            } catch (InterruptedException interruptEx) {
+                wasFailure = true;
+                Log.e(QtNative.QtTAG,"Can't start debugger" + interruptEx.getMessage());
+            }
+        }
+
+        public void shutdown() throws IOException
+        {
+            wasFailure = true;
+            try {
+                socket.close();
+            } catch (IOException ignored) { }
+        }
+    };
 
     public boolean startApplication()
     {
@@ -478,173 +550,221 @@ public class QtActivityDelegate
             // FIXME turn on debuggable check
             // if the applications is debuggable and it has a native debug request
             Bundle extras = m_activity.getIntent().getExtras();
-            if ( /*(ai.flags&ApplicationInfo.FLAG_DEBUGGABLE) != 0
-                    &&*/ extras != null
-                    && extras.containsKey("native_debug")
-                    && extras.getString("native_debug").equals("true")) {
-                try {
-                    String packagePath =
-                        m_activity.getPackageManager().getApplicationInfo(m_activity.getPackageName(),
-                                                                          PackageManager.GET_CONFIGURATIONS).dataDir + "/";
-                    String gdbserverPath =
-                        extras.containsKey("gdbserver_path")
-                        ? extras.getString("gdbserver_path")
-                        : packagePath+"lib/gdbserver ";
+            if (extras != null) {
 
-                    String socket =
-                        extras.containsKey("gdbserver_socket")
-                        ? extras.getString("gdbserver_socket")
-                        : "+debug-socket";
+                if ( /*(ai.flags&ApplicationInfo.FLAG_DEBUGGABLE) != 0
+                        &&*/ extras.containsKey("native_debug")
+                        && extras.getString("native_debug").equals("true")) {
+                    try {
+                        String packagePath =
+                            m_activity.getPackageManager().getApplicationInfo(m_activity.getPackageName(),
+                                                                              PackageManager.GET_CONFIGURATIONS).dataDir + "/";
+                        String gdbserverPath =
+                            extras.containsKey("gdbserver_path")
+                            ? extras.getString("gdbserver_path")
+                            : packagePath+"lib/gdbserver ";
 
-                    // start debugger
-                    m_debuggerProcess = Runtime.getRuntime().exec(gdbserverPath
-                                                                    + socket
-                                                                    + " --attach "
-                                                                    + android.os.Process.myPid(),
-                                                                  null,
-                                                                  new File(packagePath));
-                } catch (IOException ioe) {
-                    Log.e(QtNative.QtTAG,"Can't start debugger" + ioe.getMessage());
-                } catch (SecurityException se) {
-                    Log.e(QtNative.QtTAG,"Can't start debugger" + se.getMessage());
-                } catch (NameNotFoundException e) {
-                    Log.e(QtNative.QtTAG,"Can't start debugger" + e.getMessage());
+                        String socket =
+                            extras.containsKey("gdbserver_socket")
+                            ? extras.getString("gdbserver_socket")
+                            : "+debug-socket";
+
+                        if (!(new File(gdbserverPath)).exists())
+                            gdbserverPath += ".so";
+
+                        // start debugger
+                        m_debuggerProcess = Runtime.getRuntime().exec(gdbserverPath
+                                                                        + socket
+                                                                        + " --attach "
+                                                                        + android.os.Process.myPid(),
+                                                                      null,
+                                                                      new File(packagePath));
+                    } catch (IOException ioe) {
+                        Log.e(QtNative.QtTAG,"Can't start debugger" + ioe.getMessage());
+                    } catch (SecurityException se) {
+                        Log.e(QtNative.QtTAG,"Can't start debugger" + se.getMessage());
+                    } catch (NameNotFoundException e) {
+                        Log.e(QtNative.QtTAG,"Can't start debugger" + e.getMessage());
+                    }
                 }
-            }
 
 
-            if ( /*(ai.flags&ApplicationInfo.FLAG_DEBUGGABLE) != 0
-                    &&*/ extras != null
-                    && extras.containsKey("debug_ping")
-                    && extras.getString("debug_ping").equals("true")) {
-                try {
-                    debugLog("extra parameters: " + extras);
-                    String packageName = m_activity.getPackageName();
-                    String pingFile = extras.getString("ping_file");
-                    String pongFile = extras.getString("pong_file");
-                    String gdbserverSocket = extras.getString("gdbserver_socket");
-                    String gdbserverCommand = extras.getString("gdbserver_command");
-                    boolean usePing = pingFile != null;
-                    boolean usePong = pongFile != null;
-                    boolean useSocket = gdbserverSocket != null;
-                    int napTime = 200; // milliseconds between file accesses
-                    int timeOut = 30000; // ms until we give up on ping and pong
-                    int maxAttempts = timeOut / napTime;
+                if ( /*(ai.flags&ApplicationInfo.FLAG_DEBUGGABLE) != 0
+                        &&*/ extras.containsKey("debug_ping")
+                        && extras.getString("debug_ping").equals("true")) {
+                    try {
+                        debugLog("extra parameters: " + extras);
+                        String packageName = m_activity.getPackageName();
+                        String pingFile = extras.getString("ping_file");
+                        String pongFile = extras.getString("pong_file");
+                        String gdbserverSocket = extras.getString("gdbserver_socket");
+                        String gdbserverCommand = extras.getString("gdbserver_command");
+                        String pingSocket = extras.getString("ping_socket");
+                        boolean usePing = pingFile != null;
+                        boolean usePong = pongFile != null;
+                        boolean useSocket = gdbserverSocket != null;
+                        boolean usePingSocket = pingSocket != null;
+                        int napTime = 200; // milliseconds between file accesses
+                        int timeOut = 30000; // ms until we give up on ping and pong
+                        int maxAttempts = timeOut / napTime;
 
-                    if (usePing) {
-                        debugLog("removing ping file " + pingFile);
-                        File ping = new File(pingFile);
-                        if (ping.exists()) {
-                            if (!ping.delete())
-                                debugLog("ping file cannot be deleted");
+                        if (gdbserverSocket != null) {
+                            debugLog("removing gdb socket " + gdbserverSocket);
+                            new File(gdbserverSocket).delete();
                         }
-                    }
 
-                    if (usePong) {
-                        debugLog("removing pong file " + pongFile);
-                        File pong = new File(pongFile);
-                        if (pong.exists()) {
-                            if (!pong.delete())
-                                debugLog("pong file cannot be deleted");
-                        }
-                    }
-
-                    debugLog("starting " + gdbserverCommand);
-                    m_debuggerProcess = Runtime.getRuntime().exec(gdbserverCommand);
-                    debugLog("gdbserver started");
-
-                    if (useSocket) {
-                        int i;
-                        for (i = 0; i < maxAttempts; ++i) {
-                            debugLog("waiting for socket at " + gdbserverSocket + ", attempt " + i);
-                            File file = new File(gdbserverSocket);
-                            if (file.exists()) {
-                                file.setReadable(true, false);
-                                file.setWritable(true, false);
-                                file.setExecutable(true, false);
-                                break;
+                        if (usePing) {
+                            debugLog("removing ping file " + pingFile);
+                            File ping = new File(pingFile);
+                            if (ping.exists()) {
+                                if (!ping.delete())
+                                    debugLog("ping file cannot be deleted");
                             }
-                            Thread.sleep(napTime);
                         }
 
-                        if (i == maxAttempts) {
-                            debugLog("time out when waiting for socket");
-                            return false;
-                        }
-
-                        debugLog("socket ok");
-                    } else {
-                        debugLog("socket not used");
-                    }
-
-                    if (usePing) {
-                        // Tell we are ready.
-                        debugLog("writing ping at " + pingFile);
-                        FileWriter writer = new FileWriter(pingFile);
-                        writer.write("" + android.os.Process.myPid());
-                        writer.close();
-                        File file = new File(pingFile);
-                        file.setReadable(true, false);
-                        file.setWritable(true, false);
-                        file.setExecutable(true, false);
-                        debugLog("wrote ping");
-                    } else {
-                        debugLog("ping not requested");
-                    }
-
-                    // Wait until other side is ready.
-                    if (usePong) {
-                        int i;
-                        for (i = 0; i < maxAttempts; ++i) {
-                            debugLog("waiting for pong at " + pongFile + ", attempt " + i);
-                            File file = new File(pongFile);
-                            if (file.exists()) {
-                                file.delete();
-                                break;
+                        if (usePong) {
+                            debugLog("removing pong file " + pongFile);
+                            File pong = new File(pongFile);
+                            if (pong.exists()) {
+                                if (!pong.delete())
+                                    debugLog("pong file cannot be deleted");
                             }
-                            debugLog("go to sleep");
-                            Thread.sleep(napTime);
                         }
 
-                        if (i == maxAttempts) {
-                            debugLog("time out when waiting for pong file");
-                            return false;
+                        debugLog("starting " + gdbserverCommand);
+                        m_debuggerProcess = Runtime.getRuntime().exec(gdbserverCommand);
+                        debugLog("gdbserver started");
+
+                        if (useSocket) {
+                            int i;
+                            for (i = 0; i < maxAttempts; ++i) {
+                                debugLog("waiting for socket at " + gdbserverSocket + ", attempt " + i);
+                                File file = new File(gdbserverSocket);
+                                if (file.exists()) {
+                                    file.setReadable(true, false);
+                                    file.setWritable(true, false);
+                                    file.setExecutable(true, false);
+                                    break;
+                                }
+                                Thread.sleep(napTime);
+                            }
+
+                            if (i == maxAttempts) {
+                                debugLog("time out when waiting for debug socket");
+                                return false;
+                            }
+
+                            debugLog("socket ok");
+                        } else {
+                            debugLog("socket not used");
                         }
 
-                        debugLog("got pong " + pongFile);
-                    } else {
-                        debugLog("pong not requested");
+                        if (usePingSocket) {
+                            DebugWaitRunnable runnable = new DebugWaitRunnable(pingSocket);
+                            Thread waitThread = new Thread(runnable);
+                            waitThread.start();
+
+                            int i;
+                            for (i = 0; i < maxAttempts && waitThread.isAlive(); ++i) {
+                                debugLog("Waiting for debug socket connect");
+                                debugLog("go to sleep");
+                                Thread.sleep(napTime);
+                            }
+
+                            if (i == maxAttempts) {
+                                debugLog("time out when waiting for ping socket");
+                                runnable.shutdown();
+                                return false;
+                            }
+
+                            if (runnable.wasFailure) {
+                                debugLog("Could not connect to debug client");
+                                return false;
+                            } else {
+                                debugLog("Got pid acknowledgment");
+                            }
+                        }
+
+                        if (usePing) {
+                            // Tell we are ready.
+                            debugLog("writing ping at " + pingFile);
+                            FileWriter writer = new FileWriter(pingFile);
+                            writer.write("" + android.os.Process.myPid());
+                            writer.close();
+                            File file = new File(pingFile);
+                            file.setReadable(true, false);
+                            file.setWritable(true, false);
+                            file.setExecutable(true, false);
+                            debugLog("wrote ping");
+                        } else {
+                            debugLog("ping not requested");
+                        }
+
+                        // Wait until other side is ready.
+                        if (usePong) {
+                            int i;
+                            for (i = 0; i < maxAttempts; ++i) {
+                                debugLog("waiting for pong at " + pongFile + ", attempt " + i);
+                                File file = new File(pongFile);
+                                if (file.exists()) {
+                                    file.delete();
+                                    break;
+                                }
+                                debugLog("go to sleep");
+                                Thread.sleep(napTime);
+                            }
+                            debugLog("Removing pingFile " + pingFile);
+                            new File(pingFile).delete();
+
+                            if (i == maxAttempts) {
+                                debugLog("time out when waiting for pong file");
+                                return false;
+                            }
+
+                            debugLog("got pong " + pongFile);
+                        } else {
+                            debugLog("pong not requested");
+                        }
+
+                    } catch (IOException ioe) {
+                        Log.e(QtNative.QtTAG,"Can't start debugger" + ioe.getMessage());
+                    } catch (SecurityException se) {
+                        Log.e(QtNative.QtTAG,"Can't start debugger" + se.getMessage());
                     }
-
-                } catch (IOException ioe) {
-                    Log.e(QtNative.QtTAG,"Can't start debugger" + ioe.getMessage());
-                } catch (SecurityException se) {
-                    Log.e(QtNative.QtTAG,"Can't start debugger" + se.getMessage());
                 }
-            }
 
-            if (/*(ai.flags&ApplicationInfo.FLAG_DEBUGGABLE) != 0
-                    &&*/ extras != null
-                    && extras.containsKey("qml_debug")
-                    && extras.getString("qml_debug").equals("true")) {
-                String qmljsdebugger;
-                if (extras.containsKey("qmljsdebugger")) {
-                    qmljsdebugger = extras.getString("qmljsdebugger");
-                    qmljsdebugger.replaceAll("\\s", ""); // remove whitespace for security
-                } else {
-                    qmljsdebugger = "port:3768";
+                if (/*(ai.flags&ApplicationInfo.FLAG_DEBUGGABLE) != 0
+                        &&*/ extras.containsKey("qml_debug")
+                        && extras.getString("qml_debug").equals("true")) {
+                    String qmljsdebugger;
+                    if (extras.containsKey("qmljsdebugger")) {
+                        qmljsdebugger = extras.getString("qmljsdebugger");
+                        qmljsdebugger.replaceAll("\\s", ""); // remove whitespace for security
+                    } else {
+                        qmljsdebugger = "port:3768";
+                    }
+                    m_applicationParameters += "\t-qmljsdebugger=" + qmljsdebugger;
                 }
-                m_applicationParameters += "\t-qmljsdebugger=" + qmljsdebugger;
-            }
+
+                if (extras.containsKey("extraenvvars")) {
+                    try {
+                        m_environmentVariables += "\t" + new String(Base64.decode(extras.getString("extraenvvars"), Base64.DEFAULT), "UTF-8");
+                    } catch (Exception e) {
+                        e.printStackTrace();
+                    }
+                }
+
+                if (extras.containsKey("extraappparams")) {
+                    try {
+                        m_applicationParameters += "\t" + new String(Base64.decode(extras.getString("extraappparams"), Base64.DEFAULT), "UTF-8");
+                    } catch (Exception e) {
+                        e.printStackTrace();
+                    }
+                }
+            } // extras != null
 
             if (null == m_surfaces)
                 onCreate(null);
-            String nativeLibraryDir = QtNativeLibrariesDir.nativeLibrariesDir(m_activity);
-            QtNative.startApplication(m_applicationParameters,
-                    m_environmentVariables,
-                    m_mainLib,
-                    nativeLibraryDir);
-            m_started = true;
             return true;
         } catch (Exception e) {
             e.printStackTrace();
@@ -660,20 +780,31 @@ public class QtActivityDelegate
     public void onCreate(Bundle savedInstanceState)
     {
         m_quitApp = true;
+        Runnable startApplication = null;
         if (null == savedInstanceState) {
-            DisplayMetrics metrics = new DisplayMetrics();
-            m_activity.getWindowManager().getDefaultDisplay().getMetrics(metrics);
-            QtNative.setApplicationDisplayMetrics(metrics.widthPixels, metrics.heightPixels,
-                                                  0, 0,
-                                                  metrics.xdpi, metrics.ydpi, metrics.scaledDensity);
+            startApplication = new Runnable() {
+                @Override
+                public void run() {
+                    try {
+                        String nativeLibraryDir = QtNativeLibrariesDir.nativeLibrariesDir(m_activity);
+                        QtNative.startApplication(m_applicationParameters,
+                            m_environmentVariables,
+                            m_mainLib,
+                            nativeLibraryDir);
+                        m_started = true;
+                    } catch (Exception e) {
+                        e.printStackTrace();
+                        m_activity.finish();
+                    }
+                }
+            };
         }
-        m_layout = new QtLayout(m_activity);
+        m_layout = new QtLayout(m_activity, startApplication);
         m_editText = new QtEditText(m_activity, this);
         m_imm = (InputMethodManager)m_activity.getSystemService(Context.INPUT_METHOD_SERVICE);
         m_surfaces =  new HashMap<Integer, QtSurface>();
         m_nativeViews = new HashMap<Integer, View>();
         m_activity.registerForContextMenu(m_layout);
-
         m_activity.setContentView(m_layout,
                                   new ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
                                                              ViewGroup.LayoutParams.MATCH_PARENT));
@@ -689,6 +820,25 @@ public class QtActivityDelegate
 
         QtNative.handleOrientationChanged(rotation, m_nativeOrientation);
         m_currentRotation = rotation;
+    }
+
+    public void initializeAccessibility()
+    {
+        // Initialize accessibility
+        try {
+            final String a11yDelegateClassName = "org.qtproject.qt5.android.accessibility.QtAccessibilityDelegate";
+            Class<?> qtDelegateClass = Class.forName(a11yDelegateClassName);
+            Constructor constructor = qtDelegateClass.getConstructor(android.app.Activity.class,
+                                                                     android.view.ViewGroup.class,
+                                                                     this.getClass());
+            Object accessibilityDelegate = constructor.newInstance(m_activity, m_layout, this);
+        } catch (ClassNotFoundException e) {
+            // Class not found is fine since we are compatible with Android API < 16, but the function will
+            // only be available with that API level.
+        } catch (Exception e) {
+            // Unknown exception means something went wrong.
+            Log.w("Qt A11y", "Unknown exception: " + e.toString());
+        }
     }
 
     public void onConfigurationChanged(Configuration configuration)
@@ -729,13 +879,18 @@ public class QtActivityDelegate
             while (itr.hasNext())
                 m_activity.runOnUiThread(itr.next());
 
+            QtNative.updateApplicationState(ApplicationActive);
             if (m_started) {
-                QtNative.updateApplicationState(ApplicationActive);
                 QtNative.clearLostActions();
                 QtNative.updateWindow();
                 updateFullScreen(); // Suspending the app clears the immersive mode, so we need to set it again.
             }
         }
+    }
+
+    public void onNewIntent(Intent data)
+    {
+        QtNative.onNewIntent(data);
     }
 
     public void onActivityResult(int requestCode, int resultCode, Intent data)
@@ -794,15 +949,6 @@ public class QtActivityDelegate
         if (!m_started)
             return false;
 
-        if (keyCode == KeyEvent.KEYCODE_MENU) {
-            try {
-                return (Boolean)m_super_onKeyDown.invoke(m_activity, keyCode, event);
-            } catch (Exception e) {
-                e.printStackTrace();
-                return false;
-            }
-        }
-
         m_metaState = MetaKeyKeyListener.handleKeyDown(m_metaState, keyCode, event);
         int c = event.getUnicodeChar(MetaKeyKeyListener.getMetaState(m_metaState));
         int lc = c;
@@ -827,7 +973,7 @@ public class QtActivityDelegate
             if (!m_backKeyPressedSent)
                 return true;
         }
-        QtNative.keyDown(keyCode, c, event.getMetaState());
+        QtNative.keyDown(keyCode, c, event.getMetaState(), event.getRepeatCount() > 0);
 
         return true;
     }
@@ -836,15 +982,6 @@ public class QtActivityDelegate
     {
         if (!m_started)
             return false;
-
-        if (keyCode == KeyEvent.KEYCODE_MENU) {
-            try {
-                return (Boolean)m_super_onKeyUp.invoke(m_activity, keyCode, event);
-            } catch (Exception e) {
-                e.printStackTrace();
-                return false;
-            }
-        }
 
         if ((keyCode == KeyEvent.KEYCODE_VOLUME_UP
             || keyCode == KeyEvent.KEYCODE_VOLUME_DOWN
@@ -860,7 +997,7 @@ public class QtActivityDelegate
         }
 
         m_metaState = MetaKeyKeyListener.handleKeyUp(m_metaState, keyCode, event);
-        QtNative.keyUp(keyCode, event.getUnicodeChar(), event.getMetaState());
+        QtNative.keyUp(keyCode, event.getUnicodeChar(), event.getMetaState(), event.getRepeatCount() > 0);
         return true;
     }
 
@@ -871,8 +1008,8 @@ public class QtActivityDelegate
                 && event.getCharacters() != null
                 && event.getCharacters().length() == 1
                 && event.getKeyCode() == 0) {
-            QtNative.keyDown(0, event.getCharacters().charAt(0), event.getMetaState());
-            QtNative.keyUp(0, event.getCharacters().charAt(0), event.getMetaState());
+            QtNative.keyDown(0, event.getCharacters().charAt(0), event.getMetaState(), event.getRepeatCount() > 0);
+            QtNative.keyUp(0, event.getCharacters().charAt(0), event.getMetaState(), event.getRepeatCount() > 0);
         }
 
         try {
@@ -883,7 +1020,7 @@ public class QtActivityDelegate
         return false;
     }
 
-    private boolean m_opionsMenuIsVisible = false;
+    private boolean m_optionsMenuIsVisible = false;
     public boolean onCreateOptionsMenu(Menu menu)
     {
         menu.clear();
@@ -891,7 +1028,7 @@ public class QtActivityDelegate
     }
     public boolean onPrepareOptionsMenu(Menu menu)
     {
-        m_opionsMenuIsVisible = true;
+        m_optionsMenuIsVisible = true;
         boolean res = QtNative.onPrepareOptionsMenu(menu);
         setActionBarVisibility(res && menu.size() > 0);
         return res;
@@ -904,7 +1041,7 @@ public class QtActivityDelegate
 
     public void onOptionsMenuClosed(Menu menu)
     {
-        m_opionsMenuIsVisible = false;
+        m_optionsMenuIsVisible = false;
         QtNative.onOptionsMenuClosed(menu);
     }
 
@@ -918,7 +1055,7 @@ public class QtActivityDelegate
             }
         }
         else
-            if (m_opionsMenuIsVisible)
+            if (m_optionsMenuIsVisible)
                 m_activity.closeOptionsMenu();
     }
     private boolean m_contextMenuVisible = false;
@@ -928,6 +1065,12 @@ public class QtActivityDelegate
     {
         menu.clearHeader();
         QtNative.onCreateContextMenu(menu);
+        m_contextMenuVisible = true;
+    }
+
+    public void onCreatePopupMenu(Menu menu)
+    {
+        QtNative.fillContextMenu(menu);
         m_contextMenuVisible = true;
     }
 
@@ -941,17 +1084,26 @@ public class QtActivityDelegate
 
     public boolean onContextItemSelected(MenuItem item)
     {
+        m_contextMenuVisible = false;
         return QtNative.onContextItemSelected(item.getItemId(), item.isChecked());
     }
 
-    public void openContextMenu()
+    public void openContextMenu(final int x, final int y, final int w, final int h)
     {
         m_layout.postDelayed(new Runnable() {
                 @Override
                 public void run() {
-                    m_activity.openContextMenu(m_layout);
+                    if (Build.VERSION.SDK_INT < 11 || w <= 0 || h <= 0) {
+                        m_activity.openContextMenu(m_layout);
+                    } else if (Build.VERSION.SDK_INT < 14) {
+                        m_layout.setLayoutParams(m_editText, new QtLayout.LayoutParams(w, h, x, y), false);
+                        QtPopupMenu.getInstance().showMenu(m_editText);
+                    } else {
+                        m_layout.setLayoutParams(m_editText, new QtLayout.LayoutParams(w, h, x, y), false);
+                        QtPopupMenu14.getInstance().showMenu(m_editText);
+                    }
                 }
-            }, 10);
+            }, 100);
     }
 
     public void closeContextMenu()
@@ -1017,8 +1169,8 @@ public class QtActivityDelegate
             view.setLayoutParams(new QtLayout.LayoutParams(w, h, x, y));
         }
 
+        view.setId(id);
         m_layout.addView(view);
-        m_layout.bringChildToFront(view);
         m_nativeViews.put(id, view);
     }
 
@@ -1031,7 +1183,6 @@ public class QtActivityDelegate
             } else {
                 m_activity.getWindow().setBackgroundDrawable(m_activity.getResources().getDrawable(attr.resourceId));
             }
-
             if (m_dummyView != null) {
                 m_layout.removeView(m_dummyView);
                 m_dummyView = null;
@@ -1049,9 +1200,11 @@ public class QtActivityDelegate
             surface.setLayoutParams( new QtLayout.LayoutParams(w, h, x, y));
         }
 
-        m_layout.addView(surface);
-        if (onTop)
-            m_layout.bringChildToFront(surface);
+        // Native views are always inserted in the end of the stack (i.e., on top).
+        // All other views are stacked based on the order they are created.
+        final int surfaceCount = getSurfaceCount();
+        m_layout.addView(surface, surfaceCount);
+
         m_surfaces.put(id, surface);
     }
 
@@ -1062,13 +1215,10 @@ public class QtActivityDelegate
         } else if (m_nativeViews.containsKey(id)) {
             View view = m_nativeViews.get(id);
             view.setLayoutParams(new QtLayout.LayoutParams(w, h, x, y));
-            m_layout.bringChildToFront(view);
         } else {
             Log.e(QtNative.QtTAG, "Surface " + id +" not found!");
             return;
         }
-
-        m_layout.requestLayout();
     }
 
     public void destroySurface(int id) {
@@ -1082,12 +1232,50 @@ public class QtActivityDelegate
             Log.e(QtNative.QtTAG, "Surface " + id +" not found!");
         }
 
+        if (view == null)
+            return;
+
         // Keep last frame in stack until it is replaced to get correct
         // shutdown transition
         if (m_surfaces.size() == 0 && m_nativeViews.size() == 0) {
             m_dummyView = view;
-        } else if (view != null) {
+        } else {
             m_layout.removeView(view);
+        }
+    }
+
+    public int getSurfaceCount()
+    {
+        return m_surfaces.size();
+    }
+
+    public void bringChildToFront(int id)
+    {
+        View view = m_surfaces.get(id);
+        if (view != null) {
+            final int surfaceCount = getSurfaceCount();
+            if (surfaceCount > 0)
+                m_layout.moveChild(view, surfaceCount - 1);
+            return;
+        }
+
+        view = m_nativeViews.get(id);
+        if (view != null)
+            m_layout.moveChild(view, -1);
+    }
+
+    public void bringChildToBack(int id)
+    {
+        View view = m_surfaces.get(id);
+        if (view != null) {
+            m_layout.moveChild(view, 0);
+            return;
+        }
+
+        view = m_nativeViews.get(id);
+        if (view != null) {
+            final int index = getSurfaceCount();
+            m_layout.moveChild(view, index);
         }
     }
 }

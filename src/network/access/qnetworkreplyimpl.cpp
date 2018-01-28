@@ -1,39 +1,31 @@
 /****************************************************************************
 **
-** Copyright (C) 2013 Digia Plc and/or its subsidiary(-ies).
-** Contact: http://www.qt-project.org/legal
+** Copyright (C) 2015 The Qt Company Ltd.
+** Contact: http://www.qt.io/licensing/
 **
 ** This file is part of the QtNetwork module of the Qt Toolkit.
 **
-** $QT_BEGIN_LICENSE:LGPL$
+** $QT_BEGIN_LICENSE:LGPL21$
 ** Commercial License Usage
 ** Licensees holding valid commercial Qt licenses may use this file in
 ** accordance with the commercial license agreement provided with the
 ** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and Digia.  For licensing terms and
-** conditions see http://qt.digia.com/licensing.  For further information
-** use the contact form at http://qt.digia.com/contact-us.
+** a written agreement between you and The Qt Company. For licensing terms
+** and conditions see http://www.qt.io/terms-conditions. For further
+** information use the contact form at http://www.qt.io/contact-us.
 **
 ** GNU Lesser General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 2.1 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU Lesser General Public License version 2.1 requirements
-** will be met: http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
+** General Public License version 2.1 or version 3 as published by the Free
+** Software Foundation and appearing in the file LICENSE.LGPLv21 and
+** LICENSE.LGPLv3 included in the packaging of this file. Please review the
+** following information to ensure the GNU Lesser General Public License
+** requirements will be met: https://www.gnu.org/licenses/lgpl.html and
+** http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
 **
-** In addition, as a special exception, Digia gives you certain additional
-** rights.  These rights are described in the Digia Qt LGPL Exception
+** As a special exception, The Qt Company gives you certain additional
+** rights. These rights are described in The Qt Company LGPL Exception
 ** version 1.1, included in the file LGPL_EXCEPTION.txt in this package.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3.0 as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU General Public License version 3.0 requirements will be
-** met: http://www.gnu.org/copyleft/gpl.html.
-**
 **
 ** $QT_END_LICENSE$
 **
@@ -67,6 +59,8 @@ inline QNetworkReplyImplPrivate::QNetworkReplyImplPrivate()
       , downloadBufferMaximumSize(0)
       , downloadBuffer(0)
 {
+    if (request.attribute(QNetworkRequest::EmitAllUploadProgressSignalsAttribute).toBool() == true)
+        emitAllUploadProgressSignals = true;
 }
 
 void QNetworkReplyImplPrivate::_q_startOperation()
@@ -132,6 +126,11 @@ void QNetworkReplyImplPrivate::_q_startOperation()
         finished();
 #endif
         return;
+    } else {
+#ifndef QT_NO_BEARERMANAGEMENT
+        QObject::connect(session.data(), SIGNAL(stateChanged(QNetworkSession::State)),
+                         q, SLOT(_q_networkSessionStateChanged(QNetworkSession::State)), Qt::QueuedConnection);
+#endif
     }
 
 #ifndef QT_NO_BEARERMANAGEMENT
@@ -248,7 +247,7 @@ void QNetworkReplyImplPrivate::_q_bufferOutgoingData()
 
     if (!outgoingDataBuffer) {
         // first call, create our buffer
-        outgoingDataBuffer = QSharedPointer<QRingBuffer>(new QRingBuffer());
+        outgoingDataBuffer = QSharedPointer<QRingBuffer>::create();
 
         QObject::connect(outgoingData, SIGNAL(readyRead()), q, SLOT(_q_bufferOutgoingData()));
         QObject::connect(outgoingData, SIGNAL(readChannelFinished()), q, SLOT(_q_bufferOutgoingDataFinished()));
@@ -301,18 +300,28 @@ void QNetworkReplyImplPrivate::_q_networkSessionConnected()
         return;
 
     switch (state) {
-    case QNetworkReplyImplPrivate::Buffering:
-    case QNetworkReplyImplPrivate::Working:
-    case QNetworkReplyImplPrivate::Reconnecting:
+    case QNetworkReplyPrivate::Buffering:
+    case QNetworkReplyPrivate::Working:
+    case QNetworkReplyPrivate::Reconnecting:
         // Migrate existing downloads to new network connection.
         migrateBackend();
         break;
-    case QNetworkReplyImplPrivate::WaitingForSession:
+    case QNetworkReplyPrivate::WaitingForSession:
         // Start waiting requests.
         QMetaObject::invokeMethod(q, "_q_startOperation", Qt::QueuedConnection);
         break;
     default:
         ;
+    }
+}
+
+void QNetworkReplyImplPrivate::_q_networkSessionStateChanged(QNetworkSession::State sessionState)
+{
+    if (sessionState == QNetworkSession::Disconnected
+            && (state != Idle || state != Reconnecting)) {
+        error(QNetworkReplyImpl::NetworkSessionFailedError,
+              QCoreApplication::translate("QNetworkReply", "Network session error."));
+        finished();
     }
 }
 
@@ -367,7 +376,7 @@ void QNetworkReplyImplPrivate::setup(QNetworkAccessManager::Operation op, const 
     // The synchronous HTTP is a corner case, we will put all upload data in one big QByteArray in the outgoingDataBuffer.
     // Yes, this is not the most efficient thing to do, but on the other hand synchronous XHR needs to die anyway.
     if (synchronousHttpAttribute.toBool() && outgoingData) {
-        outgoingDataBuffer = QSharedPointer<QRingBuffer>(new QRingBuffer());
+        outgoingDataBuffer = QSharedPointer<QRingBuffer>::create();
         qint64 previousDataSize = 0;
         do {
             previousDataSize = outgoingDataBuffer->size();
@@ -410,19 +419,11 @@ void QNetworkReplyImplPrivate::setup(QNetworkAccessManager::Operation op, const 
     } else {
         // for HTTP, we want to send out the request as fast as possible to the network, without
         // invoking methods in a QueuedConnection
-#ifndef QT_NO_HTTP
-        if (backend && backend->isSynchronous()) {
-            _q_startOperation();
-        } else {
-            QMetaObject::invokeMethod(q, "_q_startOperation", Qt::QueuedConnection);
-        }
-#else
         if (backend && backend->isSynchronous())
             _q_startOperation();
         else
             QMetaObject::invokeMethod(q, "_q_startOperation", Qt::QueuedConnection);
-#endif // QT_NO_HTTP
-        }
+    }
 }
 
 void QNetworkReplyImplPrivate::backendNotify(InternalNotifications notification)
@@ -550,14 +551,16 @@ void QNetworkReplyImplPrivate::emitUploadProgress(qint64 bytesSent, qint64 bytes
     Q_Q(QNetworkReplyImpl);
     bytesUploaded = bytesSent;
 
-    //choke signal emissions, except the first and last signals which are unconditional
-    if (uploadProgressSignalChoke.isValid()) {
-        if (bytesSent != bytesTotal && uploadProgressSignalChoke.elapsed() < progressSignalInterval) {
-            return;
+    if (!emitAllUploadProgressSignals) {
+        //choke signal emissions, except the first and last signals which are unconditional
+        if (uploadProgressSignalChoke.isValid()) {
+            if (bytesSent != bytesTotal && uploadProgressSignalChoke.elapsed() < progressSignalInterval) {
+                return;
+            }
+            uploadProgressSignalChoke.restart();
+        } else {
+            uploadProgressSignalChoke.start();
         }
-        uploadProgressSignalChoke.restart();
-    } else {
-        uploadProgressSignalChoke.start();
     }
 
     pauseNotificationHandling();
@@ -916,7 +919,7 @@ QNetworkReplyImpl::~QNetworkReplyImpl()
 void QNetworkReplyImpl::abort()
 {
     Q_D(QNetworkReplyImpl);
-    if (d->state == QNetworkReplyImplPrivate::Finished || d->state == QNetworkReplyImplPrivate::Aborted)
+    if (d->state == QNetworkReplyPrivate::Finished || d->state == QNetworkReplyPrivate::Aborted)
         return;
 
     // stop both upload and download
@@ -927,14 +930,14 @@ void QNetworkReplyImpl::abort()
 
     QNetworkReply::close();
 
-    if (d->state != QNetworkReplyImplPrivate::Finished) {
+    if (d->state != QNetworkReplyPrivate::Finished) {
         // call finished which will emit signals
         d->error(OperationCanceledError, tr("Operation canceled"));
-        if (d->state == QNetworkReplyImplPrivate::WaitingForSession)
-            d->state = QNetworkReplyImplPrivate::Working;
+        if (d->state == QNetworkReplyPrivate::WaitingForSession)
+            d->state = QNetworkReplyPrivate::Working;
         d->finished();
     }
-    d->state = QNetworkReplyImplPrivate::Aborted;
+    d->state = QNetworkReplyPrivate::Aborted;
 
     // finished may access the backend
     if (d->backend) {
@@ -946,8 +949,8 @@ void QNetworkReplyImpl::abort()
 void QNetworkReplyImpl::close()
 {
     Q_D(QNetworkReplyImpl);
-    if (d->state == QNetworkReplyImplPrivate::Aborted ||
-        d->state == QNetworkReplyImplPrivate::Finished)
+    if (d->state == QNetworkReplyPrivate::Aborted ||
+        d->state == QNetworkReplyPrivate::Finished)
         return;
 
     // stop the download
@@ -1041,7 +1044,7 @@ qint64 QNetworkReplyImpl::readData(char *data, qint64 maxlen)
     if (d->downloadBuffer) {
         qint64 maxAvail = qMin<qint64>(d->downloadBufferCurrentSize - d->downloadBufferReadPosition, maxlen);
         if (maxAvail == 0)
-            return d->state == QNetworkReplyImplPrivate::Finished ? -1 : 0;
+            return d->state == QNetworkReplyPrivate::Finished ? -1 : 0;
         // FIXME what about "Aborted" state?
         memcpy(data, d->downloadBuffer + d->downloadBufferReadPosition, maxAvail);
         d->downloadBufferReadPosition += maxAvail;
@@ -1050,7 +1053,7 @@ qint64 QNetworkReplyImpl::readData(char *data, qint64 maxlen)
 
 
     if (d->readBuffer.isEmpty())
-        return d->state == QNetworkReplyImplPrivate::Finished ? -1 : 0;
+        return d->state == QNetworkReplyPrivate::Finished ? -1 : 0;
     // FIXME what about "Aborted" state?
 
     d->backendNotify(QNetworkReplyImplPrivate::NotifyDownstreamReadyWrite);
@@ -1101,7 +1104,7 @@ bool QNetworkReplyImplPrivate::migrateBackend()
     if (!backend->canResume())
         return false;
 
-    state = QNetworkReplyImplPrivate::Reconnecting;
+    state = QNetworkReplyPrivate::Reconnecting;
 
     if (backend) {
         delete backend;
@@ -1121,11 +1124,7 @@ bool QNetworkReplyImplPrivate::migrateBackend()
         backend->setResumeOffset(bytesDownloaded);
     }
 
-#ifndef QT_NO_HTTP
     QMetaObject::invokeMethod(q, "_q_startOperation", Qt::QueuedConnection);
-#else
-    QMetaObject::invokeMethod(q, "_q_startOperation", Qt::QueuedConnection);
-#endif // QT_NO_HTTP
 
     return true;
 }

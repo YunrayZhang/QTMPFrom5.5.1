@@ -1,40 +1,32 @@
 /****************************************************************************
 **
 ** Copyright (C) 2013 Samuel Gaist <samuel.gaist@edeltech.ch>
-** Copyright (C) 2013 Digia Plc and/or its subsidiary(-ies).
-** Contact: http://www.qt-project.org/legal
+** Copyright (C) 2015 The Qt Company Ltd.
+** Contact: http://www.qt.io/licensing/
 **
 ** This file is part of the plugins of the Qt Toolkit.
 **
-** $QT_BEGIN_LICENSE:LGPL$
+** $QT_BEGIN_LICENSE:LGPL21$
 ** Commercial License Usage
 ** Licensees holding valid commercial Qt licenses may use this file in
 ** accordance with the commercial license agreement provided with the
 ** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and Digia.  For licensing terms and
-** conditions see http://qt.digia.com/licensing.  For further information
-** use the contact form at http://qt.digia.com/contact-us.
+** a written agreement between you and The Qt Company. For licensing terms
+** and conditions see http://www.qt.io/terms-conditions. For further
+** information use the contact form at http://www.qt.io/contact-us.
 **
 ** GNU Lesser General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 2.1 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU Lesser General Public License version 2.1 requirements
-** will be met: http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
+** General Public License version 2.1 or version 3 as published by the Free
+** Software Foundation and appearing in the file LICENSE.LGPLv21 and
+** LICENSE.LGPLv3 included in the packaging of this file. Please review the
+** following information to ensure the GNU Lesser General Public License
+** requirements will be met: https://www.gnu.org/licenses/lgpl.html and
+** http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
 **
-** In addition, as a special exception, Digia gives you certain additional
-** rights.  These rights are described in the Digia Qt LGPL Exception
+** As a special exception, The Qt Company gives you certain additional
+** rights. These rights are described in The Qt Company LGPL Exception
 ** version 1.1, included in the file LGPL_EXCEPTION.txt in this package.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3.0 as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU General Public License version 3.0 requirements will be
-** met: http://www.gnu.org/copyleft/gpl.html.
-**
 **
 ** $QT_END_LICENSE$
 **
@@ -70,22 +62,25 @@ QWindowsGuiEventDispatcher::QWindowsGuiEventDispatcher(QObject *parent) :
     QEventDispatcherWin32(parent), m_flags(0)
 {
     setObjectName(QStringLiteral("QWindowsGuiEventDispatcher"));
+    createInternalHwnd(); // QTBUG-40881: Do not delay registering timers, etc. for QtMfc.
 }
 
 bool QWindowsGuiEventDispatcher::processEvents(QEventLoop::ProcessEventsFlags flags)
 {
+    const QEventLoop::ProcessEventsFlags oldFlags = m_flags;
     m_flags = flags;
     if (QWindowsContext::verbose > 2 && lcQpaEvents().isDebugEnabled())
         qCDebug(lcQpaEvents) << '>' << __FUNCTION__ << objectName() << flags;
     const bool rc = QEventDispatcherWin32::processEvents(flags);
     if (QWindowsContext::verbose > 2 && lcQpaEvents().isDebugEnabled())
         qCDebug(lcQpaEvents) << '<' << __FUNCTION__ << "returns" << rc;
+    m_flags = oldFlags;
     return rc;
 }
 
 void QWindowsGuiEventDispatcher::sendPostedEvents()
 {
-    QCoreApplication::sendPostedEvents();
+    QEventDispatcherWin32::sendPostedEvents();
     QWindowSystemInterface::sendWindowSystemEvents(m_flags);
 }
 
@@ -115,6 +110,9 @@ messageDebugEntries[] = {
     {WM_SYSCOMMAND, "WM_SYSCOMMAND", true},
     {WM_KEYUP, "WM_KEYUP", true},
     {WM_SYSKEYUP, "WM_SYSKEYUP", true},
+#if defined(WM_APPCOMMAND)
+    {WM_APPCOMMAND, "WM_APPCOMMAND", true},
+#endif
     {WM_IME_CHAR, "WM_IMECHAR", true},
     {WM_IME_KEYDOWN, "WM_IMECHAR", true},
     {WM_CANCELMODE,  "WM_CANCELMODE", true},

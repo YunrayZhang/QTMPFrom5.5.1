@@ -42,7 +42,7 @@ POSSIBILITY OF SUCH DAMAGE.
 class. It is used by both pcre_exec() and pcre_def_exec(). */
 
 
-#ifdef PCRE_HAVE_CONFIG_H
+#ifdef HAVE_CONFIG_H
 #include "config.h"
 #endif
 
@@ -81,6 +81,11 @@ additional data. */
 
 if (c < 256)
   {
+  if ((*data & XCL_HASPROP) == 0)
+    {
+    if ((*data & XCL_MAP) == 0) return negated;
+    return (((pcre_uint8 *)(data + 1))[c/8] & (1 << (c&7))) != 0;
+    }
   if ((*data & XCL_MAP) != 0 &&
     (((pcre_uint8 *)(data + 1))[c/8] & (1 << (c&7))) != 0)
     return !negated; /* char found */

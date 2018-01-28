@@ -1,39 +1,31 @@
 /****************************************************************************
 **
-** Copyright (C) 2013 Digia Plc and/or its subsidiary(-ies).
-** Contact: http://www.qt-project.org/legal
+** Copyright (C) 2015 The Qt Company Ltd.
+** Contact: http://www.qt.io/licensing/
 **
 ** This file is part of the QtCore module of the Qt Toolkit.
 **
-** $QT_BEGIN_LICENSE:LGPL$
+** $QT_BEGIN_LICENSE:LGPL21$
 ** Commercial License Usage
 ** Licensees holding valid commercial Qt licenses may use this file in
 ** accordance with the commercial license agreement provided with the
 ** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and Digia.  For licensing terms and
-** conditions see http://qt.digia.com/licensing.  For further information
-** use the contact form at http://qt.digia.com/contact-us.
+** a written agreement between you and The Qt Company. For licensing terms
+** and conditions see http://www.qt.io/terms-conditions. For further
+** information use the contact form at http://www.qt.io/contact-us.
 **
 ** GNU Lesser General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 2.1 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU Lesser General Public License version 2.1 requirements
-** will be met: http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
+** General Public License version 2.1 or version 3 as published by the Free
+** Software Foundation and appearing in the file LICENSE.LGPLv21 and
+** LICENSE.LGPLv3 included in the packaging of this file. Please review the
+** following information to ensure the GNU Lesser General Public License
+** requirements will be met: https://www.gnu.org/licenses/lgpl.html and
+** http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
 **
-** In addition, as a special exception, Digia gives you certain additional
-** rights.  These rights are described in the Digia Qt LGPL Exception
+** As a special exception, The Qt Company gives you certain additional
+** rights. These rights are described in The Qt Company LGPL Exception
 ** version 1.1, included in the file LGPL_EXCEPTION.txt in this package.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3.0 as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU General Public License version 3.0 requirements will be
-** met: http://www.gnu.org/copyleft/gpl.html.
-**
 **
 ** $QT_END_LICENSE$
 **
@@ -1226,7 +1218,7 @@ QString QFileSystemEngine::rootPath()
     ret = QDir::fromNativeSeparators(QString::fromWCharArray(finalWinPath.GetRawBuffer(nullptr)));
 
 #else
-    QString ret = QString::fromLatin1(qgetenv("SystemDrive").constData());
+    QString ret = QString::fromLatin1(qgetenv("SystemDrive"));
     if (ret.isEmpty())
         ret = QLatin1String("c:");
     ret.append(QLatin1Char('/'));
@@ -1261,12 +1253,12 @@ QString QFileSystemEngine::homePath()
     }
 #endif
     if (ret.isEmpty() || !QFile::exists(ret)) {
-        ret = QString::fromLocal8Bit(qgetenv("USERPROFILE").constData());
+        ret = QString::fromLocal8Bit(qgetenv("USERPROFILE"));
         if (ret.isEmpty() || !QFile::exists(ret)) {
-            ret = QString::fromLocal8Bit(qgetenv("HOMEDRIVE").constData())
-                  + QString::fromLocal8Bit(qgetenv("HOMEPATH").constData());
+            ret = QString::fromLocal8Bit(qgetenv("HOMEDRIVE"))
+                  + QString::fromLocal8Bit(qgetenv("HOMEPATH"));
             if (ret.isEmpty() || !QFile::exists(ret)) {
-                ret = QString::fromLocal8Bit(qgetenv("HOME").constData());
+                ret = QString::fromLocal8Bit(qgetenv("HOME"));
                 if (ret.isEmpty() || !QFile::exists(ret)) {
 #if defined(Q_OS_WINCE)
                     ret = QLatin1String("\\My Documents");
@@ -1445,11 +1437,9 @@ bool QFileSystemEngine::setPermissions(const QFileSystemEntry &entry, QFile::Per
     Q_UNUSED(data);
     int mode = 0;
 
-    if (permissions & QFile::ReadOwner || permissions & QFile::ReadUser
-        || permissions & QFile::ReadGroup || permissions & QFile::ReadOther)
+    if (permissions & (QFile::ReadOwner | QFile::ReadUser | QFile::ReadGroup | QFile::ReadOther))
         mode |= _S_IREAD;
-    if (permissions & QFile::WriteOwner || permissions & QFile::WriteUser
-        || permissions & QFile::WriteGroup || permissions & QFile::WriteOther)
+    if (permissions & (QFile::WriteOwner | QFile::WriteUser | QFile::WriteGroup | QFile::WriteOther))
         mode |= _S_IWRITE;
 
     if (mode == 0) // not supported

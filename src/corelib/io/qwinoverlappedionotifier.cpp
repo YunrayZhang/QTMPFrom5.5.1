@@ -1,39 +1,31 @@
 /****************************************************************************
 **
-** Copyright (C) 2013 Digia Plc and/or its subsidiary(-ies).
-** Contact: http://www.qt-project.org/legal
+** Copyright (C) 2015 The Qt Company Ltd.
+** Contact: http://www.qt.io/licensing/
 **
 ** This file is part of the QtCore module of the Qt Toolkit.
 **
-** $QT_BEGIN_LICENSE:LGPL$
+** $QT_BEGIN_LICENSE:LGPL21$
 ** Commercial License Usage
 ** Licensees holding valid commercial Qt licenses may use this file in
 ** accordance with the commercial license agreement provided with the
 ** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and Digia.  For licensing terms and
-** conditions see http://qt.digia.com/licensing.  For further information
-** use the contact form at http://qt.digia.com/contact-us.
+** a written agreement between you and The Qt Company. For licensing terms
+** and conditions see http://www.qt.io/terms-conditions. For further
+** information use the contact form at http://www.qt.io/contact-us.
 **
 ** GNU Lesser General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 2.1 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU Lesser General Public License version 2.1 requirements
-** will be met: http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
+** General Public License version 2.1 or version 3 as published by the Free
+** Software Foundation and appearing in the file LICENSE.LGPLv21 and
+** LICENSE.LGPLv3 included in the packaging of this file. Please review the
+** following information to ensure the GNU Lesser General Public License
+** requirements will be met: https://www.gnu.org/licenses/lgpl.html and
+** http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
 **
-** In addition, as a special exception, Digia gives you certain additional
-** rights.  These rights are described in the Digia Qt LGPL Exception
+** As a special exception, The Qt Company gives you certain additional
+** rights. These rights are described in The Qt Company LGPL Exception
 ** version 1.1, included in the file LGPL_EXCEPTION.txt in this package.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3.0 as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU General Public License version 3.0 requirements will be
-** met: http://www.gnu.org/copyleft/gpl.html.
-**
 **
 ** $QT_END_LICENSE$
 **
@@ -41,6 +33,8 @@
 
 #include "qwinoverlappedionotifier_p.h"
 #include <qdebug.h>
+#include <qatomic.h>
+#include <qelapsedtimer.h>
 #include <qmutex.h>
 #include <qpointer.h>
 #include <qqueue.h>
@@ -48,6 +42,7 @@
 #include <qthread.h>
 #include <qt_windows.h>
 #include <private/qobject_p.h>
+#include <private/qiodevice_p.h>
 
 QT_BEGIN_NAMESPACE
 
@@ -105,6 +100,7 @@ public:
     {
     }
 
+    OVERLAPPED *waitForAnyNotified(int msecs);
     void notify(DWORD numberOfBytes, DWORD errorCode, OVERLAPPED *overlapped);
     OVERLAPPED *_q_notified();
 
@@ -114,6 +110,7 @@ public:
     HANDLE hHandle;
     HANDLE hSemaphore;
     HANDLE hResultsMutex;
+    QAtomicInt waiting;
     QQueue<IOResult> results;
 };
 
@@ -292,6 +289,62 @@ void QWinOverlappedIoNotifier::setEnabled(bool enabled)
         d->iocp->unregisterNotifier(d);
 }
 
+OVERLAPPED *QWinOverlappedIoNotifierPrivate::waitForAnyNotified(int msecs)
+{
+    if (!iocp->isRunning()) {
+        qWarning("Called QWinOverlappedIoNotifier::waitForAnyNotified on inactive notifier.");
+        return 0;
+    }
+
+    if (msecs == 0)
+        iocp->drainQueue();
+
+    const DWORD wfso = WaitForSingleObject(hSemaphore, msecs == -1 ? INFINITE : DWORD(msecs));
+    switch (wfso) {
+    case WAIT_OBJECT_0:
+        ReleaseSemaphore(hSemaphore, 1, NULL);
+        return _q_notified();
+    case WAIT_TIMEOUT:
+        return 0;
+    default:
+        qErrnoWarning("QWinOverlappedIoNotifier::waitForAnyNotified: WaitForSingleObject failed.");
+        return 0;
+    }
+}
+
+class QScopedAtomicIntIncrementor
+{
+public:
+    QScopedAtomicIntIncrementor(QAtomicInt &i)
+        : m_int(i)
+    {
+        ++m_int;
+    }
+
+    ~QScopedAtomicIntIncrementor()
+    {
+        --m_int;
+    }
+
+private:
+    QAtomicInt &m_int;
+};
+
+/*!
+ * Wait synchronously for any notified signal.
+ *
+ * The function returns a pointer to the OVERLAPPED object corresponding to the completed I/O
+ * operation. In case no I/O operation was completed during the \a msec timeout, this function
+ * returns a null pointer.
+ */
+OVERLAPPED *QWinOverlappedIoNotifier::waitForAnyNotified(int msecs)
+{
+    Q_D(QWinOverlappedIoNotifier);
+    QScopedAtomicIntIncrementor saii(d->waiting);
+    OVERLAPPED *result = d->waitForAnyNotified(msecs);
+    return result;
+}
+
 /*!
  * Wait synchronously for the notified signal.
  *
@@ -301,27 +354,20 @@ void QWinOverlappedIoNotifier::setEnabled(bool enabled)
 bool QWinOverlappedIoNotifier::waitForNotified(int msecs, OVERLAPPED *overlapped)
 {
     Q_D(QWinOverlappedIoNotifier);
-    if (!d->iocp->isRunning()) {
-        qWarning("Called QWinOverlappedIoNotifier::waitForNotified on inactive notifier.");
-        return false;
-    }
-
+    QScopedAtomicIntIncrementor saii(d->waiting);
+    int t = msecs;
+    QElapsedTimer stopWatch;
+    stopWatch.start();
     forever {
-        if (msecs == 0)
-            d->iocp->drainQueue();
-        DWORD result = WaitForSingleObject(d->hSemaphore, msecs == -1 ? INFINITE : DWORD(msecs));
-        if (result == WAIT_OBJECT_0) {
-            ReleaseSemaphore(d->hSemaphore, 1, NULL);
-            if (d->_q_notified() == overlapped)
-                return true;
-            continue;
-        } else if (result == WAIT_TIMEOUT) {
+        OVERLAPPED *triggeredOverlapped = waitForAnyNotified(t);
+        if (!triggeredOverlapped)
             return false;
-        }
+        if (triggeredOverlapped == overlapped)
+            return true;
+        t = qt_subtract_from_timeout(msecs, stopWatch.elapsed());
+        if (t == 0)
+            return false;
     }
-
-    qErrnoWarning("QWinOverlappedIoNotifier::waitForNotified: WaitForSingleObject failed.");
-    return false;
 }
 
 /*!
@@ -335,7 +381,8 @@ void QWinOverlappedIoNotifierPrivate::notify(DWORD numberOfBytes, DWORD errorCod
     results.enqueue(IOResult(numberOfBytes, errorCode, overlapped));
     ReleaseMutex(hResultsMutex);
     ReleaseSemaphore(hSemaphore, 1, NULL);
-    emit q->_q_notify();
+    if (!waiting)
+        emit q->_q_notify();
 }
 
 OVERLAPPED *QWinOverlappedIoNotifierPrivate::_q_notified()

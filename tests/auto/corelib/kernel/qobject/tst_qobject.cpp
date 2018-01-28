@@ -1,40 +1,32 @@
 /****************************************************************************
 **
-** Copyright (C) 2013 Digia Plc and/or its subsidiary(-ies).
-** Copyright (C) 2013 Olivier Goffart <ogoffart@woboq.com>
-** Contact: http://www.qt-project.org/legal
+** Copyright (C) 2015 The Qt Company Ltd.
+** Copyright (C) 2015 Olivier Goffart <ogoffart@woboq.com>
+** Contact: http://www.qt.io/licensing/
 **
 ** This file is part of the test suite of the Qt Toolkit.
 **
-** $QT_BEGIN_LICENSE:LGPL$
+** $QT_BEGIN_LICENSE:LGPL21$
 ** Commercial License Usage
 ** Licensees holding valid commercial Qt licenses may use this file in
 ** accordance with the commercial license agreement provided with the
 ** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and Digia.  For licensing terms and
-** conditions see http://qt.digia.com/licensing.  For further information
-** use the contact form at http://qt.digia.com/contact-us.
+** a written agreement between you and The Qt Company. For licensing terms
+** and conditions see http://www.qt.io/terms-conditions. For further
+** information use the contact form at http://www.qt.io/contact-us.
 **
 ** GNU Lesser General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 2.1 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU Lesser General Public License version 2.1 requirements
-** will be met: http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
+** General Public License version 2.1 or version 3 as published by the Free
+** Software Foundation and appearing in the file LICENSE.LGPLv21 and
+** LICENSE.LGPLv3 included in the packaging of this file. Please review the
+** following information to ensure the GNU Lesser General Public License
+** requirements will be met: https://www.gnu.org/licenses/lgpl.html and
+** http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
 **
-** In addition, as a special exception, Digia gives you certain additional
-** rights.  These rights are described in the Digia Qt LGPL Exception
+** As a special exception, The Qt Company gives you certain additional
+** rights. These rights are described in The Qt Company LGPL Exception
 ** version 1.1, included in the file LGPL_EXCEPTION.txt in this package.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3.0 as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU General Public License version 3.0 requirements will be
-** met: http://www.gnu.org/copyleft/gpl.html.
-**
 **
 ** $QT_END_LICENSE$
 **
@@ -99,9 +91,7 @@ private slots:
     void floatProperty();
     void qrealProperty();
     void property();
-#ifndef QT_NO_PROCESS
     void recursiveSignalEmission();
-#endif
     void signalBlocking();
     void blockingQueuedConnection();
     void childEvents();
@@ -137,6 +127,8 @@ private slots:
     void connectConvert();
     void connectWithReference();
     void connectManyArguments();
+    void connectForwardDeclare();
+    void connectNoDefaultConstructorArg();
     void returnValue_data();
     void returnValue();
     void returnValue2_data();
@@ -269,6 +261,21 @@ public slots:
 };
 
 int ReceiverObject::sequence = 0;
+
+static void playWithObjects()
+{
+    // Do operations that will lock the internal signalSlotLock mutex on many QObjects.
+    // The more QObjects, the higher the chance that the signalSlotLock mutex used
+    // is already in use. If the number of objects is higher than the number of mutexes in
+    // the pool (currently 131), the deadlock should always trigger. Use an even higher number
+    // to be on the safe side.
+    const int objectCount = 1024;
+    SenderObject lotsOfObjects[objectCount];
+    for (int i = 0; i < objectCount; ++i) {
+        QObject::connect(&lotsOfObjects[i], &SenderObject::signal1,
+                         &lotsOfObjects[i], &SenderObject::aPublicSlot);
+    }
+}
 
 void tst_QObject::initTestCase()
 {
@@ -911,6 +918,8 @@ void tst_QObject::connectDisconnectNotifyPMF()
     QMetaObject::Connection conn = connect((SenderObject*)s, &SenderObject::signal1,
                                            (ReceiverObject*)r, &ReceiverObject::slot1);
 
+    QVERIFY(conn);
+
     // Test disconnectNotify when disconnecting by QMetaObject::Connection
     QVERIFY(QObject::disconnect(conn));
     // disconnectNotify() is not called, but it probably should be.
@@ -1368,10 +1377,10 @@ struct CheckInstanceCount
 struct CustomType
 {
     CustomType(int l1 = 0, int l2 = 0, int l3 = 0): i1(l1), i2(l2), i3(l3)
-    { ++instanceCount; }
+    { ++instanceCount; playWithObjects(); }
     CustomType(const CustomType &other): i1(other.i1), i2(other.i2), i3(other.i3)
-    { ++instanceCount; }
-    ~CustomType() { --instanceCount; }
+    { ++instanceCount; playWithObjects(); }
+    ~CustomType() { --instanceCount; playWithObjects(); }
 
     int i1, i2, i3;
     int value() { return i1 + i2 + i3; }
@@ -1495,7 +1504,6 @@ typedef QString CustomString;
 class PropertyObject : public QObject
 {
     Q_OBJECT
-    Q_ENUMS(Alpha Priority)
 
     Q_PROPERTY(Alpha alpha READ alpha WRITE setAlpha)
     Q_PROPERTY(Priority priority READ priority WRITE setPriority)
@@ -1557,6 +1565,9 @@ private:
     float m_float;
     qreal m_qreal;
     CustomString m_customString;
+
+    Q_ENUM(Alpha)
+    Q_ENUM(Priority)
 };
 
 Q_DECLARE_METATYPE(PropertyObject::Priority)
@@ -2972,9 +2983,11 @@ void tst_QObject::dynamicProperties()
     QVERIFY(obj.dynamicPropertyNames().isEmpty());
 }
 
-#ifndef QT_NO_PROCESS
 void tst_QObject::recursiveSignalEmission()
 {
+#ifdef QT_NO_PROCESS
+    QSKIP("No qprocess support", SkipAll);
+#else
     QProcess proc;
     // signalbug helper app should always be next to this test binary
     const QString path = QStringLiteral("signalbug/signalbug");
@@ -2983,8 +2996,8 @@ void tst_QObject::recursiveSignalEmission()
     QVERIFY(proc.waitForFinished());
     QVERIFY(proc.exitStatus() == QProcess::NormalExit);
     QCOMPARE(proc.exitCode(), 0);
-}
 #endif
+}
 
 void tst_QObject::signalBlocking()
 {
@@ -5199,6 +5212,47 @@ void tst_QObject::connectManyArguments()
     QCOMPARE(ManyArgumentNamespace::count, 12);
 }
 
+class ForwardDeclared;
+
+class ForwardDeclareArguments : public QObject
+{
+    Q_OBJECT
+signals:
+    void mySignal(const ForwardDeclared&);
+public slots:
+    void mySlot(const ForwardDeclared&) {}
+};
+
+void tst_QObject::connectForwardDeclare()
+{
+    ForwardDeclareArguments ob;
+    // it should compile
+    QVERIFY(connect(&ob, &ForwardDeclareArguments::mySignal, &ob, &ForwardDeclareArguments::mySlot, Qt::QueuedConnection));
+}
+
+class NoDefaultConstructor
+{
+    Q_GADGET
+public:
+    NoDefaultConstructor(int) {}
+};
+
+class NoDefaultContructorArguments : public QObject
+{
+    Q_OBJECT
+signals:
+    void mySignal(const NoDefaultConstructor&);
+public slots:
+    void mySlot(const NoDefaultConstructor&) {}
+};
+
+void tst_QObject::connectNoDefaultConstructorArg()
+{
+    NoDefaultContructorArguments ob;
+    // it should compile
+    QVERIFY(connect(&ob, &NoDefaultContructorArguments::mySignal, &ob, &NoDefaultContructorArguments::mySlot, Qt::QueuedConnection));
+}
+
 class ReturnValue : public QObject {
 friend class tst_QObject;
 Q_OBJECT
@@ -5699,7 +5753,6 @@ void tst_QObject::connectFunctorWithContext()
 {
     int status = 1;
     SenderObject obj;
-    QMetaObject::Connection handle;
     ContextObject *context = new ContextObject;
     QEventLoop e;
 
@@ -5749,17 +5802,7 @@ public:
     {}
 
     ~MyFunctor() {
-        // Do operations that will lock the internal signalSlotLock mutex on many QObjects.
-        // The more QObjects, the higher the chance that the signalSlotLock mutex used
-        // is already in use. If the number of objects is higher than the number of mutexes in
-        // the pool (currently 131), the deadlock should always trigger. Use an even higher number
-        // to be on the safe side.
-        const int objectCount = 1024;
-        SenderObject lotsOfObjects[objectCount];
-        for (int i = 0; i < objectCount; ++i) {
-            QObject::connect(&lotsOfObjects[i], &SenderObject::signal1,
-                             &lotsOfObjects[i], &SenderObject::aPublicSlot);
-        }
+        playWithObjects();
     }
 
     void operator()() {
@@ -5944,7 +5987,7 @@ class GetSenderObject : public QObject
 {
     Q_OBJECT
 public:
-    QObject *accessSender() { return sender(); }
+    using QObject::sender; // make public
 
 public Q_SLOTS:
     void triggerSignal() { Q_EMIT aSignal(); }
@@ -5960,8 +6003,8 @@ struct CountedStruct
     CountedStruct(GetSenderObject *sender) : sender(sender) { ++countedStructObjectsCount; }
     CountedStruct(const CountedStruct &o) : sender(o.sender) { ++countedStructObjectsCount; }
     CountedStruct &operator=(const CountedStruct &) { return *this; }
-    // accessSender here allows us to check if there's a deadlock
-    ~CountedStruct() { --countedStructObjectsCount; if (sender != Q_NULLPTR) (void)sender->accessSender(); }
+    // calling sender() here allows us to check if there's a deadlock
+    ~CountedStruct() { --countedStructObjectsCount; if (sender) (void)sender->sender(); }
     void operator()() const { }
 
     GetSenderObject *sender;
@@ -6016,7 +6059,11 @@ void tst_QObject::disconnectDoesNotLeakFunctor()
             QVERIFY(c2);
             QCOMPARE(countedStructObjectsCount, 2);
             QVERIFY(QObject::disconnect(c1));
+            QVERIFY(!c1);
+            QVERIFY(!c2);
             // functor object has been destroyed
+            QCOMPARE(countedStructObjectsCount, 1);
+            QVERIFY(!QObject::disconnect(c2));
             QCOMPARE(countedStructObjectsCount, 1);
         }
         QCOMPARE(countedStructObjectsCount, 0);
@@ -6349,7 +6396,8 @@ void tst_QObject::noDeclarativeParentChangedOnDestruction()
     QObject *parent = new QObject;
     QObject *child = new QObject;
 
-    QAbstractDeclarativeData dummy;
+    QAbstractDeclarativeDataImpl dummy;
+    dummy.ownedByQml1 = false;
     QObjectPrivate::get(child)->declarativeData = &dummy;
 
     parentChangeCalled = false;

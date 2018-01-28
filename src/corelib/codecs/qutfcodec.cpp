@@ -1,40 +1,32 @@
 /****************************************************************************
 **
-** Copyright (C) 2013 Digia Plc and/or its subsidiary(-ies).
+** Copyright (C) 2015 The Qt Company Ltd.
 ** Copyright (C) 2013 Intel Corporation
-** Contact: http://www.qt-project.org/legal
+** Contact: http://www.qt.io/licensing/
 **
 ** This file is part of the QtCore module of the Qt Toolkit.
 **
-** $QT_BEGIN_LICENSE:LGPL$
+** $QT_BEGIN_LICENSE:LGPL21$
 ** Commercial License Usage
 ** Licensees holding valid commercial Qt licenses may use this file in
 ** accordance with the commercial license agreement provided with the
 ** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and Digia.  For licensing terms and
-** conditions see http://qt.digia.com/licensing.  For further information
-** use the contact form at http://qt.digia.com/contact-us.
+** a written agreement between you and The Qt Company. For licensing terms
+** and conditions see http://www.qt.io/terms-conditions. For further
+** information use the contact form at http://www.qt.io/contact-us.
 **
 ** GNU Lesser General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 2.1 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU Lesser General Public License version 2.1 requirements
-** will be met: http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
+** General Public License version 2.1 or version 3 as published by the Free
+** Software Foundation and appearing in the file LICENSE.LGPLv21 and
+** LICENSE.LGPLv3 included in the packaging of this file. Please review the
+** following information to ensure the GNU Lesser General Public License
+** requirements will be met: https://www.gnu.org/licenses/lgpl.html and
+** http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
 **
-** In addition, as a special exception, Digia gives you certain additional
-** rights.  These rights are described in the Digia Qt LGPL Exception
+** As a special exception, The Qt Company gives you certain additional
+** rights. These rights are described in The Qt Company LGPL Exception
 ** version 1.1, included in the file LGPL_EXCEPTION.txt in this package.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3.0 as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU General Public License version 3.0 requirements will be
-** met: http://www.gnu.org/copyleft/gpl.html.
-**
 **
 ** $QT_END_LICENSE$
 **
@@ -59,8 +51,8 @@ static inline bool simdEncodeAscii(uchar *&dst, const ushort *&nextAscii, const 
 {
     // do sixteen characters at a time
     for ( ; end - src >= 16; src += 16, dst += 16) {
-        __m128i data1 = _mm_loadu_si128((__m128i*)src);
-        __m128i data2 = _mm_loadu_si128(1+(__m128i*)src);
+        __m128i data1 = _mm_loadu_si128((const __m128i*)src);
+        __m128i data2 = _mm_loadu_si128(1+(const __m128i*)src);
 
 
         // check if everything is ASCII
@@ -98,29 +90,46 @@ static inline bool simdDecodeAscii(ushort *&dst, const uchar *&nextAscii, const 
 {
     // do sixteen characters at a time
     for ( ; end - src >= 16; src += 16, dst += 16) {
-        __m128i data = _mm_loadu_si128((__m128i*)src);
+        __m128i data = _mm_loadu_si128((const __m128i*)src);
+
+#ifdef __AVX2__
+        const int BitSpacing = 2;
+        // load and zero extend to an YMM register
+        const __m256i extended = _mm256_cvtepu8_epi16(data);
+
+        uint n = _mm256_movemask_epi8(extended);
+        if (!n) {
+            // store
+            _mm256_storeu_si256((__m256i*)dst, extended);
+            continue;
+        }
+#else
+        const int BitSpacing = 1;
 
         // check if everything is ASCII
         // movemask extracts the high bit of every byte, so n is non-zero if something isn't ASCII
         uint n = _mm_movemask_epi8(data);
-        if (n) {
-            // copy the front part that is still ASCII
-            while (!(n & 1)) {
-                *dst++ = *src++;
-                n >>= 1;
-            }
+        if (!n) {
+            // unpack
+            _mm_storeu_si128((__m128i*)dst, _mm_unpacklo_epi8(data, _mm_setzero_si128()));
+            _mm_storeu_si128(1+(__m128i*)dst, _mm_unpackhi_epi8(data, _mm_setzero_si128()));
+            continue;
+        }
+#endif
 
-            // find the next probable ASCII character
-            // we don't want to load 16 bytes again in this loop if we know there are non-ASCII
-            // characters still coming
-            n = _bit_scan_reverse(n);
-            nextAscii = src + n + 1;
-            return false;
+        // copy the front part that is still ASCII
+        while (!(n & 1)) {
+            *dst++ = *src++;
+            n >>= BitSpacing;
         }
 
-        // unpack
-        _mm_storeu_si128((__m128i*)dst, _mm_unpacklo_epi8(data, _mm_setzero_si128()));
-        _mm_storeu_si128(1+(__m128i*)dst, _mm_unpackhi_epi8(data, _mm_setzero_si128()));
+        // find the next probable ASCII character
+        // we don't want to load 16 bytes again in this loop if we know there are non-ASCII
+        // characters still coming
+        n = _bit_scan_reverse(n);
+        nextAscii = src + (n / BitSpacing) + 1;
+        return false;
+
     }
     return src == end;
 }
@@ -355,6 +364,7 @@ QString QUtf8::convertToUnicode(const char *chars, int len, QTextCodec::Converte
     // main body, stateless decoding
     res = 0;
     const uchar *nextAscii = src;
+    const uchar *start = src;
     while (res >= 0 && src < end) {
         if (src >= nextAscii && simdDecodeAscii(dst, nextAscii, src, end))
             break;
@@ -363,9 +373,11 @@ QString QUtf8::convertToUnicode(const char *chars, int len, QTextCodec::Converte
         res = QUtf8Functions::fromUtf8<QUtf8BaseTraits>(ch, dst, src, end);
         if (!headerdone && res >= 0) {
             headerdone = true;
-            // eat the UTF-8 BOM
-            if (dst[-1] == 0xfeff)
-                --dst;
+            if (src == start + 3) { // 3 == sizeof(utf8-bom)
+                // eat the UTF-8 BOM (it can only appear at the beginning of the string).
+                if (dst[-1] == 0xfeff)
+                    --dst;
+            }
         }
         if (res == QUtf8BaseTraits::Error) {
             res = 0;
@@ -381,7 +393,7 @@ QString QUtf8::convertToUnicode(const char *chars, int len, QTextCodec::Converte
             *dst++ = QChar::ReplacementCharacter;
     }
 
-    result.truncate(dst - (ushort *)result.unicode());
+    result.truncate(dst - (const ushort *)result.unicode());
     if (state) {
         state->invalidChars += invalid;
         if (headerdone)
@@ -460,7 +472,7 @@ QString QUtf16::convertToUnicode(const char *chars, int len, QTextCodec::Convert
         endian = (QSysInfo::ByteOrder == QSysInfo::BigEndian) ? BigEndianness : LittleEndianness;
 
     QString result(len, Qt::Uninitialized); // worst case
-    QChar *qch = (QChar *)result.unicode();
+    QChar *qch = (QChar *)result.data();
     while (len--) {
         if (half) {
             QChar ch;
@@ -591,7 +603,7 @@ QString QUtf32::convertToUnicode(const char *chars, int len, QTextCodec::Convert
 
     QString result;
     result.resize((num + len) >> 2 << 1); // worst case
-    QChar *qch = (QChar *)result.unicode();
+    QChar *qch = (QChar *)result.data();
 
     const char *end = chars + len;
     while (chars < end) {

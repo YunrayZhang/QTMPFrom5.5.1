@@ -1,39 +1,31 @@
 /***************************************************************************
 **
 ** Copyright (C) 2013 BlackBerry Limited. All rights reserved.
-** Contact: http://www.qt-project.org/legal
+** Contact: http://www.qt.io/licensing/
 **
 ** This file is part of the QtCore module of the Qt Toolkit.
 **
-** $QT_BEGIN_LICENSE:LGPL$
+** $QT_BEGIN_LICENSE:LGPL21$
 ** Commercial License Usage
 ** Licensees holding valid commercial Qt licenses may use this file in
 ** accordance with the commercial license agreement provided with the
 ** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and Digia.  For licensing terms and
-** conditions see http://qt.digia.com/licensing.  For further information
-** use the contact form at http://qt.digia.com/contact-us.
+** a written agreement between you and The Qt Company. For licensing terms
+** and conditions see http://www.qt.io/terms-conditions. For further
+** information use the contact form at http://www.qt.io/contact-us.
 **
 ** GNU Lesser General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 2.1 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU Lesser General Public License version 2.1 requirements
-** will be met: http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
+** General Public License version 2.1 or version 3 as published by the Free
+** Software Foundation and appearing in the file LICENSE.LGPLv21 and
+** LICENSE.LGPLv3 included in the packaging of this file. Please review the
+** following information to ensure the GNU Lesser General Public License
+** requirements will be met: https://www.gnu.org/licenses/lgpl.html and
+** http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
 **
-** In addition, as a special exception, Digia gives you certain additional
-** rights.  These rights are described in the Digia Qt LGPL Exception
+** As a special exception, The Qt Company gives you certain additional
+** rights. These rights are described in The Qt Company LGPL Exception
 ** version 1.1, included in the file LGPL_EXCEPTION.txt in this package.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3.0 as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU General Public License version 3.0 requirements will be
-** met: http://www.gnu.org/copyleft/gpl.html.
-**
 **
 ** $QT_END_LICENSE$
 **
@@ -50,10 +42,6 @@
 #include <QtCore/QFileInfo>
 #include <QtCore/QLocale>
 #include <QtCore/QDebug>
-
-#ifdef Q_OS_UNIX
-#include <sys/utsname.h>
-#endif
 
 QT_BEGIN_NAMESPACE
 
@@ -92,7 +80,7 @@ QFileSelectorPrivate::QFileSelectorPrivate()
     QString defaultsBasePath = "data/";
     QString defaultsPath = defaultsBasePath + "defaults.conf";
     QString localizedPath = defaultsBasePath
-            + QString("%1/defaults.conf").arg(QLocale::system().name());
+            + QString("%1/defaults.conf").arg(QLocale().name());
     if (QFile::exists(localizedPath))
         defaultsPath = localizedPath;
     QFile defaults(defaultsPath);
@@ -152,13 +140,15 @@ QFileSelectorPrivate::QFileSelectorPrivate()
     deployment step as an optimization. As selectors come with a performance cost, it is
     recommended to avoid their use in circumstances involving performance-critical code.
 
-    \section1 Adding selectors
+    \section1 Adding Selectors
 
     Selectors normally available are
     \list
     \li platform, any of the following strings which match the platform the application is running
-        on: android, blackberry, ios, osx, darwin, mac, linux, wince, unix, windows.
-    \li locale, same as QLocale::system().name().
+        on (list not exhaustive): android, blackberry, ios, osx, darwin, mac, linux, wince, unix,
+        windows. On Linux, if it can be determined, the name of the distribution too, like debian,
+        fedora or opensuse.
+    \li locale, same as QLocale().name().
     \endlist
 
     Further selectors will be added from the \c QT_FILE_SELECTORS environment variable, which
@@ -170,7 +160,7 @@ QFileSelectorPrivate::QFileSelectorPrivate()
     future calls to select(). If the extra selectors list has been changed, calls to select() will
     use the new list and may return differently.
 
-    \section1 Conflict resolution when multiple selectors apply
+    \section1 Conflict Resolution when Multiple Selectors Apply
 
     When multiple selectors could be applied to the same file, the first matching selector is chosen.
     The order selectors are checked in are:
@@ -235,13 +225,17 @@ QString QFileSelector::select(const QString &filePath) const
     return d->select(filePath);
 }
 
-static QString qrcScheme()
+static bool isLocalScheme(const QString &file)
 {
-    return QStringLiteral("qrc");
+    bool local = file == QStringLiteral("qrc");
+#ifdef Q_OS_ANDROID
+    local |= file == QStringLiteral("assets");
+#endif
+    return local;
 }
 
 /*!
-   This is a convenience version of select operating on QUrls. If the scheme is not file or qrc,
+   This is a convenience version of select operating on QUrl objects. If the scheme is not file or qrc,
    \a filePath is returned immediately. Otherwise selection is applied to the path of \a filePath
    and a QUrl is returned with the selected path and other QUrl parts the same as \a filePath.
 
@@ -250,13 +244,20 @@ static QString qrcScheme()
 QUrl QFileSelector::select(const QUrl &filePath) const
 {
     Q_D(const QFileSelector);
-    if (filePath.scheme() != qrcScheme() && !filePath.isLocalFile())
+    if (!isLocalScheme(filePath.scheme()) && !filePath.isLocalFile())
         return filePath;
     QUrl ret(filePath);
-    if (filePath.scheme() == qrcScheme()) {
-        QString equivalentPath = QLatin1Char(':') + filePath.path();
+    if (isLocalScheme(filePath.scheme())) {
+        QLatin1String scheme(":");
+#ifdef Q_OS_ANDROID
+        // use other scheme because ":" means "qrc" here
+        if (filePath.scheme() == QLatin1String("assets"))
+            scheme = QLatin1String("assets:");
+#endif
+
+        QString equivalentPath = scheme + filePath.path();
         QString selectedPath = d->select(equivalentPath);
-        ret.setPath(selectedPath.remove(0, 1));
+        ret.setPath(selectedPath.remove(0, scheme.size()));
     } else {
         ret = QUrl::fromLocalFile(d->select(ret.toLocalFile()));
     }
@@ -347,25 +348,26 @@ void QFileSelectorPrivate::updateSelectors()
     if (envSelectors.count())
         sharedData->staticSelectors << envSelectors;
 
-    if (!qgetenv(env_override).isEmpty())
+    if (!qEnvironmentVariableIsEmpty(env_override))
         return;
 
     sharedData->staticSelectors << sharedData->preloadedStatics; //Potential for static selectors from other modules
 
     // TODO: Update on locale changed?
-    sharedData->staticSelectors << QLocale::system().name();
+    sharedData->staticSelectors << QLocale().name();
 
     sharedData->staticSelectors << platformSelectors();
 }
 
 QStringList QFileSelectorPrivate::platformSelectors()
 {
+    // similar, but not identical to QSysInfo::osType
     QStringList ret;
 #if defined(Q_OS_WIN)
+    // can't fall back to QSysInfo because we need both "winphone" and "winrt" for the Windows Phone case
     ret << QStringLiteral("windows");
-#  if defined(Q_OS_WINCE)
-    ret << QStringLiteral("wince");
-#  elif defined(Q_OS_WINRT)
+    ret << QSysInfo::kernelType();  // "wince" and "winnt"
+#  if defined(Q_OS_WINRT)
     ret << QStringLiteral("winrt");
 #    if defined(Q_OS_WINPHONE)
     ret << QStringLiteral("winphone");
@@ -373,27 +375,16 @@ QStringList QFileSelectorPrivate::platformSelectors()
 #  endif
 #elif defined(Q_OS_UNIX)
     ret << QStringLiteral("unix");
-#  if defined(Q_OS_ANDROID)
-    ret << QStringLiteral("android");
-#  elif defined(Q_OS_BLACKBERRY)
-    ret << QStringLiteral("blackberry");
-#  elif defined(Q_OS_QNX)
-    ret << QStringLiteral("qnx");
-#  elif defined(Q_OS_LINUX)
-    ret << QStringLiteral("linux");
-#  elif defined(Q_OS_DARWIN)
-    ret << QStringLiteral("darwin");
-    ret << QStringLiteral("mac"); // compatibility synonym
-#    if defined(Q_OS_IOS)
-    ret << QStringLiteral("ios");
-#    elif defined(Q_OS_OSX)
-    ret << QStringLiteral("osx");
-#    endif
-#  else
-    struct utsname u;
-    if (uname(&u) != -1)
-        ret << QString::fromLatin1(u.sysname).toLower();
+#  if !defined(Q_OS_ANDROID) && !defined(Q_OS_BLACKBERRY)
+    // we don't want "linux" for Android or "qnx" for Blackberry here
+    ret << QSysInfo::kernelType();
+#     ifdef Q_OS_MAC
+    ret << QStringLiteral("mac"); // compatibility, since kernelType() is "darwin"
+#     endif
 #  endif
+    QString productName = QSysInfo::productType();
+    if (productName != QLatin1String("unknown"))
+        ret << productName; // "opensuse", "fedora", "osx", "ios", "blackberry", "android"
 #endif
     return ret;
 }

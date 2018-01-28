@@ -1,39 +1,31 @@
 /****************************************************************************
 **
-** Copyright (C) 2013 Digia Plc and/or its subsidiary(-ies).
-** Contact: http://www.qt-project.org/legal
+** Copyright (C) 2015 The Qt Company Ltd.
+** Contact: http://www.qt.io/licensing/
 **
 ** This file is part of the tools applications of the Qt Toolkit.
 **
-** $QT_BEGIN_LICENSE:LGPL$
+** $QT_BEGIN_LICENSE:LGPL21$
 ** Commercial License Usage
 ** Licensees holding valid commercial Qt licenses may use this file in
 ** accordance with the commercial license agreement provided with the
 ** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and Digia.  For licensing terms and
-** conditions see http://qt.digia.com/licensing.  For further information
-** use the contact form at http://qt.digia.com/contact-us.
+** a written agreement between you and The Qt Company. For licensing terms
+** and conditions see http://www.qt.io/terms-conditions. For further
+** information use the contact form at http://www.qt.io/contact-us.
 **
 ** GNU Lesser General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 2.1 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU Lesser General Public License version 2.1 requirements
-** will be met: http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
+** General Public License version 2.1 or version 3 as published by the Free
+** Software Foundation and appearing in the file LICENSE.LGPLv21 and
+** LICENSE.LGPLv3 included in the packaging of this file. Please review the
+** following information to ensure the GNU Lesser General Public License
+** requirements will be met: https://www.gnu.org/licenses/lgpl.html and
+** http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
 **
-** In addition, as a special exception, Digia gives you certain additional
-** rights.  These rights are described in the Digia Qt LGPL Exception
+** As a special exception, The Qt Company gives you certain additional
+** rights. These rights are described in The Qt Company LGPL Exception
 ** version 1.1, included in the file LGPL_EXCEPTION.txt in this package.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3.0 as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU General Public License version 3.0 requirements will be
-** met: http://www.gnu.org/copyleft/gpl.html.
-**
 **
 ** $QT_END_LICENSE$
 **
@@ -42,30 +34,11 @@
 #include <qregexp.h>
 #include "atom.h"
 #include "location.h"
+#include "qdocdatabase.h"
 #include <stdio.h>
+#include <qdebug.h>
 
 QT_BEGIN_NAMESPACE
-
-QLatin1String Atom::BOLD_          ("bold");
-QLatin1String Atom::INDEX_         ("index");
-QLatin1String Atom::ITALIC_        ("italic");
-QLatin1String Atom::LINK_          ("link");
-QLatin1String Atom::PARAMETER_     ("parameter");
-QLatin1String Atom::SPAN_          ("span");
-QLatin1String Atom::SUBSCRIPT_     ("subscript");
-QLatin1String Atom::SUPERSCRIPT_   ("superscript");
-QLatin1String Atom::TELETYPE_      ("teletype");
-QLatin1String Atom::UICONTROL_     ("uicontrol");
-QLatin1String Atom::UNDERLINE_     ("underline");
-
-QLatin1String Atom::BULLET_        ("bullet");
-QLatin1String Atom::TAG_           ("tag");
-QLatin1String Atom::VALUE_         ("value");
-QLatin1String Atom::LOWERALPHA_    ("loweralpha");
-QLatin1String Atom::LOWERROMAN_    ("lowerroman");
-QLatin1String Atom::NUMERIC_       ("numeric");
-QLatin1String Atom::UPPERALPHA_    ("upperalpha");
-QLatin1String Atom::UPPERROMAN_    ("upperroman");
 
 /*! \class Atom
     \brief The Atom class is the fundamental unit for representing
@@ -124,6 +97,9 @@ QLatin1String Atom::UPPERROMAN_    ("upperroman");
   \value ImageText
   \value ImportantNote
   \value InlineImage
+  \value JavaScript
+  \value EndJavaScript
+  \value Keyword
   \value LineBreak
   \value Link
   \value LinkNode
@@ -134,6 +110,8 @@ QLatin1String Atom::UPPERROMAN_    ("upperroman");
   \value ListItemLeft
   \value ListItemRight
   \value ListRight
+  \value NavAutoLink
+  \value NavLink
   \value Nop
   \value Note
   \value ParaLeft
@@ -164,6 +142,8 @@ QLatin1String Atom::UPPERROMAN_    ("upperroman");
   \value UnhandledFormat
   \value UnknownCommand
 */
+
+QString Atom::noError_ = QString();
 
 static const struct {
     const char *english;
@@ -206,6 +186,7 @@ static const struct {
     { "InlineImage", Atom::InlineImage },
     { "JavaScript", Atom::JavaScript },
     { "EndJavaScript", Atom::EndJavaScript },
+    { "Keyword", Atom::Keyword },
     { "LegaleseLeft", Atom::LegaleseLeft },
     { "LegaleseRight", Atom::LegaleseRight },
     { "LineBreak", Atom::LineBreak },
@@ -218,6 +199,8 @@ static const struct {
     { "ListItemLeft", Atom::ListItemLeft },
     { "ListItemRight", Atom::ListItemRight },
     { "ListRight", Atom::ListRight },
+    { "NavAutoLink", Atom::NavAutoLink },
+    { "NavLink", Atom::NavLink },
     { "Nop", Atom::Nop },
     { "NoteLeft", Atom::NoteLeft },
     { "NoteRight", Atom::NoteRight },
@@ -385,6 +368,97 @@ void Atom::dump() const
             "    %-15s%s\n",
             typeString().toLatin1().data(),
             str.toLatin1().data());
+}
+
+/*!
+  The only constructor for LinkAtom. It creates an Atom of
+  type Atom::Link. \a p1 being the link target. \a p2 is the
+  parameters in square brackets. Normally there is just one
+  word in the square brackets, but there can be up to three
+  words separated by spaces. The constructor splits \a p2 on
+  the space character.
+ */
+LinkAtom::LinkAtom(const QString& p1, const QString& p2)
+    : Atom(p1),
+      resolved_(false),
+      genus_(Node::DontCare),
+      goal_(Node::NoType),
+      domain_(0),
+      squareBracketParams_(p2)
+{
+    // nada.
+}
+
+/*!
+  This function resolves the parameters that were enclosed in
+  square brackets. If the parameters have already been resolved,
+  it does nothing and returns immediately.
+ */
+void LinkAtom::resolveSquareBracketParams()
+{
+    if (resolved_)
+        return;
+    QStringList params = squareBracketParams_.toLower().split(QLatin1Char(' '));
+     foreach (const QString& p, params) {
+        if (!domain_) {
+            domain_ = QDocDatabase::qdocDB()->findTree(p);
+            if (domain_) {
+                 continue;
+            }
+         }
+        if (goal_ == Node::NoType) {
+            goal_ = Node::goal(p);
+            if (goal_ != Node::NoType)
+                continue;
+        }
+        if (p == "qml") {
+            genus_ = Node::QML;
+            continue;
+        }
+        if (p == "cpp") {
+            genus_ = Node::CPP;
+            continue;
+        }
+        if (p == "doc") {
+            genus_ = Node::DOC;
+            continue;
+        }
+        error_ = squareBracketParams_;
+        break;
+    }
+    resolved_ = true;
+}
+
+/*!
+  Standard copy constructor of LinkAtom \a t.
+ */
+LinkAtom::LinkAtom(const LinkAtom& t)
+    : Atom(Link, t.string()),
+      resolved_(t.resolved_),
+      genus_(t.genus_),
+      goal_(t.goal_),
+      domain_(t.domain_),
+      error_(t.error_),
+      squareBracketParams_(t.squareBracketParams_)
+{
+    // nothing
+}
+
+/*!
+  Special copy constructor of LinkAtom \a t, where
+  where the new LinkAtom will not be the first one
+  in the list.
+ */
+LinkAtom::LinkAtom(Atom* previous, const LinkAtom& t)
+    : Atom(previous, Link, t.string()),
+      resolved_(t.resolved_),
+      genus_(t.genus_),
+      goal_(t.goal_),
+      domain_(t.domain_),
+      error_(t.error_),
+      squareBracketParams_(t.squareBracketParams_)
+{
+    previous->next_ = this;
 }
 
 QT_END_NAMESPACE

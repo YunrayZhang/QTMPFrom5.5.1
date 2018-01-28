@@ -8,7 +8,6 @@ HEADERS += \
         widgets/qabstractslider_p.h \
         widgets/qabstractspinbox.h \
         widgets/qabstractspinbox_p.h \
-        widgets/qcalendartextnavigator_p.h \
         widgets/qcalendarwidget.h \
         widgets/qcheckbox.h \
         widgets/qcombobox.h \
@@ -155,7 +154,7 @@ macx {
         widgets/qmaccocoaviewcontainer_mac.mm
 }
 
-wince*: {
+wince {
     SOURCES += widgets/qmenu_wince.cpp
     HEADERS += widgets/qmenu_wince_resource_p.h
     RC_FILE = widgets/qmenu_wince.rc

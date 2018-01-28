@@ -1,7 +1,7 @@
 /****************************************************************************
 **
-** Copyright (C) 2013 Digia Plc and/or its subsidiary(-ies).
-** Contact: http://www.qt-project.org/legal
+** Copyright (C) 2015 The Qt Company Ltd.
+** Contact: http://www.qt.io/licensing/
 **
 ** This file is part of the QtCore module of the Qt Toolkit.
 **
@@ -17,8 +17,8 @@
 **     notice, this list of conditions and the following disclaimer in
 **     the documentation and/or other materials provided with the
 **     distribution.
-**   * Neither the name of Digia Plc and its Subsidiary(-ies) nor the names
-**     of its contributors may be used to endorse or promote products derived
+**   * Neither the name of The Qt Company Ltd nor the names of its
+**     contributors may be used to endorse or promote products derived
 **     from this software without specific prior written permission.
 **
 **
@@ -65,7 +65,7 @@ public:
         : QState(parent) {}
 
 protected:
-    virtual void onEntry(QEvent *)
+    virtual void onEntry(QEvent *) Q_DECL_OVERRIDE
     {
         machine()->postEvent(new PingEvent());
         fprintf(stdout, "ping?\n");
@@ -80,10 +80,10 @@ public:
     PongTransition() {}
 
 protected:
-    virtual bool eventTest(QEvent *e) {
+    virtual bool eventTest(QEvent *e) Q_DECL_OVERRIDE {
         return (e->type() == QEvent::User+3);
     }
-    virtual void onTransition(QEvent *)
+    virtual void onTransition(QEvent *) Q_DECL_OVERRIDE
     {
         machine()->postDelayedEvent(new PingEvent(), 500);
         fprintf(stdout, "ping?\n");
@@ -98,10 +98,10 @@ public:
     PingTransition() {}
 
 protected:
-    virtual bool eventTest(QEvent *e) {
+    virtual bool eventTest(QEvent *e) Q_DECL_OVERRIDE {
         return (e->type() == QEvent::User+2);
     }
-    virtual void onTransition(QEvent *)
+    virtual void onTransition(QEvent *) Q_DECL_OVERRIDE
     {
         machine()->postDelayedEvent(new PongEvent(), 500);
         fprintf(stdout, "pong!\n");

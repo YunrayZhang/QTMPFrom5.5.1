@@ -1,39 +1,31 @@
 /****************************************************************************
 **
-** Copyright (C) 2013 Digia Plc and/or its subsidiary(-ies).
-** Contact: http://www.qt-project.org/legal
+** Copyright (C) 2015 The Qt Company Ltd.
+** Contact: http://www.qt.io/licensing/
 **
 ** This file is part of the QtCore module of the Qt Toolkit.
 **
-** $QT_BEGIN_LICENSE:LGPL$
+** $QT_BEGIN_LICENSE:LGPL21$
 ** Commercial License Usage
 ** Licensees holding valid commercial Qt licenses may use this file in
 ** accordance with the commercial license agreement provided with the
 ** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and Digia.  For licensing terms and
-** conditions see http://qt.digia.com/licensing.  For further information
-** use the contact form at http://qt.digia.com/contact-us.
+** a written agreement between you and The Qt Company. For licensing terms
+** and conditions see http://www.qt.io/terms-conditions. For further
+** information use the contact form at http://www.qt.io/contact-us.
 **
 ** GNU Lesser General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 2.1 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU Lesser General Public License version 2.1 requirements
-** will be met: http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
+** General Public License version 2.1 or version 3 as published by the Free
+** Software Foundation and appearing in the file LICENSE.LGPLv21 and
+** LICENSE.LGPLv3 included in the packaging of this file. Please review the
+** following information to ensure the GNU Lesser General Public License
+** requirements will be met: https://www.gnu.org/licenses/lgpl.html and
+** http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
 **
-** In addition, as a special exception, Digia gives you certain additional
-** rights.  These rights are described in the Digia Qt LGPL Exception
+** As a special exception, The Qt Company gives you certain additional
+** rights. These rights are described in The Qt Company LGPL Exception
 ** version 1.1, included in the file LGPL_EXCEPTION.txt in this package.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3.0 as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU General Public License version 3.0 requirements will be
-** met: http://www.gnu.org/copyleft/gpl.html.
-**
 **
 ** $QT_END_LICENSE$
 **
@@ -2384,15 +2376,21 @@ Qt::LayoutDirection QLocale::textDirection() const
     case QLocale::KharoshthiScript:
     case QLocale::LydianScript:
     case QLocale::MandaeanScript:
+    case QLocale::ManichaeanScript:
+    case QLocale::MendeKikakuiScript:
     case QLocale::MeroiticCursiveScript:
     case QLocale::MeroiticScript:
+    case QLocale::NabataeanScript:
+    case QLocale::NkoScript:
+    case QLocale::OldNorthArabianScript:
+    case QLocale::OldSouthArabianScript:
+    case QLocale::OrkhonScript:
+    case QLocale::PalmyreneScript:
+    case QLocale::PhoenicianScript:
+    case QLocale::PsalterPahlaviScript:
     case QLocale::SamaritanScript:
     case QLocale::SyriacScript:
     case QLocale::ThaanaScript:
-    case QLocale::NkoScript:
-    case QLocale::OldSouthArabianScript:
-    case QLocale::OrkhonScript:
-    case QLocale::PhoenicianScript:
         return Qt::RightToLeft;
     default:
         break;
@@ -2404,6 +2402,13 @@ Qt::LayoutDirection QLocale::textDirection() const
   \since 4.8
 
   Returns an uppercase copy of \a str.
+
+  If Qt Core is using the ICU libraries, they will be used to perform
+  the transformation according to the rules of the current locale.
+  Otherwise the conversion may be done in a platform-dependent manner,
+  with QString::toUpper() as a generic fallback.
+
+  \sa QString::toUpper()
 */
 QString QLocale::toUpper(const QString &str) const
 {
@@ -2421,6 +2426,13 @@ QString QLocale::toUpper(const QString &str) const
   \since 4.8
 
   Returns a lowercase copy of \a str.
+
+  If Qt Core is using the ICU libraries, they will be used to perform
+  the transformation according to the rules of the current locale.
+  Otherwise the conversion may be done in a platform-dependent manner,
+  with QString::toLower() as a generic fallback.
+
+  \sa QString::toLower()
 */
 QString QLocale::toLower(const QString &str) const
 {
@@ -2738,30 +2750,6 @@ QString QLocaleData::doubleToString(const QChar _zero, const QChar plus, const Q
         int decpt, sign;
         QString digits;
 
-#ifdef QT_QLOCALE_USES_FCVT
-        // NOT thread safe!
-        if (form == DFDecimal) {
-            digits = QLatin1String(fcvt(d, precision, &decpt, &sign));
-        } else {
-            int pr = precision;
-            if (form == DFExponent)
-                ++pr;
-            else if (form == DFSignificantDigits && pr == 0)
-                pr = 1;
-            digits = QLatin1String(ecvt(d, pr, &decpt, &sign));
-
-            // Chop trailing zeros
-            if (digits.length() > 0) {
-                int last_nonzero_idx = digits.length() - 1;
-                while (last_nonzero_idx > 0
-                       && digits.unicode()[last_nonzero_idx] == QLatin1Char('0'))
-                    --last_nonzero_idx;
-                digits.truncate(last_nonzero_idx + 1);
-            }
-
-        }
-
-#else
         int mode;
         if (form == DFDecimal)
             mode = 3;
@@ -2789,7 +2777,6 @@ QString QLocaleData::doubleToString(const QChar _zero, const QChar plus, const Q
         }
         if (buff != 0)
             free(buff);
-#endif // QT_QLOCALE_USES_FCVT
 
         if (_zero.unicode() != '0') {
             ushort z = _zero.unicode() - '0';
@@ -3138,7 +3125,7 @@ bool QLocaleData::numberToCLocale(const QChar *str, int len,
 }
 
 bool QLocaleData::validateChars(const QString &str, NumberMode numMode, QByteArray *buff,
-                                    int decDigits) const
+                                int decDigits, bool rejectGroupSeparators) const
 {
     buff->clear();
     buff->reserve(str.length());
@@ -3199,7 +3186,7 @@ bool QLocaleData::validateChars(const QString &str, NumberMode numMode, QByteArr
 
                 case ',':
                     //it can only be placed after a digit which is before the decimal point
-                    if (!lastWasDigit || decPointCnt > 0)
+                    if (rejectGroupSeparators || !lastWasDigit || decPointCnt > 0)
                         return false;
                     break;
 
@@ -3519,7 +3506,7 @@ QString QLocale::toCurrencyString(double value, const QString &symbol) const
     \since 4.8
 
     Returns an ordered list of locale names for translation purposes in
-    preference order (like "en", "en-US", "en-Latn-US").
+    preference order (like "en-Latn-US", "en-US", "en").
 
     The return value represents locale names that the user expects to see the
     UI translation in.
@@ -3602,10 +3589,12 @@ QString QLocale::nativeCountryName() const
 #ifndef QT_NO_DEBUG_STREAM
 QDebug operator<<(QDebug dbg, const QLocale &l)
 {
-    dbg.nospace() << "QLocale(" << qPrintable(QLocale::languageToString(l.language()))
-                  << ", " << qPrintable(QLocale::scriptToString(l.script()))
-                  << ", " << qPrintable(QLocale::countryToString(l.country())) << ')';
-    return dbg.space();
+    QDebugStateSaver saver(dbg);
+    dbg.nospace().noquote()
+        << "QLocale(" << QLocale::languageToString(l.language())
+        << ", " << QLocale::scriptToString(l.script())
+        << ", " << QLocale::countryToString(l.country()) << ')';
+    return dbg;
 }
 #endif
 QT_END_NAMESPACE

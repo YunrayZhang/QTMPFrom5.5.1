@@ -1,39 +1,31 @@
 /****************************************************************************
 **
-** Copyright (C) 2013 Digia Plc and/or its subsidiary(-ies).
-** Contact: http://www.qt-project.org/legal
+** Copyright (C) 2015 The Qt Company Ltd.
+** Contact: http://www.qt.io/licensing/
 **
 ** This file is part of the QtWidgets module of the Qt Toolkit.
 **
-** $QT_BEGIN_LICENSE:LGPL$
+** $QT_BEGIN_LICENSE:LGPL21$
 ** Commercial License Usage
 ** Licensees holding valid commercial Qt licenses may use this file in
 ** accordance with the commercial license agreement provided with the
 ** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and Digia.  For licensing terms and
-** conditions see http://qt.digia.com/licensing.  For further information
-** use the contact form at http://qt.digia.com/contact-us.
+** a written agreement between you and The Qt Company. For licensing terms
+** and conditions see http://www.qt.io/terms-conditions. For further
+** information use the contact form at http://www.qt.io/contact-us.
 **
 ** GNU Lesser General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 2.1 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU Lesser General Public License version 2.1 requirements
-** will be met: http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
+** General Public License version 2.1 or version 3 as published by the Free
+** Software Foundation and appearing in the file LICENSE.LGPLv21 and
+** LICENSE.LGPLv3 included in the packaging of this file. Please review the
+** following information to ensure the GNU Lesser General Public License
+** requirements will be met: https://www.gnu.org/licenses/lgpl.html and
+** http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
 **
-** In addition, as a special exception, Digia gives you certain additional
-** rights.  These rights are described in the Digia Qt LGPL Exception
+** As a special exception, The Qt Company gives you certain additional
+** rights. These rights are described in The Qt Company LGPL Exception
 ** version 1.1, included in the file LGPL_EXCEPTION.txt in this package.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3.0 as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU General Public License version 3.0 requirements will be
-** met: http://www.gnu.org/copyleft/gpl.html.
-**
 **
 ** $QT_END_LICENSE$
 **
@@ -62,7 +54,7 @@
 
 #include <private/qapplication_p.h>
 
-#ifdef Q_WS_MAC
+#ifdef Q_DEAD_CODE_FROM_QT4_MAC
 #include <private/qt_mac_p.h>
 #include <private/qt_cocoa_helpers_mac_p.h>
 #endif
@@ -170,7 +162,7 @@ QAbstractScrollAreaPrivate::QAbstractScrollAreaPrivate()
      shownOnce(false), inResize(false), sizeAdjustPolicy(QAbstractScrollArea::AdjustIgnored),
      viewport(0), cornerWidget(0), left(0), top(0), right(0), bottom(0),
      xoffset(0), yoffset(0), viewportFilter(0)
-#ifdef Q_WS_WIN
+#ifdef Q_DEAD_CODE_FROM_QT4_WIN
      , singleFingerPanEnabled(false)
 #endif
 {
@@ -316,7 +308,7 @@ void QAbstractScrollAreaPrivate::init()
 #endif
 }
 
-#ifdef Q_WS_WIN
+#ifdef Q_DEAD_CODE_FROM_QT4_WIN
 void QAbstractScrollAreaPrivate::setSingleFingerPanEnabled(bool on)
 {
     singleFingerPanEnabled = on;
@@ -324,7 +316,7 @@ void QAbstractScrollAreaPrivate::setSingleFingerPanEnabled(bool on)
     if (dd)
         dd->winSetupGestures();
 }
-#endif // Q_WS_WIN
+#endif // Q_DEAD_CODE_FROM_QT4_WIN
 
 void QAbstractScrollAreaPrivate::layoutChildren()
 {
@@ -345,7 +337,7 @@ void QAbstractScrollAreaPrivate::layoutChildren()
     const int hscrollOverlap = hbar->style()->pixelMetric(QStyle::PM_ScrollView_ScrollBarOverlap, &opt, hbar);
     const int vscrollOverlap = vbar->style()->pixelMetric(QStyle::PM_ScrollView_ScrollBarOverlap, &opt, vbar);
 
-#ifdef Q_WS_MAC
+#ifdef Q_DEAD_CODE_FROM_QT4_MAC
     QWidget * const window = q->window();
 
     // Use small scroll bars for tool windows, to match the native size grip.
@@ -388,7 +380,7 @@ void QAbstractScrollAreaPrivate::layoutChildren()
 
 // If the scroll bars are at the very right and bottom of the window we
 // move their positions to be aligned with the size grip.
-#ifdef Q_WS_MAC
+#ifdef Q_DEAD_CODE_FROM_QT4_MAC
     // Check if a native sizegrip is present.
     bool hasMacReverseSizeGrip = false;
     bool hasMacSizeGrip = false;
@@ -441,7 +433,7 @@ void QAbstractScrollAreaPrivate::layoutChildren()
     if (hasCornerWidget && ((needv && vscrollOverlap == 0) || (needh && hscrollOverlap == 0)))
         cornerOffset =  extPoint;
 
-#ifdef Q_WS_MAC
+#ifdef Q_DEAD_CODE_FROM_QT4_MAC
     // Also move the scroll bars if they are covered by the native Mac size grip.
     if (hasMacSizeGrip)
         cornerOffset =  extPoint;
@@ -452,21 +444,13 @@ void QAbstractScrollAreaPrivate::layoutChildren()
     const QPoint cornerPoint(controlsRect.bottomRight() + QPoint(1, 1) - cornerOffset);
 
     // Some styles paints the corner if both scorllbars are showing and there is
-    // no corner widget. Also, on the Mac we paint if there is a native
-    // (transparent) sizegrip in the area where a corner widget would be.
-    if ((needv && needh && hasCornerWidget == false && hscrollOverlap == 0 && vscrollOverlap == 0)
-        || ((needv || needh)
-#ifdef Q_WS_MAC
-        && hasMacSizeGrip
-#endif
-        )
-    ) {
+    // no corner widget.
+    if (needv && needh && !hasCornerWidget && hscrollOverlap == 0 && vscrollOverlap == 0)
         cornerPaintingRect = QStyle::visualRect(opt.direction, opt.rect, QRect(cornerPoint, extSize));
-    } else {
+    else
         cornerPaintingRect = QRect();
-    }
 
-#ifdef Q_WS_MAC
+#ifdef Q_DEAD_CODE_FROM_QT4_MAC
     if (hasMacReverseSizeGrip)
         reverseCornerPaintingRect = QRect(controlsRect.bottomRight() + QPoint(1, 1) - extPoint, extSize);
     else
@@ -491,7 +475,7 @@ void QAbstractScrollAreaPrivate::layoutChildren()
 
     if (needh) {
         QRect horizontalScrollBarRect(QPoint(controlsRect.left() + vHeaderRight, cornerPoint.y()), QPoint(cornerPoint.x() - 1, controlsRect.bottom()));
-#ifdef Q_WS_MAC
+#ifdef Q_DEAD_CODE_FROM_QT4_MAC
         if (hasMacReverseSizeGrip)
             horizontalScrollBarRect.adjust(vsbExt, 0, 0, 0);
 #endif
@@ -611,12 +595,15 @@ void QAbstractScrollArea::setViewport(QWidget *widget)
         d->viewport->setParent(this);
         d->viewport->setFocusProxy(this);
         d->viewport->installEventFilter(d->viewportFilter.data());
-#ifndef Q_WS_MAC
+#ifndef Q_DEAD_CODE_FROM_QT4_MAC
 #ifndef QT_NO_GESTURES
         d->viewport->grabGesture(Qt::PanGesture);
 #endif
 #endif
         d->layoutChildren();
+#ifndef QT_NO_OPENGL
+        QWidgetPrivate::get(d->viewport)->initializeViewportFramebuffer();
+#endif
         if (isVisible())
             d->viewport->show();
         setupViewport(widget);
@@ -928,7 +915,7 @@ QWidgetList QAbstractScrollArea::scrollBarWidgets(Qt::Alignment alignment)
     they should not call this function.
 
     By default all margins are zero.
-
+    \sa viewportMargins()
 */
 void QAbstractScrollArea::setViewportMargins(int left, int top, int right, int bottom)
 {
@@ -948,12 +935,25 @@ void QAbstractScrollArea::setViewportMargins(int left, int top, int right, int b
     area.
 
     By default all margins are zero.
-
+    \sa viewportMargins()
 */
 void QAbstractScrollArea::setViewportMargins(const QMargins &margins)
 {
     setViewportMargins(margins.left(), margins.top(),
                        margins.right(), margins.bottom());
+}
+
+/*!
+    \since 5.5
+    Returns the margins around the scrolling area.
+    By default all the margins are zero.
+
+    \sa setViewportMargins()
+*/
+QMargins QAbstractScrollArea::viewportMargins() const
+{
+    Q_D(const QAbstractScrollArea);
+    return QMargins(d->left, d->top, d->right, d->bottom);
 }
 
 /*! \internal */
@@ -1022,7 +1022,7 @@ bool QAbstractScrollArea::event(QEvent *e)
             QPainter p(this);
             style()->drawPrimitive(QStyle::PE_PanelScrollAreaCorner, &option, &p, this);
         }
-#ifdef Q_WS_MAC
+#ifdef Q_DEAD_CODE_FROM_QT4_MAC
         if (d->reverseCornerPaintingRect.isValid()) {
             option.rect = d->reverseCornerPaintingRect;
             QPainter p(this);
@@ -1101,7 +1101,7 @@ bool QAbstractScrollArea::event(QEvent *e)
         hBar->setValue(se->contentPos().x());
         vBar->setValue(se->contentPos().y());
 
-#ifdef Q_WS_WIN
+#ifdef Q_DEAD_CODE_FROM_QT4_WIN
         typedef BOOL (*PtrBeginPanningFeedback)(HWND);
         typedef BOOL (*PtrUpdatePanningFeedback)(HWND, LONG, LONG, BOOL);
         typedef BOOL (*PtrEndPanningFeedback)(HWND, BOOL);
@@ -1190,6 +1190,12 @@ bool QAbstractScrollArea::viewportEvent(QEvent *e)
     case QEvent::DragEnter:
     case QEvent::DragMove:
     case QEvent::DragLeave:
+#endif
+#ifndef QT_NO_OPENGL
+        // QOpenGLWidget needs special support because it has to know
+        // its size has changed, so that it can resize its fbo.
+        if (e->type() == QEvent::Resize)
+            QWidgetPrivate::get(viewport())->resizeViewportFramebuffer();
 #endif
         return QFrame::event(e);
     case QEvent::LayoutRequest:
@@ -1519,13 +1525,13 @@ void QAbstractScrollAreaPrivate::_q_vslide(int y)
 void QAbstractScrollAreaPrivate::_q_showOrHideScrollBars()
 {
     layoutChildren();
-#ifdef Q_WS_WIN
+#ifdef Q_DEAD_CODE_FROM_QT4_WIN
     // Need to re-subscribe to gestures as the content changes to make sure we
     // enable/disable panning when needed.
     QWidgetPrivate *dd = static_cast<QWidgetPrivate *>(QObjectPrivate::get(viewport));
     if (dd)
         dd->winSetupGestures();
-#endif // Q_WS_WIN
+#endif // Q_DEAD_CODE_FROM_QT4_WIN
 }
 
 QPoint QAbstractScrollAreaPrivate::contentsOffset() const

@@ -1,39 +1,31 @@
 /****************************************************************************
 **
-** Copyright (C) 2013 Digia Plc and/or its subsidiary(-ies).
-** Contact: http://www.qt-project.org/legal
+** Copyright (C) 2015 The Qt Company Ltd.
+** Contact: http://www.qt.io/licensing/
 **
 ** This file is part of the test suite of the Qt Toolkit.
 **
-** $QT_BEGIN_LICENSE:LGPL$
+** $QT_BEGIN_LICENSE:LGPL21$
 ** Commercial License Usage
 ** Licensees holding valid commercial Qt licenses may use this file in
 ** accordance with the commercial license agreement provided with the
 ** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and Digia.  For licensing terms and
-** conditions see http://qt.digia.com/licensing.  For further information
-** use the contact form at http://qt.digia.com/contact-us.
+** a written agreement between you and The Qt Company. For licensing terms
+** and conditions see http://www.qt.io/terms-conditions. For further
+** information use the contact form at http://www.qt.io/contact-us.
 **
 ** GNU Lesser General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 2.1 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU Lesser General Public License version 2.1 requirements
-** will be met: http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
+** General Public License version 2.1 or version 3 as published by the Free
+** Software Foundation and appearing in the file LICENSE.LGPLv21 and
+** LICENSE.LGPLv3 included in the packaging of this file. Please review the
+** following information to ensure the GNU Lesser General Public License
+** requirements will be met: https://www.gnu.org/licenses/lgpl.html and
+** http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
 **
-** In addition, as a special exception, Digia gives you certain additional
-** rights.  These rights are described in the Digia Qt LGPL Exception
+** As a special exception, The Qt Company gives you certain additional
+** rights. These rights are described in The Qt Company LGPL Exception
 ** version 1.1, included in the file LGPL_EXCEPTION.txt in this package.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3.0 as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU General Public License version 3.0 requirements will be
-** met: http://www.gnu.org/copyleft/gpl.html.
-**
 **
 ** $QT_END_LICENSE$
 **
@@ -46,6 +38,7 @@
 
 #include <qcolor.h>
 #include <qdebug.h>
+#include <private/qdrawingprimitive_sse2_p.h>
 
 class tst_QColor : public QObject
 {
@@ -110,7 +103,10 @@ private slots:
 
     void achromaticHslHue();
 
-#ifdef Q_WS_X11
+    void premultiply();
+    void unpremultiply_sse4();
+
+#ifdef Q_DEAD_CODE_FROM_QT4_X11
     void setallowX11ColorNames();
 #endif
 };
@@ -530,10 +526,19 @@ static const int rgbTblSize = sizeof(rgbTbl) / sizeof(RGBData);
 void tst_QColor::setNamedColor()
 {
     for (int i = 0; i < rgbTblSize; ++i) {
-        QColor color;
-        color.setNamedColor(QLatin1String(rgbTbl[i].name));
         QColor expected;
         expected.setRgba(rgbTbl[i].value);
+
+        QColor color;
+        color.setNamedColor(QLatin1String(rgbTbl[i].name));
+        QCOMPARE(color, expected);
+
+        // name should be case insensitive
+        color.setNamedColor(QString(rgbTbl[i].name).toUpper());
+        QCOMPARE(color, expected);
+
+        // spaces should be ignored
+        color.setNamedColor(QString(rgbTbl[i].name).insert(1, ' '));
         QCOMPARE(color, expected);
     }
 }
@@ -1372,7 +1377,7 @@ void tst_QColor::achromaticHslHue()
     QCOMPARE(hsl.hslHue(), -1);
 }
 
-#ifdef Q_WS_X11
+#ifdef Q_DEAD_CODE_FROM_QT4_X11
 void tst_QColor::setallowX11ColorNames()
 {
 #if defined(Q_OS_IRIX)
@@ -1430,6 +1435,34 @@ void tst_QColor::setallowX11ColorNames()
     }
 }
 #endif
+
+void tst_QColor::premultiply()
+{
+    // Tests that qPremultiply(qUnpremultiply(x)) returns x.
+    for (uint a = 0; a < 256; a++) {
+        for (uint c = 0; c <= a; c++) {
+            QRgb p = qRgba(c, a-c, c, a);
+            QCOMPARE(p, qPremultiply(qUnpremultiply(p)));
+        }
+    }
+}
+
+void tst_QColor::unpremultiply_sse4()
+{
+    // Tests that qUnpremultiply_sse4 returns the same as qUnpremultiply.
+#if QT_COMPILER_SUPPORTS_HERE(SSE4_1)
+    if (qCpuHasFeature(SSE4_1)) {
+        for (uint a = 0; a < 256; a++) {
+            for (uint c = 0; c <= a; c++) {
+                QRgb p = qRgba(c, a-c, c, a);
+                QCOMPARE(qUnpremultiply(p), qUnpremultiply_sse4(p));
+            }
+        }
+        return;
+    }
+#endif
+    QSKIP("SSE4 not supported on this CPU.");
+}
 
 QTEST_MAIN(tst_QColor)
 #include "tst_qcolor.moc"

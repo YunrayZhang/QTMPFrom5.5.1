@@ -1,39 +1,31 @@
 /****************************************************************************
 **
-** Copyright (C) 2013 Digia Plc and/or its subsidiary(-ies).
-** Contact: http://www.qt-project.org/legal
+** Copyright (C) 2015 The Qt Company Ltd.
+** Contact: http://www.qt.io/licensing/
 **
 ** This file is part of the plugins of the Qt Toolkit.
 **
-** $QT_BEGIN_LICENSE:LGPL$
+** $QT_BEGIN_LICENSE:LGPL21$
 ** Commercial License Usage
 ** Licensees holding valid commercial Qt licenses may use this file in
 ** accordance with the commercial license agreement provided with the
 ** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and Digia.  For licensing terms and
-** conditions see http://qt.digia.com/licensing.  For further information
-** use the contact form at http://qt.digia.com/contact-us.
+** a written agreement between you and The Qt Company. For licensing terms
+** and conditions see http://www.qt.io/terms-conditions. For further
+** information use the contact form at http://www.qt.io/contact-us.
 **
 ** GNU Lesser General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 2.1 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU Lesser General Public License version 2.1 requirements
-** will be met: http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
+** General Public License version 2.1 or version 3 as published by the Free
+** Software Foundation and appearing in the file LICENSE.LGPLv21 and
+** LICENSE.LGPLv3 included in the packaging of this file. Please review the
+** following information to ensure the GNU Lesser General Public License
+** requirements will be met: https://www.gnu.org/licenses/lgpl.html and
+** http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
 **
-** In addition, as a special exception, Digia gives you certain additional
-** rights.  These rights are described in the Digia Qt LGPL Exception
+** As a special exception, The Qt Company gives you certain additional
+** rights. These rights are described in The Qt Company LGPL Exception
 ** version 1.1, included in the file LGPL_EXCEPTION.txt in this package.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3.0 as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU General Public License version 3.0 requirements will be
-** met: http://www.gnu.org/copyleft/gpl.html.
-**
 **
 ** $QT_END_LICENSE$
 **
@@ -45,6 +37,8 @@
 #include "qiosscreen.h"
 
 QT_BEGIN_NAMESPACE
+
+Q_LOGGING_CATEGORY(lcQpaInputMethods, "qt.qpa.input.methods");
 
 bool isQtApplication()
 {
@@ -93,7 +87,7 @@ Qt::ScreenOrientation toQtScreenOrientation(UIDeviceOrientation uiDeviceOrientat
         break;
     case UIDeviceOrientationFaceUp:
     case UIDeviceOrientationFaceDown:
-        // FIXME: Use cached device orientation, or fall back to interface orientation
+        qWarning() << "Falling back to Qt::PortraitOrientation for UIDeviceOrientationFaceUp/UIDeviceOrientationFaceDown";
         qtOrientation = Qt::PortraitOrientation;
         break;
     default:
@@ -125,21 +119,69 @@ UIDeviceOrientation fromQtScreenOrientation(Qt::ScreenOrientation qtOrientation)
     return uiOrientation;
 }
 
-QRect fromPortraitToPrimary(const QRect &rect, QPlatformScreen *screen)
-{
-    // UIScreen is always in portrait. Use this function to convert CGRects
-    // aligned with UIScreen into whatever is the current orientation of QScreen.
-    QRect geometry = screen->geometry();
-    return geometry.width() < geometry.height() ? rect
-        : QRect(rect.y(), geometry.height() - rect.width() - rect.x(), rect.height(), rect.width());
-}
-
 int infoPlistValue(NSString* key, int defaultValue)
 {
     static NSBundle *bundle = [NSBundle mainBundle];
     NSNumber* value = [bundle objectForInfoDictionaryKey:key];
     return value ? [value intValue] : defaultValue;
 }
+
+// -------------------------------------------------------------------------
+
+@interface QtFirstResponderEvent : UIEvent
+@property (nonatomic, strong) id firstResponder;
+@end
+
+@implementation QtFirstResponderEvent
+- (void) dealloc
+{
+    self.firstResponder = 0;
+    [super dealloc];
+}
+@end
+
+
+@implementation UIView (QtFirstResponder)
+- (UIView*)qt_findFirstResponder
+{
+    if ([self isFirstResponder])
+        return self;
+
+    for (UIView *subview in self.subviews) {
+        if (UIView *firstResponder = [subview qt_findFirstResponder])
+            return firstResponder;
+    }
+
+    return nil;
+}
+@end
+
+@implementation UIResponder (QtFirstResponder)
+
++(id)currentFirstResponder
+{
+    QtFirstResponderEvent *event = [[[QtFirstResponderEvent alloc] init] autorelease];
+    [[UIApplication sharedApplication] sendAction:@selector(qt_findFirstResponder:event:) to:nil from:nil forEvent:event];
+    return event.firstResponder;
+}
+
+- (void)qt_findFirstResponder:(id)sender event:(QtFirstResponderEvent *)event
+{
+    Q_UNUSED(sender);
+
+    if ([self isKindOfClass:[UIView class]])
+        event.firstResponder = [static_cast<UIView *>(self) qt_findFirstResponder];
+    else
+        event.firstResponder = [self isFirstResponder] ? self : nil;
+}
+@end
+
+FirstResponderCandidate::FirstResponderCandidate(UIResponder *responder)
+    : QScopedValueRollback<UIResponder *>(s_firstResponderCandidate, responder)
+{
+}
+
+UIResponder *FirstResponderCandidate::s_firstResponderCandidate = 0;
 
 QT_END_NAMESPACE
 

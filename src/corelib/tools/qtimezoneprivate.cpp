@@ -1,39 +1,31 @@
 /****************************************************************************
 **
 ** Copyright (C) 2013 John Layt <jlayt@kde.org>
-** Contact: http://www.qt-project.org/legal
+** Contact: http://www.qt.io/licensing/
 **
 ** This file is part of the QtCore module of the Qt Toolkit.
 **
-** $QT_BEGIN_LICENSE:LGPL$
+** $QT_BEGIN_LICENSE:LGPL21$
 ** Commercial License Usage
 ** Licensees holding valid commercial Qt licenses may use this file in
 ** accordance with the commercial license agreement provided with the
 ** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and Digia.  For licensing terms and
-** conditions see http://qt.digia.com/licensing.  For further information
-** use the contact form at http://qt.digia.com/contact-us.
+** a written agreement between you and The Qt Company. For licensing terms
+** and conditions see http://www.qt.io/terms-conditions. For further
+** information use the contact form at http://www.qt.io/contact-us.
 **
 ** GNU Lesser General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 2.1 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU Lesser General Public License version 2.1 requirements
-** will be met: http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
+** General Public License version 2.1 or version 3 as published by the Free
+** Software Foundation and appearing in the file LICENSE.LGPLv21 and
+** LICENSE.LGPLv3 included in the packaging of this file. Please review the
+** following information to ensure the GNU Lesser General Public License
+** requirements will be met: https://www.gnu.org/licenses/lgpl.html and
+** http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
 **
-** In addition, as a special exception, Digia gives you certain additional
-** rights.  These rights are described in the Digia Qt LGPL Exception
+** As a special exception, The Qt Company gives you certain additional
+** rights. These rights are described in The Qt Company LGPL Exception
 ** version 1.1, included in the file LGPL_EXCEPTION.txt in this package.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3.0 as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU General Public License version 3.0 requirements will be
-** met: http://www.gnu.org/copyleft/gpl.html.
-**
 **
 ** $QT_END_LICENSE$
 **
@@ -44,7 +36,10 @@
 #include "qtimezoneprivate_p.h"
 #include "qtimezoneprivate_data_p.h"
 
+#include <qdatastream.h>
 #include <qdebug.h>
+
+#include <algorithm>
 
 QT_BEGIN_NAMESPACE
 
@@ -348,36 +343,38 @@ QByteArray QTimeZonePrivate::systemTimeZoneId() const
     return QByteArray();
 }
 
-QSet<QByteArray> QTimeZonePrivate::availableTimeZoneIds() const
+QList<QByteArray> QTimeZonePrivate::availableTimeZoneIds() const
 {
-    return QSet<QByteArray>();
+    return QList<QByteArray>();
 }
 
-QSet<QByteArray> QTimeZonePrivate::availableTimeZoneIds(QLocale::Country country) const
+QList<QByteArray> QTimeZonePrivate::availableTimeZoneIds(QLocale::Country country) const
 {
     // Default fall-back mode, use the zoneTable to find Region of know Zones
-    QSet<QByteArray> regionSet;
+    QList<QByteArray> regions;
 
     // First get all Zones in the Zones table belonging to the Region
     for (int i = 0; i < zoneDataTableSize; ++i) {
         if (zoneData(i)->country == country)
-            regionSet += ianaId(zoneData(i)).split(' ').toSet();
+            regions += ianaId(zoneData(i)).split(' ');
     }
+
+    std::sort(regions.begin(), regions.end());
+    regions.erase(std::unique(regions.begin(), regions.end()), regions.end());
 
     // Then select just those that are available
-    QSet<QByteArray> set;
-    foreach (const QByteArray &ianaId, availableTimeZoneIds()) {
-        if (regionSet.contains(ianaId))
-            set << ianaId;
-    }
-
-    return set;
+    const QList<QByteArray> all = availableTimeZoneIds();
+    QList<QByteArray> result;
+    result.reserve(qMin(all.size(), regions.size()));
+    std::set_intersection(all.begin(), all.end(), regions.cbegin(), regions.cend(),
+                          std::back_inserter(result));
+    return result;
 }
 
-QSet<QByteArray> QTimeZonePrivate::availableTimeZoneIds(int offsetFromUtc) const
+QList<QByteArray> QTimeZonePrivate::availableTimeZoneIds(int offsetFromUtc) const
 {
     // Default fall-back mode, use the zoneTable to find Offset of know Zones
-    QSet<QByteArray> offsetSet;
+    QList<QByteArray> offsets;
     // First get all Zones in the table using the Offset
     for (int i = 0; i < windowsDataTableSize; ++i) {
         const QWindowsData *winData = windowsData(i);
@@ -385,19 +382,21 @@ QSet<QByteArray> QTimeZonePrivate::availableTimeZoneIds(int offsetFromUtc) const
             for (int j = 0; j < zoneDataTableSize; ++j) {
                 const QZoneData *data = zoneData(j);
                 if (data->windowsIdKey == winData->windowsIdKey)
-                    offsetSet += ianaId(data).split(' ').toSet();
+                    offsets += ianaId(data).split(' ');
             }
         }
     }
 
-    // Then select just those that are available
-    QSet<QByteArray> set;
-    foreach (const QByteArray &ianaId, availableTimeZoneIds()) {
-        if (offsetSet.contains(ianaId))
-            set << ianaId;
-    }
+    std::sort(offsets.begin(), offsets.end());
+    offsets.erase(std::unique(offsets.begin(), offsets.end()), offsets.end());
 
-    return set;
+    // Then select just those that are available
+    const QList<QByteArray> all = availableTimeZoneIds();
+    QList<QByteArray> result;
+    result.reserve(qMin(all.size(), offsets.size()));
+    std::set_intersection(all.begin(), all.end(), offsets.cbegin(), offsets.cend(),
+                          std::back_inserter(result));
+    return result;
 }
 
 #ifndef QT_NO_DATASTREAM
@@ -446,32 +445,43 @@ QTimeZone::OffsetData QTimeZonePrivate::toOffsetData(const QTimeZonePrivate::Dat
 bool QTimeZonePrivate::isValidId(const QByteArray &ianaId)
 {
     // Rules for defining TZ/IANA names as per ftp://ftp.iana.org/tz/code/Theory
-    // * Use only valid POSIX file name components
-    // * Within a file name component, use only ASCII letters, `.', `-' and `_'.
-    // * Do not use digits
-    // * A file name component must not exceed 14 characters or start with `-'
-    // Aliases such as "Etc/GMT+7" and "SystemV/EST5EDT" are valid so we need to accept digits
-    if (ianaId.contains(' '))
-        return false;
-    QList<QByteArray> parts = ianaId.split('/');
-    foreach (const QByteArray &part, parts) {
-        if (part.size() > 14 || part.size() < 1)
-            return false;
-        if (part.at(0) == '-')
-            return false;
-        for (int i = 0; i < part.size(); ++i) {
-            QChar ch = part.at(i);
-            if (!(ch >= 'a' && ch <= 'z')
+    // 1. Use only valid POSIX file name components
+    // 2. Within a file name component, use only ASCII letters, `.', `-' and `_'.
+    // 3. Do not use digits
+    // 4. A file name component must not exceed 14 characters or start with `-'
+    // Aliases such as "Etc/GMT+7" and "SystemV/EST5EDT" are valid so we need to accept digits, ':', and '+'.
+
+    // The following would be preferable if QRegExp would work on QByteArrays directly:
+    // const QRegExp rx(QStringLiteral("[a-z0-9:+._][a-z0-9:+._-]{,13}(?:/[a-z0-9:+._][a-z0-9:+._-]{,13})*"),
+    //                  Qt::CaseInsensitive);
+    // return rx.exactMatch(ianaId);
+
+    // hand-rolled version:
+    const int MinSectionLength = 1;
+    const int MaxSectionLength = 14;
+    int sectionLength = 0;
+    for (const char *it = ianaId.begin(), * const end = ianaId.end(); it != end; ++it, ++sectionLength) {
+        const char ch = *it;
+        if (ch == '/') {
+            if (sectionLength < MinSectionLength || sectionLength > MaxSectionLength)
+                return false; // violates (4)
+            sectionLength = -1;
+        } else if (ch == '-') {
+            if (sectionLength == 0)
+                return false; // violates (4)
+        } else if (!(ch >= 'a' && ch <= 'z')
                 && !(ch >= 'A' && ch <= 'Z')
                 && !(ch == '_')
                 && !(ch >= '0' && ch <= '9')
                 && !(ch == '-')
                 && !(ch == '+')
                 && !(ch == ':')
-                && !(ch == '.'))
-                return false;
+                && !(ch == '.')) {
+            return false; // violates (2)
         }
     }
+    if (sectionLength < MinSectionLength || sectionLength > MaxSectionLength)
+        return false; // violates (4)
     return true;
 }
 
@@ -558,8 +568,8 @@ template<> QTimeZonePrivate *QSharedDataPointer<QTimeZonePrivate>::clone()
 // Create default UTC time zone
 QUtcTimeZonePrivate::QUtcTimeZonePrivate()
 {
-    const QString name = QStringLiteral("UTC");
-    init(QByteArrayLiteral("UTC"), 0, name, name, QLocale::AnyCountry, name);
+    const QString name = utcQString();
+    init(utcQByteArray(), 0, name, name, QLocale::AnyCountry, name);
 }
 
 // Create a named UTC time zone
@@ -583,7 +593,7 @@ QUtcTimeZonePrivate::QUtcTimeZonePrivate(qint32 offsetSeconds)
     QString utcId;
 
     if (offsetSeconds == 0)
-        utcId = QStringLiteral("UTC");
+        utcId = utcQString();
     else
         utcId = isoOffsetFormat(offsetSeconds);
 
@@ -613,6 +623,15 @@ QUtcTimeZonePrivate::~QUtcTimeZonePrivate()
 QTimeZonePrivate *QUtcTimeZonePrivate::clone()
 {
     return new QUtcTimeZonePrivate(*this);
+}
+
+QTimeZonePrivate::Data QUtcTimeZonePrivate::data(qint64 forMSecsSinceEpoch) const
+{
+    Data d = invalidData();
+    d.abbreviation = m_abbreviation;
+    d.atMSecsSinceEpoch = forMSecsSinceEpoch;
+    d.offsetFromUtc = m_offsetFromUtc;
+    return d;
 }
 
 void QUtcTimeZonePrivate::init(const QByteArray &zoneId)
@@ -675,34 +694,38 @@ qint32 QUtcTimeZonePrivate::daylightTimeOffset(qint64 atMSecsSinceEpoch) const
 
 QByteArray QUtcTimeZonePrivate::systemTimeZoneId() const
 {
-    return QByteArrayLiteral("UTC");
+    return utcQByteArray();
 }
 
-QSet<QByteArray> QUtcTimeZonePrivate::availableTimeZoneIds() const
+QList<QByteArray> QUtcTimeZonePrivate::availableTimeZoneIds() const
 {
-    QSet<QByteArray> set;
+    QList<QByteArray> result;
     for (int i = 0; i < utcDataTableSize; ++i)
-        set << utcId(utcData(i));
-    return set;
+        result << utcId(utcData(i));
+    std::sort(result.begin(), result.end()); // ### or already sorted??
+    // ### assuming no duplicates
+    return result;
 }
 
-QSet<QByteArray> QUtcTimeZonePrivate::availableTimeZoneIds(QLocale::Country country) const
+QList<QByteArray> QUtcTimeZonePrivate::availableTimeZoneIds(QLocale::Country country) const
 {
     // If AnyCountry then is request for all non-region offset codes
     if (country == QLocale::AnyCountry)
         return availableTimeZoneIds();
-    return QSet<QByteArray>();
+    return QList<QByteArray>();
 }
 
-QSet<QByteArray> QUtcTimeZonePrivate::availableTimeZoneIds(qint32 offsetSeconds) const
+QList<QByteArray> QUtcTimeZonePrivate::availableTimeZoneIds(qint32 offsetSeconds) const
 {
-    QSet<QByteArray> set;
+    QList<QByteArray> result;
     for (int i = 0; i < utcDataTableSize; ++i) {
         const QUtcData *data = utcData(i);
         if (data->offsetFromUtc == offsetSeconds)
-            set << utcId(data);
+            result << utcId(data);
     }
-    return set;
+    std::sort(result.begin(), result.end()); // ### or already sorted??
+    // ### assuming no duplicates
+    return result;
 }
 
 #ifndef QT_NO_DATASTREAM

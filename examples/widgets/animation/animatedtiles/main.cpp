@@ -1,7 +1,7 @@
 /****************************************************************************
 **
-** Copyright (C) 2013 Digia Plc and/or its subsidiary(-ies).
-** Contact: http://www.qt-project.org/legal
+** Copyright (C) 2015 The Qt Company Ltd.
+** Contact: http://www.qt.io/licensing/
 **
 ** This file is part of the QtCore module of the Qt Toolkit.
 **
@@ -17,8 +17,8 @@
 **     notice, this list of conditions and the following disclaimer in
 **     the documentation and/or other materials provided with the
 **     distribution.
-**   * Neither the name of Digia Plc and its Subsidiary(-ies) nor the names
-**     of its contributors may be used to endorse or promote products derived
+**   * Neither the name of The Qt Company Ltd nor the names of its
+**     contributors may be used to endorse or promote products derived
 **     from this software without specific prior written permission.
 **
 **
@@ -39,6 +39,7 @@
 ****************************************************************************/
 
 #include <QtWidgets>
+#include <QtCore/qmath.h>
 #include <QtCore/qstate.h>
 
 class Pixmap : public QObject, public QGraphicsPixmapItem
@@ -64,19 +65,19 @@ public:
         setCacheMode(DeviceCoordinateCache);
     }
 
-    QRectF boundingRect() const
+    QRectF boundingRect() const Q_DECL_OVERRIDE
     {
         return QRectF(-65, -65, 130, 130);
     }
 
-    QPainterPath shape() const
+    QPainterPath shape() const Q_DECL_OVERRIDE
     {
         QPainterPath path;
         path.addEllipse(boundingRect());
         return path;
     }
 
-    void paint(QPainter *painter, const QStyleOptionGraphicsItem *option, QWidget *)
+    void paint(QPainter *painter, const QStyleOptionGraphicsItem *option, QWidget *) Q_DECL_OVERRIDE
     {
         bool down = option->state & QStyle::State_Sunken;
         QRectF r = boundingRect();
@@ -101,13 +102,13 @@ signals:
     void pressed();
 
 protected:
-    void mousePressEvent(QGraphicsSceneMouseEvent *)
+    void mousePressEvent(QGraphicsSceneMouseEvent *) Q_DECL_OVERRIDE
     {
         emit pressed();
         update();
     }
 
-    void mouseReleaseEvent(QGraphicsSceneMouseEvent *)
+    void mouseReleaseEvent(QGraphicsSceneMouseEvent *) Q_DECL_OVERRIDE
     {
         update();
     }
@@ -122,7 +123,7 @@ public:
     View(QGraphicsScene *scene) : QGraphicsView(scene) { }
 
 protected:
-    void resizeEvent(QResizeEvent *event)
+    void resizeEvent(QResizeEvent *event) Q_DECL_OVERRIDE
     {
         QGraphicsView::resizeEvent(event);
         fitInView(sceneRect(), Qt::KeepAspectRatio);
@@ -181,13 +182,13 @@ int main(int argc, char **argv)
         Pixmap *item = items.at(i);
         // Ellipse
         ellipseState->assignProperty(item, "pos",
-                                         QPointF(cos((i / 63.0) * 6.28) * 250,
-                                                 sin((i / 63.0) * 6.28) * 250));
+                                         QPointF(qCos((i / 63.0) * 6.28) * 250,
+                                                 qSin((i / 63.0) * 6.28) * 250));
 
         // Figure 8
         figure8State->assignProperty(item, "pos",
-                                         QPointF(sin((i / 63.0) * 6.28) * 250,
-                                                 sin(((i * 2)/63.0) * 6.28) * 250));
+                                         QPointF(qSin((i / 63.0) * 6.28) * 250,
+                                                 qSin(((i * 2)/63.0) * 6.28) * 250));
 
         // Random
         randomState->assignProperty(item, "pos",

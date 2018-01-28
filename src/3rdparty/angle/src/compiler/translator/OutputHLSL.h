@@ -1,56 +1,63 @@
 //
-// Copyright (c) 2002-2013 The ANGLE Project Authors. All rights reserved.
+// Copyright (c) 2002-2014 The ANGLE Project Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 //
 
-#ifndef COMPILER_OUTPUTHLSL_H_
-#define COMPILER_OUTPUTHLSL_H_
+#ifndef COMPILER_TRANSLATOR_OUTPUTHLSL_H_
+#define COMPILER_TRANSLATOR_OUTPUTHLSL_H_
 
 #include <list>
 #include <set>
 #include <map>
+#include <stack>
 
-#define GL_APICALL
-#include <GLES2/gl2.h>
-
-#include "compiler/translator/intermediate.h"
+#include "angle_gl.h"
+#include "compiler/translator/IntermNode.h"
 #include "compiler/translator/ParseContext.h"
-#include "compiler/translator/Uniform.h"
+
+class BuiltInFunctionEmulator;
 
 namespace sh
 {
 class UnfoldShortCircuit;
+class StructureHLSL;
+class UniformHLSL;
+
+typedef std::map<TString, TIntermSymbol*> ReferencedSymbols;
 
 class OutputHLSL : public TIntermTraverser
 {
   public:
-    OutputHLSL(TParseContext &context, const ShBuiltInResources& resources, ShShaderOutput outputType);
+    OutputHLSL(sh::GLenum shaderType, int shaderVersion,
+        const TExtensionBehavior &extensionBehavior,
+        const char *sourcePath, ShShaderOutput outputType,
+        int numRenderTargets, const std::vector<Uniform> &uniforms,
+        int compileOptions);
+
     ~OutputHLSL();
 
-    void output();
+    void output(TIntermNode *treeRoot, TInfoSinkBase &objSink);
 
-    TInfoSinkBase &getBodyStream();
-    const ActiveUniforms &getUniforms();
+    const std::map<std::string, unsigned int> &getInterfaceBlockRegisterMap() const;
+    const std::map<std::string, unsigned int> &getUniformRegisterMap() const;
 
-    TString typeString(const TType &type);
-    TString textureString(const TType &type);
-    static TString qualifierString(TQualifier qualifier);
-    static TString arrayString(const TType &type);
     static TString initializer(const TType &type);
-    static TString decorate(const TString &string);                      // Prepends an underscore to avoid naming clashes
-    static TString decorateUniform(const TString &string, const TType &type);
-    static TString decorateField(const TString &string, const TType &structure);
+
+    TInfoSinkBase &getInfoSink() { ASSERT(!mInfoSinkStack.empty()); return *mInfoSinkStack.top(); }
 
   protected:
-    void header();
+    void header(const BuiltInFunctionEmulator *builtInFunctionEmulator);
 
     // Visit AST nodes and output their code to the body stream
     void visitSymbol(TIntermSymbol*);
+    void visitRaw(TIntermRaw*);
     void visitConstantUnion(TIntermConstantUnion*);
     bool visitBinary(Visit visit, TIntermBinary*);
     bool visitUnary(Visit visit, TIntermUnary*);
     bool visitSelection(Visit visit, TIntermSelection*);
+    bool visitSwitch(Visit visit, TIntermSwitch *);
+    bool visitCase(Visit visit, TIntermCase *);
     bool visitAggregate(Visit visit, TIntermAggregate*);
     bool visitLoop(Visit visit, TIntermLoop*);
     bool visitBranch(Visit visit, TIntermBranch*);
@@ -58,20 +65,39 @@ class OutputHLSL : public TIntermTraverser
     void traverseStatements(TIntermNode *node);
     bool isSingleStatement(TIntermNode *node);
     bool handleExcessiveLoop(TIntermLoop *node);
-    void outputTriplet(Visit visit, const TString &preString, const TString &inString, const TString &postString);
+
+    // Emit one of three strings depending on traverse phase. Called with literal strings so using const char* instead of TString.
+    void outputTriplet(Visit visit, const char *preString, const char *inString, const char *postString, TInfoSinkBase &out);
+    void outputTriplet(Visit visit, const char *preString, const char *inString, const char *postString);
     void outputLineDirective(int line);
     TString argumentString(const TIntermSymbol *symbol);
     int vectorSize(const TType &type) const;
 
-    void addConstructor(const TType &type, const TString &name, const TIntermSequence *parameters);
+    // Emit constructor. Called with literal names so using const char* instead of TString.
+    void outputConstructor(Visit visit, const TType &type, const char *name, const TIntermSequence *parameters);
     const ConstantUnion *writeConstantUnion(const TType &type, const ConstantUnion *constUnion);
 
-    TString scopeString(unsigned int depthLimit);
-    TString scopedStruct(const TString &typeName);
-    TString structLookup(const TString &typeName);
+    void outputEqual(Visit visit, const TType &type, TOperator op, TInfoSinkBase &out);
 
-    TParseContext &mContext;
+    void writeEmulatedFunctionTriplet(Visit visit, const char *preStr);
+    void makeFlaggedStructMaps(const std::vector<TIntermTyped *> &flaggedStructs);
+
+    // Returns true if it found a 'same symbol' initializer (initializer that references the variable it's initting)
+    bool writeSameSymbolInitializer(TInfoSinkBase &out, TIntermSymbol *symbolNode, TIntermTyped *expression);
+    void writeDeferredGlobalInitializers(TInfoSinkBase &out);
+
+    // Returns the function name
+    TString addStructEqualityFunction(const TStructure &structure);
+    TString addArrayEqualityFunction(const TType &type);
+    TString addArrayAssignmentFunction(const TType &type);
+
+    sh::GLenum mShaderType;
+    int mShaderVersion;
+    const TExtensionBehavior &mExtensionBehavior;
+    const char *mSourcePath;
     const ShShaderOutput mOutputType;
+    int mCompileOptions;
+
     UnfoldShortCircuit *mUnfoldShortCircuit;
     bool mInsideFunction;
 
@@ -80,27 +106,49 @@ class OutputHLSL : public TIntermTraverser
     TInfoSinkBase mBody;
     TInfoSinkBase mFooter;
 
-    typedef std::map<TString, TIntermSymbol*> ReferencedSymbols;
+    // A stack is useful when we want to traverse in the header, or in helper functions, but not always
+    // write to the body. Instead use an InfoSink stack to keep our current state intact.
+    // TODO (jmadill): Just passing an InfoSink in function parameters would be simpler.
+    std::stack<TInfoSinkBase *> mInfoSinkStack;
+
     ReferencedSymbols mReferencedUniforms;
+    ReferencedSymbols mReferencedInterfaceBlocks;
     ReferencedSymbols mReferencedAttributes;
     ReferencedSymbols mReferencedVaryings;
+    ReferencedSymbols mReferencedOutputVariables;
+
+    StructureHLSL *mStructureHLSL;
+    UniformHLSL *mUniformHLSL;
+
+    struct TextureFunction
+    {
+        enum Method
+        {
+            IMPLICIT,   // Mipmap LOD determined implicitly (standard lookup)
+            BIAS,
+            LOD,
+            LOD0,
+            LOD0BIAS,
+            SIZE,   // textureSize()
+            FETCH,
+            GRAD
+        };
+
+        TBasicType sampler;
+        int coords;
+        bool proj;
+        bool offset;
+        Method method;
+
+        TString name() const;
+
+        bool operator<(const TextureFunction &rhs) const;
+    };
+
+    typedef std::set<TextureFunction> TextureFunctionSet;
 
     // Parameters determining what goes in the header output
-    bool mUsesTexture2D;
-    bool mUsesTexture2D_bias;
-    bool mUsesTexture2DLod;
-    bool mUsesTexture2DProj;
-    bool mUsesTexture2DProj_bias;
-    bool mUsesTexture2DProjLod;
-    bool mUsesTextureCube;
-    bool mUsesTextureCube_bias;
-    bool mUsesTextureCubeLod;
-    bool mUsesTexture2DLod0;
-    bool mUsesTexture2DLod0_bias;
-    bool mUsesTexture2DProjLod0;
-    bool mUsesTexture2DProjLod0_bias;
-    bool mUsesTextureCubeLod0;
-    bool mUsesTextureCubeLod0_bias;
+    TextureFunctionSet mUsesTexture;
     bool mUsesFragColor;
     bool mUsesFragData;
     bool mUsesDepthRange;
@@ -108,60 +156,66 @@ class OutputHLSL : public TIntermTraverser
     bool mUsesPointCoord;
     bool mUsesFrontFacing;
     bool mUsesPointSize;
+    bool mUsesInstanceID;
     bool mUsesFragDepth;
     bool mUsesXor;
-    bool mUsesMod1;
-    bool mUsesMod2v;
-    bool mUsesMod2f;
-    bool mUsesMod3v;
-    bool mUsesMod3f;
-    bool mUsesMod4v;
-    bool mUsesMod4f;
-    bool mUsesFaceforward1;
-    bool mUsesFaceforward2;
-    bool mUsesFaceforward3;
-    bool mUsesFaceforward4;
-    bool mUsesAtan2_1;
-    bool mUsesAtan2_2;
-    bool mUsesAtan2_3;
-    bool mUsesAtan2_4;
     bool mUsesDiscardRewriting;
+    bool mUsesNestedBreak;
+    bool mRequiresIEEEStrictCompiling;
+
 
     int mNumRenderTargets;
-
-    typedef std::set<TString> Constructors;
-    Constructors mConstructors;
-
-    typedef std::set<TString> StructNames;
-    StructNames mStructNames;
-
-    typedef std::list<TString> StructDeclarations;
-    StructDeclarations mStructDeclarations;
-
-    typedef std::vector<int> ScopeBracket;
-    ScopeBracket mScopeBracket;
-    unsigned int mScopeDepth;
 
     int mUniqueIndex;   // For creating unique names
 
     bool mContainsLoopDiscontinuity;
+    bool mContainsAnyLoop;
     bool mOutputLod0Function;
     bool mInsideDiscontinuousLoop;
+    int mNestedLoopDepth;
 
     TIntermSymbol *mExcessiveLoopIndex;
 
-    int mUniformRegister;
-    int mSamplerRegister;
+    TString structInitializerString(int indent, const TStructure &structure, const TString &rhsStructName);
 
-    TString registerString(TIntermSymbol *operand);
-    int samplerRegister(TIntermSymbol *sampler);
-    int uniformRegister(TIntermSymbol *uniform);
-    void declareUniform(const TType &type, const TString &name, int index);
-    static GLenum glVariableType(const TType &type);
-    static GLenum glVariablePrecision(const TType &type);
+    std::map<TIntermTyped*, TString> mFlaggedStructMappedNames;
+    std::map<TIntermTyped*, TString> mFlaggedStructOriginalNames;
 
-    ActiveUniforms mActiveUniforms;
+    // Some initializers use varyings, uniforms or attributes, thus we can't evaluate some variables
+    // at global static scope in HLSL. These variables depend on values which we retrieve from the
+    // shader input structure, which we set in the D3D main function. Instead, we can initialize
+    // these static globals after we initialize our other globals.
+    std::vector<std::pair<TIntermSymbol*, TIntermTyped*>> mDeferredGlobalInitializers;
+
+    struct HelperFunction
+    {
+        TString functionName;
+        TString functionDefinition;
+
+        virtual ~HelperFunction() {}
+    };
+
+    // A list of all equality comparison functions. It's important to preserve the order at
+    // which we add the functions, since nested structures call each other recursively, and
+    // structure equality functions may need to call array equality functions and vice versa.
+    // The ownership of the pointers is maintained by the type-specific arrays.
+    std::vector<HelperFunction*> mEqualityFunctions;
+
+    struct StructEqualityFunction : public HelperFunction
+    {
+        const TStructure *structure;
+    };
+    std::vector<StructEqualityFunction*> mStructEqualityFunctions;
+
+    struct ArrayHelperFunction : public HelperFunction
+    {
+        TType type;
+    };
+    std::vector<ArrayHelperFunction*> mArrayEqualityFunctions;
+
+    std::vector<ArrayHelperFunction> mArrayAssignmentFunctions;
 };
+
 }
 
-#endif   // COMPILER_OUTPUTHLSL_H_
+#endif   // COMPILER_TRANSLATOR_OUTPUTHLSL_H_

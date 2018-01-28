@@ -1,39 +1,31 @@
 /****************************************************************************
 **
-** Copyright (C) 2013 Digia Plc and/or its subsidiary(-ies).
-** Contact: http://www.qt-project.org/legal
+** Copyright (C) 2015 The Qt Company Ltd.
+** Contact: http://www.qt.io/licensing/
 **
 ** This file is part of the QtCore module of the Qt Toolkit.
 **
-** $QT_BEGIN_LICENSE:LGPL$
+** $QT_BEGIN_LICENSE:LGPL21$
 ** Commercial License Usage
 ** Licensees holding valid commercial Qt licenses may use this file in
 ** accordance with the commercial license agreement provided with the
 ** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and Digia.  For licensing terms and
-** conditions see http://qt.digia.com/licensing.  For further information
-** use the contact form at http://qt.digia.com/contact-us.
+** a written agreement between you and The Qt Company. For licensing terms
+** and conditions see http://www.qt.io/terms-conditions. For further
+** information use the contact form at http://www.qt.io/contact-us.
 **
 ** GNU Lesser General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 2.1 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU Lesser General Public License version 2.1 requirements
-** will be met: http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
+** General Public License version 2.1 or version 3 as published by the Free
+** Software Foundation and appearing in the file LICENSE.LGPLv21 and
+** LICENSE.LGPLv3 included in the packaging of this file. Please review the
+** following information to ensure the GNU Lesser General Public License
+** requirements will be met: https://www.gnu.org/licenses/lgpl.html and
+** http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
 **
-** In addition, as a special exception, Digia gives you certain additional
-** rights.  These rights are described in the Digia Qt LGPL Exception
+** As a special exception, The Qt Company gives you certain additional
+** rights. These rights are described in The Qt Company LGPL Exception
 ** version 1.1, included in the file LGPL_EXCEPTION.txt in this package.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3.0 as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU General Public License version 3.0 requirements will be
-** met: http://www.gnu.org/copyleft/gpl.html.
-**
 **
 ** $QT_END_LICENSE$
 **
@@ -41,7 +33,8 @@
 
 #include "qsize.h"
 #include "qdatastream.h"
-#include "qdebug.h"
+
+#include <private/qdebug_p.h>
 
 QT_BEGIN_NAMESPACE
 
@@ -164,7 +157,7 @@ QT_BEGIN_NAMESPACE
     \sa setWidth(), setHeight(), transposed()
 */
 
-void QSize::transpose()
+void QSize::transpose() Q_DECL_NOTHROW
 {
     int tmp = wd;
     wd = ht;
@@ -225,7 +218,7 @@ void QSize::transpose()
     Return a size scaled to a rectangle with the given size \a s,
     according to the specified \a mode.
 */
-QSize QSize::scaled(const QSize &s, Qt::AspectRatioMode mode) const
+QSize QSize::scaled(const QSize &s, Qt::AspectRatioMode mode) const Q_DECL_NOTHROW
 {
     if (mode == Qt::IgnoreAspectRatio || wd == 0 || ht == 0) {
         return s;
@@ -445,9 +438,14 @@ QDataStream &operator>>(QDataStream &s, QSize &sz)
 #endif // QT_NO_DATASTREAM
 
 #ifndef QT_NO_DEBUG_STREAM
-QDebug operator<<(QDebug dbg, const QSize &s) {
-    dbg.nospace() << "QSize(" << s.width() << ", " << s.height() << ')';
-    return dbg.space();
+QDebug operator<<(QDebug dbg, const QSize &s)
+{
+    QDebugStateSaver saver(dbg);
+    dbg.nospace();
+    dbg << "QSize(";
+    QtDebugUtils::formatQSize(dbg, s);
+    dbg << ')';
+    return dbg;
 }
 #endif
 
@@ -519,12 +517,8 @@ QDebug operator<<(QDebug dbg, const QSize &s) {
 /*!
     \fn bool QSizeF::isNull() const
 
-    Returns \c true if both the width and height are +0.0; otherwise returns
-    false.
-
-    \note Since this function treats +0.0 and -0.0 differently, sizes with
-    zero width and height where either or both values have a negative
-    sign are not defined to be null sizes.
+    Returns \c true if both the width and height are 0.0 (ignoring the sign);
+    otherwise returns \c false.
 
     \sa isValid(), isEmpty()
 */
@@ -596,7 +590,7 @@ QDebug operator<<(QDebug dbg, const QSize &s) {
     \sa setWidth(), setHeight(), transposed()
 */
 
-void QSizeF::transpose()
+void QSizeF::transpose() Q_DECL_NOTHROW
 {
     qreal tmp = wd;
     wd = ht;
@@ -657,7 +651,7 @@ void QSizeF::transpose()
     Returns a size scaled to a rectangle with the given size \a s,
     according to the specified \a mode.
 */
-QSizeF QSizeF::scaled(const QSizeF &s, Qt::AspectRatioMode mode) const
+QSizeF QSizeF::scaled(const QSizeF &s, Qt::AspectRatioMode mode) const Q_DECL_NOTHROW
 {
     if (mode == Qt::IgnoreAspectRatio || qIsNull(wd) || qIsNull(ht)) {
         return s;
@@ -870,9 +864,14 @@ QDataStream &operator>>(QDataStream &s, QSizeF &sz)
 #endif // QT_NO_DATASTREAM
 
 #ifndef QT_NO_DEBUG_STREAM
-QDebug operator<<(QDebug dbg, const QSizeF &s) {
-    dbg.nospace() << "QSizeF(" << s.width() << ", " << s.height() << ')';
-    return dbg.space();
+QDebug operator<<(QDebug dbg, const QSizeF &s)
+{
+    QDebugStateSaver saver(dbg);
+    dbg.nospace();
+    dbg << "QSizeF(";
+    QtDebugUtils::formatQSize(dbg, s);
+    dbg << ')';
+    return dbg;
 }
 #endif
 

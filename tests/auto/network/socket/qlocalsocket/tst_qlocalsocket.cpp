@@ -1,39 +1,31 @@
 /****************************************************************************
 **
-** Copyright (C) 2013 Digia Plc and/or its subsidiary(-ies).
-** Contact: http://www.qt-project.org/legal
+** Copyright (C) 2015 The Qt Company Ltd.
+** Contact: http://www.qt.io/licensing/
 **
 ** This file is part of the test suite of the Qt Toolkit.
 **
-** $QT_BEGIN_LICENSE:LGPL$
+** $QT_BEGIN_LICENSE:LGPL21$
 ** Commercial License Usage
 ** Licensees holding valid commercial Qt licenses may use this file in
 ** accordance with the commercial license agreement provided with the
 ** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and Digia.  For licensing terms and
-** conditions see http://qt.digia.com/licensing.  For further information
-** use the contact form at http://qt.digia.com/contact-us.
+** a written agreement between you and The Qt Company. For licensing terms
+** and conditions see http://www.qt.io/terms-conditions. For further
+** information use the contact form at http://www.qt.io/contact-us.
 **
 ** GNU Lesser General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 2.1 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU Lesser General Public License version 2.1 requirements
-** will be met: http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
+** General Public License version 2.1 or version 3 as published by the Free
+** Software Foundation and appearing in the file LICENSE.LGPLv21 and
+** LICENSE.LGPLv3 included in the packaging of this file. Please review the
+** following information to ensure the GNU Lesser General Public License
+** requirements will be met: https://www.gnu.org/licenses/lgpl.html and
+** http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
 **
-** In addition, as a special exception, Digia gives you certain additional
-** rights.  These rights are described in the Digia Qt LGPL Exception
+** As a special exception, The Qt Company gives you certain additional
+** rights. These rights are described in The Qt Company LGPL Exception
 ** version 1.1, included in the file LGPL_EXCEPTION.txt in this package.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3.0 as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU General Public License version 3.0 requirements will be
-** met: http://www.gnu.org/copyleft/gpl.html.
-**
 **
 ** $QT_END_LICENSE$
 **
@@ -96,10 +88,8 @@ private slots:
     void threadedConnection_data();
     void threadedConnection();
 
-#ifndef QT_NO_PROCESS
     void processConnection_data();
     void processConnection();
-#endif
 
     void longPath();
     void waitForDisconnect();
@@ -108,6 +98,7 @@ private slots:
     void removeServer();
 
     void recycleServer();
+    void recycleClientSocket();
 
     void multiConnect();
     void writeOnlySocket();
@@ -792,7 +783,6 @@ void tst_QLocalSocket::threadedConnection()
     }
 }
 
-#ifndef QT_NO_PROCESS
 void tst_QLocalSocket::processConnection_data()
 {
     QTest::addColumn<int>("processes");
@@ -802,6 +792,7 @@ void tst_QLocalSocket::processConnection_data()
     QTest::newRow("30 clients") << 30;
 }
 
+#ifndef QT_NO_PROCESS
 class ProcessOutputDumper
 {
 public:
@@ -823,12 +814,16 @@ public:
 private:
     QProcess *process;
 };
+#endif
 
 /*!
     Create external processes that produce and consume.
  */
 void tst_QLocalSocket::processConnection()
 {
+#ifdef QT_NO_PROCESS
+    QSKIP("No qprocess support", SkipAll);
+#else
 #ifdef Q_OS_MAC
     QSKIP("The processConnection test is unstable on Mac. See QTBUG-39986.");
 #endif
@@ -868,8 +863,8 @@ void tst_QLocalSocket::processConnection()
     }
     producer.waitForFinished(15000);
     producerOutputDumper.clear();
-}
 #endif
+}
 
 void tst_QLocalSocket::longPath()
 {
@@ -958,6 +953,34 @@ void tst_QLocalSocket::recycleServer()
     QVERIFY(client.waitForConnected(202));
     QVERIFY(server.waitForNewConnection(202));
     QVERIFY(server.nextPendingConnection() != 0);
+}
+
+void tst_QLocalSocket::recycleClientSocket()
+{
+    const QByteArrayList lines = QByteArrayList() << "Have you heard of that new band"
+                                                  << "\"1023 Megabytes\"?"
+                                                  << "They haven't made it to a gig yet.";
+    QLocalServer server;
+    const QString serverName = QStringLiteral("recycleClientSocket");
+    QVERIFY(server.listen(serverName));
+    QLocalSocket client;
+    QSignalSpy clientReadyReadSpy(&client, SIGNAL(readyRead()));
+    QSignalSpy clientErrorSpy(&client, SIGNAL(error(QLocalSocket::LocalSocketError)));
+    for (int i = 0; i < lines.count(); ++i) {
+        client.abort();
+        clientReadyReadSpy.clear();
+        client.connectToServer(serverName);
+        QVERIFY(client.waitForConnected());
+        QVERIFY(server.waitForNewConnection());
+        QLocalSocket *serverSocket = server.nextPendingConnection();
+        QVERIFY(serverSocket);
+        connect(serverSocket, &QLocalSocket::disconnected, &QLocalSocket::deleteLater);
+        serverSocket->write(lines.at(i));
+        serverSocket->flush();
+        QVERIFY(clientReadyReadSpy.wait());
+        QCOMPARE(client.readAll(), lines.at(i));
+        QVERIFY(clientErrorSpy.isEmpty());
+    }
 }
 
 void tst_QLocalSocket::multiConnect()

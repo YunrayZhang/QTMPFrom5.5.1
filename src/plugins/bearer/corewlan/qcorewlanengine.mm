@@ -1,39 +1,31 @@
 /****************************************************************************
 **
-** Copyright (C) 2013 Digia Plc and/or its subsidiary(-ies).
-** Contact: http://www.qt-project.org/legal
+** Copyright (C) 2015 The Qt Company Ltd.
+** Contact: http://www.qt.io/licensing/
 **
 ** This file is part of the plugins of the Qt Toolkit.
 **
-** $QT_BEGIN_LICENSE:LGPL$
+** $QT_BEGIN_LICENSE:LGPL21$
 ** Commercial License Usage
 ** Licensees holding valid commercial Qt licenses may use this file in
 ** accordance with the commercial license agreement provided with the
 ** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and Digia.  For licensing terms and
-** conditions see http://qt.digia.com/licensing.  For further information
-** use the contact form at http://qt.digia.com/contact-us.
+** a written agreement between you and The Qt Company. For licensing terms
+** and conditions see http://www.qt.io/terms-conditions. For further
+** information use the contact form at http://www.qt.io/contact-us.
 **
 ** GNU Lesser General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 2.1 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU Lesser General Public License version 2.1 requirements
-** will be met: http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
+** General Public License version 2.1 or version 3 as published by the Free
+** Software Foundation and appearing in the file LICENSE.LGPLv21 and
+** LICENSE.LGPLv3 included in the packaging of this file. Please review the
+** following information to ensure the GNU Lesser General Public License
+** requirements will be met: https://www.gnu.org/licenses/lgpl.html and
+** http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
 **
-** In addition, as a special exception, Digia gives you certain additional
-** rights.  These rights are described in the Digia Qt LGPL Exception
+** As a special exception, The Qt Company gives you certain additional
+** rights. These rights are described in The Qt Company LGPL Exception
 ** version 1.1, included in the file LGPL_EXCEPTION.txt in this package.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3.0 as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU General Public License version 3.0 requirements will be
-** met: http://www.gnu.org/copyleft/gpl.html.
-**
 **
 ** $QT_END_LICENSE$
 **
@@ -52,6 +44,7 @@
 #include <QtCore/qdebug.h>
 
 #include <QDir>
+#ifndef QT_NO_BEARERMANAGEMENT
 
 extern "C" { // Otherwise it won't find CWKeychain* symbols at link time
 #import <CoreWLAN/CoreWLAN.h>
@@ -61,8 +54,6 @@ extern "C" { // Otherwise it won't find CWKeychain* symbols at link time
 
 #include <net/if.h>
 #include <ifaddrs.h>
-
-#if QT_MAC_PLATFORM_SDK_EQUAL_OR_ABOVE(__MAC_10_7, __IPHONE_NA)
 
 @interface QT_MANGLE_NAMESPACE(QNSListener) : NSObject
 {
@@ -95,8 +86,11 @@ extern "C" { // Otherwise it won't find CWKeychain* symbols at link time
     return self;
 }
 
+static QT_MANGLE_NAMESPACE(QNSListener) *listener = 0;
+
 -(void)dealloc
 {
+    listener = nil;
     [super dealloc];
 }
 
@@ -127,7 +121,6 @@ extern "C" { // Otherwise it won't find CWKeychain* symbols at link time
 }
 @end
 
-static QT_MANGLE_NAMESPACE(QNSListener) *listener = 0;
 
 QT_BEGIN_NAMESPACE
 
@@ -290,8 +283,6 @@ void QScanThread::getUserConfigurations()
     for (NSString *ifName in wifiInterfaces) {
 
         CWInterface *wifiInterface = [CWInterface interfaceWithName: ifName];
-        if (!wifiInterface.powerOn)
-            continue;
 
         NSString *nsInterfaceName = wifiInterface.ssid;
 // add user configured system networks
@@ -313,6 +304,21 @@ void QScanThread::getUserConfigurations()
             CFRelease(airportPlist);
         }
 
+        // remembered networks
+        CWConfiguration *userConfig = [wifiInterface configuration];
+        NSOrderedSet *networkProfiles = [userConfig networkProfiles];
+        NSEnumerator *enumerator = [networkProfiles objectEnumerator];
+        CWNetworkProfile *wProfile;
+        while ((wProfile = [enumerator nextObject])) {
+            QString networkName = QCFString::toQString([wProfile ssid]);
+
+            if (!userProfiles.contains(networkName)) {
+                QMap<QString,QString> map;
+                map.insert(networkName, QCFString::toQString(nsInterfaceName));
+                userProfiles.insert(networkName, map);
+            }
+        }
+
         // 802.1X user profiles
         QString userProfilePath = QDir::homePath() + "/Library/Preferences/com.apple.eap.profiles.plist";
         NSDictionary* eapDict = [[[NSDictionary alloc] initWithContentsOfFile: QCFString::toNSString(userProfilePath)] autorelease];
@@ -332,14 +338,14 @@ void QScanThread::getUserConfigurations()
                         [itemKey getObjects:objects andKeys:keys];
                         QString networkName;
                         QString ssid;
-                        for(int i = 0; i < dictSize; i++) {
+                        for (int i = 0; i < dictSize; i++) {
                             if([nameStr isEqualToString:keys[i]]) {
                                 networkName = QCFString::toQString(objects[i]);
                             }
-                            if([networkSsidStr isEqualToString:keys[i]]) {
+                            if ([networkSsidStr isEqualToString:keys[i]]) {
                                 ssid = QCFString::toQString(objects[i]);
                             }
-                            if(!userProfiles.contains(networkName)
+                            if (!userProfiles.contains(networkName)
                                 && !ssid.isEmpty()) {
                                 QMap<QString,QString> map;
                                 map.insert(ssid, QCFString::toQString(nsInterfaceName));
@@ -419,7 +425,6 @@ QCoreWlanEngine::QCoreWlanEngine(QObject *parent)
 
 QCoreWlanEngine::~QCoreWlanEngine()
 {
-    scanThread->terminate();
     scanThread->wait();
 
     while (!foundConfigurations.isEmpty())
@@ -544,18 +549,42 @@ void QCoreWlanEngine::disconnectFromId(const QString &id)
     QMutexLocker locker(&mutex);
 
     QString interfaceString = getInterfaceFromId(id);
+    if (interfaceString.isEmpty()) {
+        locker.unlock();
+        emit connectionError(id, DisconnectionError);
+        return;
+    }
     NSAutoreleasePool *autoreleasepool = [[NSAutoreleasePool alloc] init];
 
     CWInterface *wifiInterface =
         [CWInterface interfaceWithName: QCFString::toNSString(interfaceString)];
+    disconnectedInterfaceString = interfaceString;
 
     [wifiInterface disassociate];
-    if (wifiInterface.serviceActive) {
-        locker.unlock();
-        emit connectionError(id, DisconnectionError);
-        locker.relock();
-    }
+
+    QTimer::singleShot(1000, this,SLOT(checkDisconnect()));
     [autoreleasepool release];
+}
+
+void QCoreWlanEngine::checkDisconnect()
+{
+    QMutexLocker locker(&mutex);
+    if (!disconnectedInterfaceString.isEmpty()) {
+        NSAutoreleasePool *autoreleasepool = [[NSAutoreleasePool alloc] init];
+
+        CWInterface *wifiInterface =
+                [CWInterface interfaceWithName: QCFString::toNSString(disconnectedInterfaceString)];
+
+        const QString networkSsid = QCFString::toQString([wifiInterface ssid]);
+        if (!networkSsid.isEmpty()) {
+            const QString id = QString::number(qHash(QLatin1String("corewlan:") + networkSsid));
+            locker.unlock();
+            emit connectionError(id, DisconnectionError);
+            locker.relock();
+        }
+        [autoreleasepool release];
+        disconnectedInterfaceString.clear();
+    }
 }
 
 void QCoreWlanEngine::requestUpdate()
@@ -863,6 +892,4 @@ quint64 QCoreWlanEngine::getBytes(const QString &interfaceName, bool b)
 
 QT_END_NAMESPACE
 
-#else // QT_MAC_PLATFORM_SDK_EQUAL_OR_ABOVE
-#include "qcorewlanengine_10_6.mm"
 #endif

@@ -1,39 +1,31 @@
 /****************************************************************************
 **
-** Copyright (C) 2013 Digia Plc and/or its subsidiary(-ies).
-** Contact: http://www.qt-project.org/legal
+** Copyright (C) 2015 The Qt Company Ltd.
+** Contact: http://www.qt.io/licensing/
 **
 ** This file is part of the test suite of the Qt Toolkit.
 **
-** $QT_BEGIN_LICENSE:LGPL$
+** $QT_BEGIN_LICENSE:LGPL21$
 ** Commercial License Usage
 ** Licensees holding valid commercial Qt licenses may use this file in
 ** accordance with the commercial license agreement provided with the
 ** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and Digia.  For licensing terms and
-** conditions see http://qt.digia.com/licensing.  For further information
-** use the contact form at http://qt.digia.com/contact-us.
+** a written agreement between you and The Qt Company. For licensing terms
+** and conditions see http://www.qt.io/terms-conditions. For further
+** information use the contact form at http://www.qt.io/contact-us.
 **
 ** GNU Lesser General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 2.1 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU Lesser General Public License version 2.1 requirements
-** will be met: http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
+** General Public License version 2.1 or version 3 as published by the Free
+** Software Foundation and appearing in the file LICENSE.LGPLv21 and
+** LICENSE.LGPLv3 included in the packaging of this file. Please review the
+** following information to ensure the GNU Lesser General Public License
+** requirements will be met: https://www.gnu.org/licenses/lgpl.html and
+** http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
 **
-** In addition, as a special exception, Digia gives you certain additional
-** rights.  These rights are described in the Digia Qt LGPL Exception
+** As a special exception, The Qt Company gives you certain additional
+** rights. These rights are described in The Qt Company LGPL Exception
 ** version 1.1, included in the file LGPL_EXCEPTION.txt in this package.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3.0 as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU General Public License version 3.0 requirements will be
-** met: http://www.gnu.org/copyleft/gpl.html.
-**
 **
 ** $QT_END_LICENSE$
 **
@@ -50,6 +42,8 @@
 #include <qdesktopwidget.h>
 #include <qaction.h>
 #include <qstyleoption.h>
+#include <QVBoxLayout>
+#include <QLabel>
 #include <qscreen.h>
 
 #include <qobject.h>
@@ -91,6 +85,7 @@ public:
 
 private slots:
     void getSetCheck();
+    void cleanup();
 
     void clear();
     void removeItemAt();
@@ -133,7 +128,9 @@ private slots:
     void taskQTBUG4965_escapeEaten();
 #endif
     void taskQTBUG11823_crashwithInvisibleActions();
-    void closeOnSecondClick();
+    void closeOnSecondClickAndOpenOnThirdClick();
+    void cornerWidgets_data();
+    void cornerWidgets();
 
 protected slots:
     void onSimpleActivated( QAction*);
@@ -201,6 +198,11 @@ void tst_QMenuBar::onSimpleActivated( QAction* action )
 {
     m_lastSimpleAcceleratorId = action;
     m_simpleActivatedCount++;
+}
+
+void tst_QMenuBar::cleanup()
+{
+    QVERIFY(QApplication::topLevelWidgets().isEmpty());
 }
 
 // Create a simple menu bar and connect its actions to onSimpleActivated().
@@ -1310,7 +1312,7 @@ void tst_QMenuBar::taskQTBUG11823_crashwithInvisibleActions()
     QCOMPARE(menubar.activeAction(), m); //the active action shouldn't have changed
 }
 
-void tst_QMenuBar::closeOnSecondClick() // QTBUG-32807, menu should close on 2nd click.
+void tst_QMenuBar::closeOnSecondClickAndOpenOnThirdClick() // QTBUG-32807, menu should close on 2nd click.
 {
     QMainWindow mainWindow;
     mainWindow.resize(300, 200);
@@ -1320,17 +1322,90 @@ void tst_QMenuBar::closeOnSecondClick() // QTBUG-32807, menu should close on 2nd
 #endif
     QMenuBar *menuBar = mainWindow.menuBar();
     menuBar->setNativeMenuBar(false);
-    QMenu *fileMenu = menuBar->addMenu(QStringLiteral("closeOnSecondClick"));
+    QMenu *fileMenu = menuBar->addMenu(QStringLiteral("OpenCloseOpen"));
     fileMenu->addAction(QStringLiteral("Quit"));
     mainWindow.show();
     QApplication::setActiveWindow(&mainWindow);
     QVERIFY(QTest::qWaitForWindowActive(&mainWindow));
     const QPoint center = menuBar->actionGeometry(fileMenu->menuAction()).center();
+    const QPoint globalPos = menuBar->mapToGlobal(center);
     QTest::mouseMove(menuBar, center);
     QTest::mouseClick(menuBar, Qt::LeftButton, 0, center);
     QTRY_VERIFY(fileMenu->isVisible());
-    QTest::mouseClick(menuBar, Qt::LeftButton, 0, center);
+    QTest::mouseClick(fileMenu, Qt::LeftButton, 0, fileMenu->mapFromGlobal(globalPos));
     QTRY_VERIFY(!fileMenu->isVisible());
+    QTest::mouseClick(menuBar, Qt::LeftButton, 0, center);
+    QTRY_VERIFY(fileMenu->isVisible());
+}
+
+Q_DECLARE_METATYPE(Qt::Corner)
+
+void tst_QMenuBar::cornerWidgets_data()
+{
+    QTest::addColumn<Qt::Corner>("corner");
+    QTest::newRow("left") << Qt::TopLeftCorner;
+    QTest::newRow("right") << Qt::TopRightCorner;
+}
+
+static QByteArray msgComparison(int v1, const char *op, int v2)
+{
+    QString result;
+    QDebug(&result) << v1 << op << v2 << "failed";
+    return result.toLocal8Bit();
+}
+
+void tst_QMenuBar::cornerWidgets()
+{
+    enum { cornerWidgetWidth = 100 };
+
+    QFETCH(Qt::Corner, corner);
+
+#if defined(Q_OS_OSX) || defined(Q_OS_WINCE)
+    QSKIP("Test interferes with native menu bars on this platform");
+#endif
+
+    QWidget widget;
+    const QString dataTag = QLatin1String(QTest::currentDataTag());
+    widget.setWindowTitle(QLatin1String(QTest::currentTestFunction()) + dataTag);
+    QVBoxLayout *layout = new QVBoxLayout(&widget);
+    QMenuBar *menuBar = new QMenuBar(&widget);
+    layout->addWidget(menuBar);
+    QMenu *fileMenu = menuBar->addMenu("File");
+    fileMenu->addAction("Quit");
+    QMenu *editMenu =menuBar->addMenu("Edit");
+    editMenu->addAction("Copy");
+    centerOnScreen(&widget);
+
+    QLabel *cornerLabel = new QLabel(dataTag);
+    cornerLabel->setFixedWidth(cornerWidgetWidth);
+    menuBar->setCornerWidget(cornerLabel, corner);
+    QCOMPARE(menuBar->cornerWidget(corner), cornerLabel);
+    widget.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&widget));
+
+    const QRect fileMenuGeometry = menuBar->actionGeometry(fileMenu->menuAction());
+    const QRect editMenuGeometry = menuBar->actionGeometry(editMenu->menuAction());
+    const int menuBarWidth = menuBar->width();
+    switch (corner) { // QTBUG-36010 , verify corner widget geometry is correct
+    case Qt::TopLeftCorner:
+        QVERIFY2(fileMenuGeometry.left() >= cornerWidgetWidth,
+                 msgComparison(fileMenuGeometry.left(), ">=", cornerWidgetWidth));
+        QVERIFY2(menuBarWidth - editMenuGeometry.right() < cornerWidgetWidth,
+                 msgComparison(menuBarWidth - editMenuGeometry.right(), "<", cornerWidgetWidth));
+        break;
+    case Qt::TopRightCorner:
+        QVERIFY2(fileMenuGeometry.left() < cornerWidgetWidth,
+                 msgComparison(fileMenuGeometry.left(), "<", cornerWidgetWidth));
+        QVERIFY2(menuBarWidth - editMenuGeometry.right() >= cornerWidgetWidth,
+                 msgComparison(menuBarWidth - editMenuGeometry.right(), ">=", cornerWidgetWidth));
+        break;
+    default:
+        break;
+    }
+
+    menuBar->setCornerWidget(0, corner); // Don't crash.
+    QVERIFY(!menuBar->cornerWidget(corner));
+    delete cornerLabel;
 }
 
 QTEST_MAIN(tst_QMenuBar)

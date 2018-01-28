@@ -1,39 +1,31 @@
 /****************************************************************************
 **
-** Copyright (C) 2013 Digia Plc and/or its subsidiary(-ies).
-** Contact: http://www.qt-project.org/legal
+** Copyright (C) 2015 The Qt Company Ltd.
+** Contact: http://www.qt.io/licensing/
 **
 ** This file is part of the QtCore module of the Qt Toolkit.
 **
-** $QT_BEGIN_LICENSE:LGPL$
+** $QT_BEGIN_LICENSE:LGPL21$
 ** Commercial License Usage
 ** Licensees holding valid commercial Qt licenses may use this file in
 ** accordance with the commercial license agreement provided with the
 ** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and Digia.  For licensing terms and
-** conditions see http://qt.digia.com/licensing.  For further information
-** use the contact form at http://qt.digia.com/contact-us.
+** a written agreement between you and The Qt Company. For licensing terms
+** and conditions see http://www.qt.io/terms-conditions. For further
+** information use the contact form at http://www.qt.io/contact-us.
 **
 ** GNU Lesser General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 2.1 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU Lesser General Public License version 2.1 requirements
-** will be met: http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
+** General Public License version 2.1 or version 3 as published by the Free
+** Software Foundation and appearing in the file LICENSE.LGPLv21 and
+** LICENSE.LGPLv3 included in the packaging of this file. Please review the
+** following information to ensure the GNU Lesser General Public License
+** requirements will be met: https://www.gnu.org/licenses/lgpl.html and
+** http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
 **
-** In addition, as a special exception, Digia gives you certain additional
-** rights.  These rights are described in the Digia Qt LGPL Exception
+** As a special exception, The Qt Company gives you certain additional
+** rights. These rights are described in The Qt Company LGPL Exception
 ** version 1.1, included in the file LGPL_EXCEPTION.txt in this package.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3.0 as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU General Public License version 3.0 requirements will be
-** met: http://www.gnu.org/copyleft/gpl.html.
-**
 **
 ** $QT_END_LICENSE$
 **
@@ -85,7 +77,7 @@ QT_BEGIN_NAMESPACE
 
     \snippet qelapsedtimer/main.cpp 2
 
-    \section1 Reference clocks
+    \section1 Reference Clocks
 
     QElapsedTimer will use the platform's monotonic reference clock in all
     platforms that support it (see QElapsedTimer::isMonotonic()). This has
@@ -139,7 +131,7 @@ QT_BEGIN_NAMESPACE
     \value SystemTime         The human-readable system time. This clock is not monotonic.
     \value MonotonicClock     The system's monotonic clock, usually found in Unix systems. This clock is monotonic and does not overflow.
     \value TickCounter        The system's tick counter, used on Windows systems. This clock may overflow.
-    \value MachAbsoluteTime   The Mach kernel's absolute time (Mac OS X). This clock is monotonic and does not overflow.
+    \value MachAbsoluteTime   The Mach kernel's absolute time (OS X and iOS). This clock is monotonic and does not overflow.
     \value PerformanceCounter The high-resolution performance counter provided by Windows. This clock is monotonic and does not overflow.
 
     \section2 SystemTime
@@ -181,8 +173,8 @@ QT_BEGIN_NAMESPACE
     \section2 MachAbsoluteTime
 
     This clock type is based on the absolute time presented by Mach kernels,
-    such as that found on Mac OS X. This clock type is presented separately
-    from MonotonicClock since Mac OS X is also a Unix system and may support
+    such as that found on OS X. This clock type is presented separately
+    from MonotonicClock since OS X and iOS are also Unix systems and may support
     a POSIX monotonic clock with values differing from the Mach absolute
     time.
 
@@ -200,6 +192,17 @@ QT_BEGIN_NAMESPACE
 
     \sa clockType(), isMonotonic()
 */
+
+/*!
+    \fn QElapsedTimer::QElapsedTimer()
+    \since 5.4
+
+    Constructs an invalid QElapsedTimer. A timer becomes valid once it has been
+    started.
+
+    \sa isValid(), start()
+*/
+
 
 /*!
     \fn bool QElapsedTimer::operator ==(const QElapsedTimer &other) const
@@ -230,8 +233,8 @@ void QElapsedTimer::invalidate() Q_DECL_NOTHROW
 }
 
 /*!
-    Returns \c false if this object was invalidated by a call to invalidate() and
-    has not been restarted since.
+    Returns \c false if the timer has never been started or invalidated by a
+    call to invalidate().
 
     \sa invalidate(), start(), restart()
 */

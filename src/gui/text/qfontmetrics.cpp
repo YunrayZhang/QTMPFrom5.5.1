@@ -1,39 +1,31 @@
 /****************************************************************************
 **
-** Copyright (C) 2013 Digia Plc and/or its subsidiary(-ies).
-** Contact: http://www.qt-project.org/legal
+** Copyright (C) 2015 The Qt Company Ltd.
+** Contact: http://www.qt.io/licensing/
 **
 ** This file is part of the QtGui module of the Qt Toolkit.
 **
-** $QT_BEGIN_LICENSE:LGPL$
+** $QT_BEGIN_LICENSE:LGPL21$
 ** Commercial License Usage
 ** Licensees holding valid commercial Qt licenses may use this file in
 ** accordance with the commercial license agreement provided with the
 ** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and Digia.  For licensing terms and
-** conditions see http://qt.digia.com/licensing.  For further information
-** use the contact form at http://qt.digia.com/contact-us.
+** a written agreement between you and The Qt Company. For licensing terms
+** and conditions see http://www.qt.io/terms-conditions. For further
+** information use the contact form at http://www.qt.io/contact-us.
 **
 ** GNU Lesser General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 2.1 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU Lesser General Public License version 2.1 requirements
-** will be met: http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
+** General Public License version 2.1 or version 3 as published by the Free
+** Software Foundation and appearing in the file LICENSE.LGPLv21 and
+** LICENSE.LGPLv3 included in the packaging of this file. Please review the
+** following information to ensure the GNU Lesser General Public License
+** requirements will be met: https://www.gnu.org/licenses/lgpl.html and
+** http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
 **
-** In addition, as a special exception, Digia gives you certain additional
-** rights.  These rights are described in the Digia Qt LGPL Exception
+** As a special exception, The Qt Company gives you certain additional
+** rights. These rights are described in The Qt Company LGPL Exception
 ** version 1.1, included in the file LGPL_EXCEPTION.txt in this package.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3.0 as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU General Public License version 3.0 requirements will be
-** met: http://www.gnu.org/copyleft/gpl.html.
-**
 **
 ** $QT_END_LICENSE$
 **
@@ -45,9 +37,6 @@
 
 #include "qfont_p.h"
 #include "qfontengine_p.h"
-
-#include <math.h>
-
 
 QT_BEGIN_NAMESPACE
 
@@ -218,6 +207,11 @@ QFontMetrics &QFontMetrics::operator=(const QFontMetrics &fm)
     Move-assigns \a other to this QFontMetrics instance.
 
     \since 5.2
+*/
+/*!
+    \fn QFontMetricsF &QFontMetricsF::operator=(QFontMetricsF &&other)
+
+    Move-assigns \a other to this QFontMetricsF instance.
 */
 
 /*!
@@ -593,6 +587,7 @@ int QFontMetrics::width(QChar ch) const
     return qRound(advance);
 }
 
+#if QT_VERSION < QT_VERSION_CHECK(6,0,0)
 /*! \obsolete
 
     Returns the width of the character at position \a pos in the
@@ -645,6 +640,7 @@ int QFontMetrics::charWidth(const QString &text, int pos) const
     }
     return width;
 }
+#endif
 
 /*!
     Returns the bounding rectangle of the characters in the string
@@ -655,7 +651,7 @@ int QFontMetrics::charWidth(const QString &text, int pos) const
     e.g. for italicized fonts, and that the width of the returned
     rectangle might be different than what the width() method returns.
 
-    If you want to know the advance width of the string (to layout
+    If you want to know the advance width of the string (to lay out
     a set of strings next to each other), use width() instead.
 
     Newline characters are processed as normal characters, \e not as
@@ -825,7 +821,7 @@ QSize QFontMetrics::size(int flags, const QString &text, int tabStops, int *tabA
     e.g. for italicized fonts, and that the width of the returned
     rectangle might be different than what the width() method returns.
 
-    If you want to know the advance width of the string (to layout
+    If you want to know the advance width of the string (to lay out
     a set of strings next to each other), use width() instead.
 
     Newline characters are processed as normal characters, \e not as
@@ -1440,7 +1436,7 @@ qreal QFontMetricsF::width(QChar ch) const
     e.g. for italicized fonts, and that the width of the returned
     rectangle might be different than what the width() method returns.
 
-    If you want to know the advance width of the string (to layout
+    If you want to know the advance width of the string (to lay out
     a set of strings next to each other), use width() instead.
 
     Newline characters are processed as normal characters, \e not as
@@ -1614,7 +1610,7 @@ QSizeF QFontMetricsF::size(int flags, const QString &text, int tabStops, int *ta
     e.g. for italicized fonts, and that the width of the returned
     rectangle might be different than what the width() method returns.
 
-    If you want to know the advance width of the string (to layout
+    If you want to know the advance width of the string (to lay out
     a set of strings next to each other), use width() instead.
 
     Newline characters are processed as normal characters, \e not as

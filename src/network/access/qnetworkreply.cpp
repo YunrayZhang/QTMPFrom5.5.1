@@ -1,39 +1,31 @@
 /****************************************************************************
 **
-** Copyright (C) 2013 Digia Plc and/or its subsidiary(-ies).
-** Contact: http://www.qt-project.org/legal
+** Copyright (C) 2015 The Qt Company Ltd.
+** Contact: http://www.qt.io/licensing/
 **
 ** This file is part of the QtNetwork module of the Qt Toolkit.
 **
-** $QT_BEGIN_LICENSE:LGPL$
+** $QT_BEGIN_LICENSE:LGPL21$
 ** Commercial License Usage
 ** Licensees holding valid commercial Qt licenses may use this file in
 ** accordance with the commercial license agreement provided with the
 ** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and Digia.  For licensing terms and
-** conditions see http://qt.digia.com/licensing.  For further information
-** use the contact form at http://qt.digia.com/contact-us.
+** a written agreement between you and The Qt Company. For licensing terms
+** and conditions see http://www.qt.io/terms-conditions. For further
+** information use the contact form at http://www.qt.io/contact-us.
 **
 ** GNU Lesser General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 2.1 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU Lesser General Public License version 2.1 requirements
-** will be met: http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
+** General Public License version 2.1 or version 3 as published by the Free
+** Software Foundation and appearing in the file LICENSE.LGPLv21 and
+** LICENSE.LGPLv3 included in the packaging of this file. Please review the
+** following information to ensure the GNU Lesser General Public License
+** requirements will be met: https://www.gnu.org/licenses/lgpl.html and
+** http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
 **
-** In addition, as a special exception, Digia gives you certain additional
-** rights.  These rights are described in the Digia Qt LGPL Exception
+** As a special exception, The Qt Company gives you certain additional
+** rights. These rights are described in The Qt Company LGPL Exception
 ** version 1.1, included in the file LGPL_EXCEPTION.txt in this package.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3.0 as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU General Public License version 3.0 requirements will be
-** met: http://www.gnu.org/copyleft/gpl.html.
-**
 **
 ** $QT_END_LICENSE$
 **
@@ -49,6 +41,7 @@ const int QNetworkReplyPrivate::progressSignalInterval = 100;
 
 QNetworkReplyPrivate::QNetworkReplyPrivate()
     : readBufferMaxSize(0),
+      emitAllUploadProgressSignals(false),
       operation(QNetworkAccessManager::UnknownOperation),
       errorCode(QNetworkReply::NoError)
     , isFinished(false)
@@ -261,6 +254,28 @@ QNetworkReplyPrivate::QNetworkReplyPrivate()
 */
 
 /*!
+    \fn void QNetworkReply::preSharedKeyAuthenticationRequired(QSslPreSharedKeyAuthenticator *authenticator)
+    \since 5.5
+
+    This signal is emitted if the SSL/TLS handshake negotiates a PSK
+    ciphersuite, and therefore a PSK authentication is then required.
+
+    When using PSK, the client must send to the server a valid identity and a
+    valid pre shared key, in order for the SSL handshake to continue.
+    Applications can provide this information in a slot connected to this
+    signal, by filling in the passed \a authenticator object according to their
+    needs.
+
+    \note Ignoring this signal, or failing to provide the required credentials,
+    will cause the handshake to fail, and therefore the connection to be aborted.
+
+    \note The \a authenticator object is owned by the reply and must not be
+    deleted by the application.
+
+    \sa QSslPreSharedKeyAuthenticator
+*/
+
+/*!
     \fn void QNetworkReply::metaDataChanged()
 
     \omit FIXME: Update name? \endomit
@@ -283,7 +298,7 @@ QNetworkReplyPrivate::QNetworkReplyPrivate()
     processing. After this signal is emitted, there will be no more
     updates to the reply's data or metadata.
 
-    Unless close() has been called, the reply will be still be opened
+    Unless close() or abort() have been called, the reply will be still be opened
     for reading, so the data can be retrieved by calls to read() or
     readAll(). In particular, if no calls to read() were made as a
     result of readyRead(), a call to readAll() will retrieve the full
@@ -372,7 +387,9 @@ QNetworkReplyPrivate::QNetworkReplyPrivate()
     connections still open. Uploads still in progress are also
     aborted.
 
-    \sa close()
+    The finished() signal will also be emitted.
+
+    \sa close(), finished()
 */
 
 /*!
@@ -611,7 +628,7 @@ QList<QByteArray> QNetworkReply::rawHeaderList() const
 
 /*!
     Returns the attribute associated with the code \a code. If the
-    attribute has not been set, it returns an invalid QVariant (type QMetaType::Unknown).
+    attribute has not been set, it returns an invalid QVariant (type QMetaType::UnknownType).
 
     You can expect the default values listed in
     QNetworkRequest::Attribute to be applied to the values returned by

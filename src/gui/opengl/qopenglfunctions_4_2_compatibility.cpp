@@ -1,39 +1,31 @@
 /****************************************************************************
 **
 ** Copyright (C) 2013 Klaralvdalens Datakonsult AB (KDAB)
-** Contact: http://www.qt-project.org/legal
+** Contact: http://www.qt.io/licensing/
 **
 ** This file is part of the QtGui module of the Qt Toolkit.
 **
-** $QT_BEGIN_LICENSE:LGPL$
+** $QT_BEGIN_LICENSE:LGPL21$
 ** Commercial License Usage
 ** Licensees holding valid commercial Qt licenses may use this file in
 ** accordance with the commercial license agreement provided with the
 ** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and Digia.  For licensing terms and
-** conditions see http://qt.digia.com/licensing.  For further information
-** use the contact form at http://qt.digia.com/contact-us.
+** a written agreement between you and The Qt Company. For licensing terms
+** and conditions see http://www.qt.io/terms-conditions. For further
+** information use the contact form at http://www.qt.io/contact-us.
 **
 ** GNU Lesser General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 2.1 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU Lesser General Public License version 2.1 requirements
-** will be met: http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
+** General Public License version 2.1 or version 3 as published by the Free
+** Software Foundation and appearing in the file LICENSE.LGPLv21 and
+** LICENSE.LGPLv3 included in the packaging of this file. Please review the
+** following information to ensure the GNU Lesser General Public License
+** requirements will be met: https://www.gnu.org/licenses/lgpl.html and
+** http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
 **
-** In addition, as a special exception, Digia gives you certain additional
-** rights.  These rights are described in the Digia Qt LGPL Exception
+** As a special exception, The Qt Company gives you certain additional
+** rights. These rights are described in The Qt Company LGPL Exception
 ** version 1.1, included in the file LGPL_EXCEPTION.txt in this package.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3.0 as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU General Public License version 3.0 requirements will be
-** met: http://www.gnu.org/copyleft/gpl.html.
-**
 **
 ** $QT_END_LICENSE$
 **
@@ -89,8 +81,8 @@ QOpenGLFunctions_4_2_Compatibility::QOpenGLFunctions_4_2_Compatibility()
  , d_1_2_Deprecated(0)
  , d_1_3_Deprecated(0)
  , d_1_4_Deprecated(0)
- , d_2_0_Deprecated(0)
- , d_3_0_Deprecated(0)
+ , m_reserved_2_0_Deprecated(Q_NULLPTR)
+ , d_3_3_Deprecated(0)
 {
 }
 
@@ -176,13 +168,9 @@ QOpenGLFunctions_4_2_Compatibility::~QOpenGLFunctions_4_2_Compatibility()
         QAbstractOpenGLFunctionsPrivate::removeFunctionsBackend(d_1_4_Deprecated->context, QOpenGLFunctions_1_4_DeprecatedBackend::versionStatus());
         delete d_1_4_Deprecated;
     }
-    if (d_2_0_Deprecated && !d_2_0_Deprecated->refs.deref()) {
-        QAbstractOpenGLFunctionsPrivate::removeFunctionsBackend(d_2_0_Deprecated->context, QOpenGLFunctions_2_0_DeprecatedBackend::versionStatus());
-        delete d_2_0_Deprecated;
-    }
-    if (d_3_0_Deprecated && !d_3_0_Deprecated->refs.deref()) {
-        QAbstractOpenGLFunctionsPrivate::removeFunctionsBackend(d_3_0_Deprecated->context, QOpenGLFunctions_3_0_DeprecatedBackend::versionStatus());
-        delete d_3_0_Deprecated;
+    if (d_3_3_Deprecated && !d_3_3_Deprecated->refs.deref()) {
+        QAbstractOpenGLFunctionsPrivate::removeFunctionsBackend(d_3_3_Deprecated->context, QOpenGLFunctions_3_3_DeprecatedBackend::versionStatus());
+        delete d_3_3_Deprecated;
     }
 }
 
@@ -361,20 +349,12 @@ bool QOpenGLFunctions_4_2_Compatibility::initializeOpenGLFunctions()
         d_1_4_Deprecated = static_cast<QOpenGLFunctions_1_4_DeprecatedBackend*>(d);
         d->refs.ref();
 
-        d = QAbstractOpenGLFunctionsPrivate::functionsBackend(context, QOpenGLFunctions_2_0_DeprecatedBackend::versionStatus());
+        d = QAbstractOpenGLFunctionsPrivate::functionsBackend(context, QOpenGLFunctions_3_3_DeprecatedBackend::versionStatus());
         if (!d) {
-            d = new QOpenGLFunctions_2_0_DeprecatedBackend(context);
-            QAbstractOpenGLFunctionsPrivate::insertFunctionsBackend(context, QOpenGLFunctions_2_0_DeprecatedBackend::versionStatus(), d);
+            d = new QOpenGLFunctions_3_3_DeprecatedBackend(context);
+            QAbstractOpenGLFunctionsPrivate::insertFunctionsBackend(context, QOpenGLFunctions_3_3_DeprecatedBackend::versionStatus(), d);
         }
-        d_2_0_Deprecated = static_cast<QOpenGLFunctions_2_0_DeprecatedBackend*>(d);
-        d->refs.ref();
-
-        d = QAbstractOpenGLFunctionsPrivate::functionsBackend(context, QOpenGLFunctions_3_0_DeprecatedBackend::versionStatus());
-        if (!d) {
-            d = new QOpenGLFunctions_3_0_DeprecatedBackend(context);
-            QAbstractOpenGLFunctionsPrivate::insertFunctionsBackend(context, QOpenGLFunctions_3_0_DeprecatedBackend::versionStatus(), d);
-        }
-        d_3_0_Deprecated = static_cast<QOpenGLFunctions_3_0_DeprecatedBackend*>(d);
+        d_3_3_Deprecated = static_cast<QOpenGLFunctions_3_3_DeprecatedBackend*>(d);
         d->refs.ref();
 
         QAbstractOpenGLFunctions::initializeOpenGLFunctions();

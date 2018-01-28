@@ -1,39 +1,31 @@
 /****************************************************************************
 **
-** Copyright (C) 2013 Digia Plc and/or its subsidiary(-ies).
-** Contact: http://www.qt-project.org/legal
+** Copyright (C) 2015 The Qt Company Ltd.
+** Contact: http://www.qt.io/licensing/
 **
 ** This file is part of the QtDeclarative module of the Qt Toolkit.
 **
-** $QT_BEGIN_LICENSE:LGPL$
+** $QT_BEGIN_LICENSE:LGPL21$
 ** Commercial License Usage
 ** Licensees holding valid commercial Qt licenses may use this file in
 ** accordance with the commercial license agreement provided with the
 ** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and Digia.  For licensing terms and
-** conditions see http://qt.digia.com/licensing.  For further information
-** use the contact form at http://qt.digia.com/contact-us.
+** a written agreement between you and The Qt Company. For licensing terms
+** and conditions see http://www.qt.io/terms-conditions. For further
+** information use the contact form at http://www.qt.io/contact-us.
 **
 ** GNU Lesser General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 2.1 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU Lesser General Public License version 2.1 requirements
-** will be met: http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
+** General Public License version 2.1 or version 3 as published by the Free
+** Software Foundation and appearing in the file LICENSE.LGPLv21 and
+** LICENSE.LGPLv3 included in the packaging of this file. Please review the
+** following information to ensure the GNU Lesser General Public License
+** requirements will be met: https://www.gnu.org/licenses/lgpl.html and
+** http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
 **
-** In addition, as a special exception, Digia gives you certain additional
-** rights.  These rights are described in the Digia Qt LGPL Exception
+** As a special exception, The Qt Company gives you certain additional
+** rights. These rights are described in The Qt Company LGPL Exception
 ** version 1.1, included in the file LGPL_EXCEPTION.txt in this package.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3.0 as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU General Public License version 3.0 requirements will be
-** met: http://www.gnu.org/copyleft/gpl.html.
-**
 **
 ** $QT_END_LICENSE$
 **
@@ -42,6 +34,7 @@
 #include "qdistancefield_p.h"
 #include <qmath.h>
 #include <private/qdatabuffer_p.h>
+#include <private/qimage_p.h>
 #include <private/qpathsimplifier_p.h>
 
 QT_BEGIN_NAMESPACE
@@ -516,8 +509,8 @@ static void makeDistanceField(QDistanceFieldData *data, const QPainterPath &path
         bits[i] = exteriorColor;
 
     const qreal angleStep = qreal(15 * 3.141592653589793238 / 180);
-    const QPoint rotation(qRound(cos(angleStep) * 0x4000),
-                          qRound(sin(angleStep) * 0x4000)); // 2:14 signed
+    const QPoint rotation(qRound(qCos(angleStep) * 0x4000),
+                          qRound(qSin(angleStep) * 0x4000)); // 2:14 signed
 
     const quint32 *indices = pathIndices.data();
     QVarLengthArray<QPoint> normals;
@@ -551,7 +544,7 @@ static void makeDistanceField(QDistanceFieldData *data, const QPainterPath &path
             QPoint n(to.y() - from.y(), from.x() - to.x());
             if (n.x() == 0 && n.y() == 0)
                 continue;
-            int scale = qRound((offs << 16) / sqrt(qreal(n.x() * n.x() + n.y() * n.y()))); // 8:16
+            int scale = qRound((offs << 16) / qSqrt(qreal(n.x() * n.x() + n.y() * n.y()))); // 8:16
             n.rx() = n.x() * scale >> 8;
             n.ry() = n.y() * scale >> 8;
             normals.append(n);
@@ -759,7 +752,7 @@ bool qt_fontHasNarrowOutlines(const QRawFont &f)
         return false;
 
     QVector<quint32> glyphIndices = font.glyphIndexesForString(QLatin1String("O"));
-    if (glyphIndices.size() < 1)
+    if (glyphIndices.isEmpty() || glyphIndices[0] == 0)
         return false;
 
     return imageHasNarrowOutlines(font.alphaMapForGlyph(glyphIndices.at(0),
@@ -839,6 +832,17 @@ QDistanceField::QDistanceField(QFontEngine *fontEngine, glyph_t glyph, bool doub
 {
     setGlyph(fontEngine, glyph, doubleResolution);
 }
+
+QDistanceField::QDistanceField(const QPainterPath &path, glyph_t glyph, bool doubleResolution)
+{
+    QPainterPath dfPath = path;
+    dfPath.translate(-dfPath.boundingRect().topLeft());
+    dfPath.setFillRule(Qt::WindingFill);
+
+    d = QDistanceFieldData::create(dfPath, doubleResolution);
+    d->glyph = glyph;
+}
+
 
 QDistanceField::QDistanceField(QDistanceFieldData *data)
     : d(data)
@@ -995,12 +999,12 @@ QImage QDistanceField::toImage(QImage::Format format) const
     if (isNull())
         return QImage();
 
-    QImage image(d->width, d->height, format == QImage::Format_Indexed8 ?
+    QImage image(d->width, d->height, qt_depthForFormat(format) == 8 ?
                                       format : QImage::Format_ARGB32_Premultiplied);
     if (image.isNull())
         return image;
 
-    if (format == QImage::Format_Indexed8) {
+    if (image.depth() == 8) {
         for (int y = 0; y < d->height; ++y)
             memcpy(image.scanLine(y), scanLine(y), d->width);
     } else {

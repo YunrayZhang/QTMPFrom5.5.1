@@ -1,12 +1,8 @@
 TEMPLATE=subdirs
 SUBDIRS=\
    # atwrapper \ # QTBUG-19452
-   baselineexample \
-   collections \
    compiler \
-   d3dcompiler \
    gestures \
-   headersclean \
    lancelot \
    languagechange \
    macgui \
@@ -15,7 +11,7 @@ SUBDIRS=\
    modeltest \
    networkselftest \
    qaccessibility \
-   qaccessibilitylinux \
+   # qaccessibilitylinux \ # QTBUG-44434
    qaccessibilitymac \
    qcomplextext \
    qfocusevent \
@@ -26,11 +22,10 @@ SUBDIRS=\
    qprocess_and_guieventloop \
    qtokenautomaton \
    windowsmobile \
+   toolsupport \
 
 !qtHaveModule(widgets): SUBDIRS -= \
-   baselineexample \
    gestures \
-   headersclean \
    lancelot \
    languagechange \
    modeltest \
@@ -44,22 +39,16 @@ SUBDIRS=\
    qaccessibilitymac \
 
 !qtHaveModule(network): SUBDIRS -= \
-   baselineexample \
-   headersclean \
    lancelot \
    networkselftest \
    qnetworkaccessmanager_and_qprogressdialog \
    qobjectperformance
-
-testcocoon: SUBDIRS -= headersclean
 
 cross_compile: SUBDIRS -= \
    atwrapper \
    compiler
 
 wince*|!contains(QT_CONFIG, accessibility): SUBDIRS -= qaccessibility
-
-!angle_d3d11: SUBDIRS -= d3dcompiler
 
 !contains(QT_CONFIG, accessibility-atspi-bridge): SUBDIRS -= qaccessibilitylinux
 
@@ -69,8 +58,11 @@ wince*|!contains(QT_CONFIG, accessibility): SUBDIRS -= qaccessibility
            macplist \
            qaccessibilitymac
 
-!embedded|wince*: SUBDIRS -= \
+!embedded|wince: SUBDIRS -= \
            qdirectpainter
 
 winrt: SUBDIRS -= \
    qprocess_and_guieventloop
+
+android: SUBDIRS += \
+    android

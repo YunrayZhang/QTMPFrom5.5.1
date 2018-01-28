@@ -1,39 +1,31 @@
 /****************************************************************************
 **
-** Copyright (C) 2013 Digia Plc and/or its subsidiary(-ies).
-** Contact: http://www.qt-project.org/legal
+** Copyright (C) 2015 The Qt Company Ltd.
+** Contact: http://www.qt.io/licensing/
 **
 ** This file is part of the QtCore module of the Qt Toolkit.
 **
-** $QT_BEGIN_LICENSE:LGPL$
+** $QT_BEGIN_LICENSE:LGPL21$
 ** Commercial License Usage
 ** Licensees holding valid commercial Qt licenses may use this file in
 ** accordance with the commercial license agreement provided with the
 ** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and Digia.  For licensing terms and
-** conditions see http://qt.digia.com/licensing.  For further information
-** use the contact form at http://qt.digia.com/contact-us.
+** a written agreement between you and The Qt Company. For licensing terms
+** and conditions see http://www.qt.io/terms-conditions. For further
+** information use the contact form at http://www.qt.io/contact-us.
 **
 ** GNU Lesser General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 2.1 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU Lesser General Public License version 2.1 requirements
-** will be met: http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
+** General Public License version 2.1 or version 3 as published by the Free
+** Software Foundation and appearing in the file LICENSE.LGPLv21 and
+** LICENSE.LGPLv3 included in the packaging of this file. Please review the
+** following information to ensure the GNU Lesser General Public License
+** requirements will be met: https://www.gnu.org/licenses/lgpl.html and
+** http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
 **
-** In addition, as a special exception, Digia gives you certain additional
-** rights.  These rights are described in the Digia Qt LGPL Exception
+** As a special exception, The Qt Company gives you certain additional
+** rights. These rights are described in The Qt Company LGPL Exception
 ** version 1.1, included in the file LGPL_EXCEPTION.txt in this package.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3.0 as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU General Public License version 3.0 requirements will be
-** met: http://www.gnu.org/copyleft/gpl.html.
-**
 **
 ** $QT_END_LICENSE$
 **
@@ -53,6 +45,8 @@
 #include "qmutex.h"
 #include "qlibraryinfo.h"
 #include "qtemporaryfile.h"
+#include "qstandardpaths.h"
+#include <qdatastream.h>
 
 #ifndef QT_NO_TEXTCODEC
 #  include "qtextcodec.h"
@@ -66,6 +60,11 @@
 
 #ifndef QT_NO_QOBJECT
 #include "qcoreapplication.h"
+#endif
+
+#ifndef QT_BOOTSTRAPPED
+#include "qsavefile.h"
+#include "qlockfile.h"
 #endif
 
 #ifdef Q_OS_VXWORKS
@@ -101,10 +100,12 @@ using namespace ABI::Windows::Storage;
 #define CSIDL_APPDATA           0x001a  // <username>\Application Data
 #endif
 
-#ifdef Q_AUTOTEST_EXPORT
-#  define Q_AUTOTEST_EXPORT_HELPER Q_AUTOTEST_EXPORT
-#else
-#  define Q_AUTOTEST_EXPORT_HELPER static
+#if defined(Q_OS_UNIX) && !defined(Q_OS_MAC) && !defined(Q_OS_BLACKBERRY) && !defined(Q_OS_ANDROID)
+#define Q_XDG_PLATFORM
+#endif
+
+#if !defined(QT_NO_STANDARDPATHS) && (defined(Q_XDG_PLATFORM) || defined(Q_OS_IOS))
+#define QSETTINGS_USE_QSTANDARDPATHS
 #endif
 
 // ************************************************************************
@@ -140,101 +141,6 @@ Q_GLOBAL_STATIC(CustomFormatVector, customFormatVectorFunc)
 static QBasicMutex settingsGlobalMutex;
 
 static QSettings::Format globalDefaultFormat = QSettings::NativeFormat;
-
-#ifndef Q_OS_WIN
-inline bool qt_isEvilFsTypeName(const char *name)
-{
-    return (qstrncmp(name, "nfs", 3) == 0
-            || qstrncmp(name, "autofs", 6) == 0
-            || qstrncmp(name, "cachefs", 7) == 0);
-}
-
-#if defined(Q_OS_BSD4) && !defined(Q_OS_NETBSD)
-QT_BEGIN_INCLUDE_NAMESPACE
-# include <sys/param.h>
-# include <sys/mount.h>
-QT_END_INCLUDE_NAMESPACE
-
-Q_AUTOTEST_EXPORT_HELPER bool qIsLikelyToBeNfs(int handle)
-{
-    struct statfs buf;
-    if (fstatfs(handle, &buf) != 0)
-        return false;
-    return qt_isEvilFsTypeName(buf.f_fstypename);
-}
-
-#elif defined(Q_OS_LINUX) || defined(Q_OS_HURD)
-QT_BEGIN_INCLUDE_NAMESPACE
-# include <sys/vfs.h>
-# ifdef QT_LINUXBASE
-   // LSB 3.2 has fstatfs in sys/statfs.h, sys/vfs.h is just an empty dummy header
-#  include <sys/statfs.h>
-# endif
-QT_END_INCLUDE_NAMESPACE
-# ifndef NFS_SUPER_MAGIC
-#  define NFS_SUPER_MAGIC       0x00006969
-# endif
-# ifndef AUTOFS_SUPER_MAGIC
-#  define AUTOFS_SUPER_MAGIC    0x00000187
-# endif
-# ifndef AUTOFSNG_SUPER_MAGIC
-#  define AUTOFSNG_SUPER_MAGIC  0x7d92b1a0
-# endif
-
-Q_AUTOTEST_EXPORT_HELPER bool qIsLikelyToBeNfs(int handle)
-{
-    struct statfs buf;
-    if (fstatfs(handle, &buf) != 0)
-        return false;
-    return buf.f_type == NFS_SUPER_MAGIC
-           || buf.f_type == AUTOFS_SUPER_MAGIC
-           || buf.f_type == AUTOFSNG_SUPER_MAGIC;
-}
-
-#elif defined(Q_OS_SOLARIS) || defined(Q_OS_IRIX) || defined(Q_OS_AIX) || defined(Q_OS_HPUX) \
-      || defined(Q_OS_OSF) || defined(Q_OS_QNX) || defined(Q_OS_SCO) \
-      || defined(Q_OS_UNIXWARE) || defined(Q_OS_RELIANT) || defined(Q_OS_NETBSD)
-QT_BEGIN_INCLUDE_NAMESPACE
-# include <sys/statvfs.h>
-QT_END_INCLUDE_NAMESPACE
-
-Q_AUTOTEST_EXPORT_HELPER bool qIsLikelyToBeNfs(int handle)
-{
-    struct statvfs buf;
-    if (fstatvfs(handle, &buf) != 0)
-        return false;
-#if defined(Q_OS_NETBSD)
-    return qt_isEvilFsTypeName(buf.f_fstypename);
-#else
-    return qt_isEvilFsTypeName(buf.f_basetype);
-#endif
-}
-#else
-Q_AUTOTEST_EXPORT_HELPER inline bool qIsLikelyToBeNfs(int /* handle */)
-{
-    return true;
-}
-#endif
-
-static bool unixLock(int handle, int lockType)
-{
-    /*
-        NFS hangs on the fcntl() call below when statd or lockd isn't
-        running. There's no way to detect this. Our work-around for
-        now is to disable locking when we detect NFS (or AutoFS or
-        CacheFS, which are probably wrapping NFS).
-    */
-    if (qIsLikelyToBeNfs(handle))
-        return false;
-
-    struct flock fl;
-    fl.l_whence = SEEK_SET;
-    fl.l_start = 0;
-    fl.l_len = 0;
-    fl.l_type = lockType;
-    return fcntl(handle, F_SETLKW, &fl) == 0;
-}
-#endif
 
 QConfFile::QConfFile(const QString &fileName, bool _userPerms)
     : name(fileName), size(0), ref(1), userPerms(_userPerms)
@@ -376,9 +282,9 @@ after_loop:
     return result;
 }
 
-// see also qsettings_win.cpp and qsettings_mac.cpp
+// see also qsettings_win.cpp, qsettings_winrt.cpp and qsettings_mac.cpp
 
-#if defined(Q_OS_WINRT) || (!defined(Q_OS_WIN) && !defined(Q_OS_MAC))
+#if !defined(Q_OS_WIN) && !defined(Q_OS_MAC)
 QSettingsPrivate *QSettingsPrivate::create(QSettings::Format format, QSettings::Scope scope,
                                            const QString &organization, const QString &application)
 {
@@ -386,7 +292,7 @@ QSettingsPrivate *QSettingsPrivate::create(QSettings::Format format, QSettings::
 }
 #endif
 
-#if defined(Q_OS_WINRT) || !defined(Q_OS_WIN)
+#if !defined(Q_OS_WIN)
 QSettingsPrivate *QSettingsPrivate::create(const QString &fileName, QSettings::Format format)
 {
     return new QConfFileSettingsPrivate(fileName, format);
@@ -1115,7 +1021,6 @@ static inline int pathHashKey(QSettings::Format format, QSettings::Scope scope)
 static void initDefaultPaths(QMutexLocker *locker)
 {
     PathHash *pathHash = pathHashFunc();
-    QString homePath = QDir::homePath();
     QString systemPath;
 
     locker->unlock();
@@ -1142,19 +1047,29 @@ static void initDefaultPaths(QMutexLocker *locker)
         pathHash->insert(pathHashKey(QSettings::IniFormat, QSettings::SystemScope),
                          windowsConfigPath(CSIDL_COMMON_APPDATA) + QDir::separator());
 #else
+
+#ifndef QSETTINGS_USE_QSTANDARDPATHS
+        // Non XDG platforms (OS X, iOS, Blackberry, Android...) have used this code path erroneously
+        // for some time now. Moving away from that would require migrating existing settings.
         QString userPath;
         char *env = getenv("XDG_CONFIG_HOME");
         if (env == 0) {
-            userPath = homePath;
+            userPath = QDir::homePath();
             userPath += QLatin1Char('/');
             userPath += QLatin1String(".config");
         } else if (*env == '/') {
             userPath = QFile::decodeName(env);
         } else {
-            userPath = homePath;
+            userPath = QDir::homePath();
             userPath += QLatin1Char('/');
             userPath += QFile::decodeName(env);
         }
+#else
+        // When using a proper XDG platform, use QStandardPaths rather than the above hand-written code;
+        // it makes the use of test mode from unit tests possible.
+        // Ideally all platforms should use this, but see above for the migration issue.
+        QString userPath = QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation);
+#endif
         userPath += QLatin1Char('/');
 
         pathHash->insert(pathHashKey(QSettings::IniFormat, QSettings::UserScope), userPath);
@@ -1459,96 +1374,24 @@ void QConfFileSettingsPrivate::syncConfFile(int confFileNo)
             return;
     }
 
+#ifndef QT_BOOTSTRAPPED
     /*
-        Open the configuration file and try to use it using a named
-        semaphore on Windows and an advisory lock on Unix-based
-        systems. This protect us against other QSettings instances
-        trying to access the same file from other threads or
-        processes.
+        Use a lockfile in order to protect us against other QSettings instances
+        trying to write the same settings at the same time.
 
-        As it stands now, the locking mechanism doesn't work for
-        .plist files.
+        We only need to lock if we are actually writing as only concurrent writes are a problem.
+        Concurrent read and write are not a problem because the writing operation is atomic.
     */
-    QFile file(confFile->name);
-    bool createFile = !file.exists();
-    if (!readOnly && confFile->isWritable())
-        file.open(QFile::ReadWrite);
-    if (!file.isOpen())
-        file.open(QFile::ReadOnly);
-
-    if (!createFile && !file.isOpen())
-        setStatus(QSettings::AccessError);
-
-#ifdef Q_OS_WIN
-    HANDLE readSemaphore = 0;
-    HANDLE writeSemaphore = 0;
-    static const int FileLockSemMax = 50;
-    int numReadLocks = readOnly ? 1 : FileLockSemMax;
-
-    if (file.isOpen()) {
-        // Acquire the write lock if we will be writing
-        if (!readOnly) {
-            QString writeSemName = QLatin1String("QSettingsWriteSem ");
-            writeSemName.append(file.fileName());
-
-#ifndef Q_OS_WINRT
-            writeSemaphore = CreateSemaphore(0, 1, 1, reinterpret_cast<const wchar_t *>(writeSemName.utf16()));
-#else
-            writeSemaphore = CreateSemaphoreEx(0, 1, 1, reinterpret_cast<const wchar_t *>(writeSemName.utf16()), 0, SEMAPHORE_ALL_ACCESS);
+    QLockFile lockFile(confFile->name + QLatin1String(".lock"));
 #endif
-
-            if (writeSemaphore) {
-#ifndef Q_OS_WINRT
-                WaitForSingleObject(writeSemaphore, INFINITE);
-#else
-                WaitForSingleObjectEx(writeSemaphore, INFINITE, FALSE);
+    if (!readOnly) {
+        if (!confFile->isWritable()
+#ifndef QT_BOOTSTRAPPED
+            || !lockFile.lock()
 #endif
-            } else {
-                setStatus(QSettings::AccessError);
-                return;
-            }
-        }
-
-        // Acquire all the read locks if we will be writing, to make sure nobody
-        // reads while we're writing. If we are only reading, acquire a single
-        // read lock.
-        QString readSemName(QLatin1String("QSettingsReadSem "));
-        readSemName.append(file.fileName());
-
-#ifndef Q_OS_WINRT
-        readSemaphore = CreateSemaphore(0, FileLockSemMax, FileLockSemMax, reinterpret_cast<const wchar_t *>(readSemName.utf16()));
-#else
-        readSemaphore = CreateSemaphoreEx(0, FileLockSemMax, FileLockSemMax, reinterpret_cast<const wchar_t *>(readSemName.utf16()), 0, SEMAPHORE_ALL_ACCESS);
-#endif
-
-        if (readSemaphore) {
-            for (int i = 0; i < numReadLocks; ++i)
-#ifndef Q_OS_WINRT
-                WaitForSingleObject(readSemaphore, INFINITE);
-#else
-                WaitForSingleObjectEx(readSemaphore, INFINITE, FALSE);
-#endif
-        } else {
+            ) {
             setStatus(QSettings::AccessError);
-            if (writeSemaphore != 0) {
-                ReleaseSemaphore(writeSemaphore, 1, 0);
-                CloseHandle(writeSemaphore);
-            }
             return;
-        }
-    }
-#else
-    if (file.isOpen())
-        unixLock(file.handle(), readOnly ? F_RDLCK : F_WRLCK);
-#endif
-
-    // If we have created the file, apply the file perms
-    if (file.isOpen()) {
-        if (createFile) {
-            QFile::Permissions perms = file.permissions() | QFile::ReadOwner | QFile::WriteOwner;
-            if (!confFile->userPerms)
-                perms |= QFile::ReadGroup | QFile::ReadOther;
-            file.setPermissions(perms);
         }
     }
 
@@ -1558,6 +1401,7 @@ void QConfFileSettingsPrivate::syncConfFile(int confFileNo)
     */
     QFileInfo fileInfo(confFile->name);
     bool mustReadFile = true;
+    bool createFile = !fileInfo.exists();
 
     if (!readOnly)
         mustReadFile = (confFile->size != fileInfo.size()
@@ -1566,6 +1410,12 @@ void QConfFileSettingsPrivate::syncConfFile(int confFileNo)
     if (mustReadFile) {
         confFile->unparsedIniSections.clear();
         confFile->originalKeys.clear();
+
+        QFile file(confFile->name);
+        if (!createFile && !file.open(QFile::ReadOnly)) {
+            setStatus(QSettings::AccessError);
+            return;
+        }
 
         /*
             Files that we can't read (because of permissions or
@@ -1617,42 +1467,40 @@ void QConfFileSettingsPrivate::syncConfFile(int confFileNo)
         ensureAllSectionsParsed(confFile);
         ParsedSettingsMap mergedKeys = confFile->mergedKeyMap();
 
-        if (file.isWritable()) {
 #ifdef Q_OS_MAC
-            if (format == QSettings::NativeFormat) {
-                ok = writePlistFile(confFile->name, mergedKeys);
-            } else
+        if (format == QSettings::NativeFormat) {
+            ok = writePlistFile(confFile->name, mergedKeys);
+        } else
 #endif
-            {
-                file.seek(0);
-                file.resize(0);
+        {
+#ifndef QT_BOOTSTRAPPED
+            QSaveFile sf(confFile->name);
+#else
+            QFile sf(confFile->name);
+#endif
+            if (!sf.open(QIODevice::WriteOnly)) {
+                setStatus(QSettings::AccessError);
+                ok = false;
+            } else if (format <= QSettings::IniFormat) {
+                ok = writeIniFile(sf, mergedKeys);
+            } else {
+                if (writeFunc) {
+                    QSettings::SettingsMap tempOriginalKeys;
 
-                if (format <= QSettings::IniFormat) {
-                    ok = writeIniFile(file, mergedKeys);
-                    if (!ok) {
-                        // try to restore old data; might work if the disk was full and the new data
-                        // was larger than the old data
-                        file.seek(0);
-                        file.resize(0);
-                        writeIniFile(file, confFile->originalKeys);
+                    ParsedSettingsMap::const_iterator i = mergedKeys.constBegin();
+                    while (i != mergedKeys.constEnd()) {
+                        tempOriginalKeys.insert(i.key(), i.value());
+                        ++i;
                     }
+                    ok = writeFunc(sf, tempOriginalKeys);
                 } else {
-                    if (writeFunc) {
-                        QSettings::SettingsMap tempOriginalKeys;
-
-                        ParsedSettingsMap::const_iterator i = mergedKeys.constBegin();
-                        while (i != mergedKeys.constEnd()) {
-                            tempOriginalKeys.insert(i.key(), i.value());
-                            ++i;
-                        }
-                        ok = writeFunc(file, tempOriginalKeys);
-                    } else {
-                        ok = false;
-                    }
+                    ok = false;
                 }
             }
-        } else {
-            ok = false;
+#ifndef QT_BOOTSTRAPPED
+            if (ok)
+                ok = sf.commit();
+#endif
         }
 
         if (ok) {
@@ -1664,24 +1512,18 @@ void QConfFileSettingsPrivate::syncConfFile(int confFileNo)
             QFileInfo fileInfo(confFile->name);
             confFile->size = fileInfo.size();
             confFile->timeStamp = fileInfo.lastModified();
+
+            // If we have created the file, apply the file perms
+            if (createFile) {
+                QFile::Permissions perms = fileInfo.permissions() | QFile::ReadOwner | QFile::WriteOwner;
+                if (!confFile->userPerms)
+                    perms |= QFile::ReadGroup | QFile::ReadOther;
+                QFile(confFile->name).setPermissions(perms);
+            }
         } else {
             setStatus(QSettings::AccessError);
         }
     }
-
-    /*
-        Release the file lock.
-    */
-#ifdef Q_OS_WIN
-    if (readSemaphore != 0) {
-        ReleaseSemaphore(readSemaphore, numReadLocks, 0);
-        CloseHandle(readSemaphore);
-    }
-    if (writeSemaphore != 0) {
-        ReleaseSemaphore(writeSemaphore, 1, 0);
-        CloseHandle(writeSemaphore);
-    }
-#endif
 }
 
 enum { Space = 0x1, Special = 0x2 };
@@ -1801,6 +1643,15 @@ bool QConfFileSettingsPrivate::readIniFile(const QByteArray &data,
     int position = 0;
     int sectionPosition = 0;
     bool ok = true;
+
+#ifndef QT_NO_TEXTCODEC
+    // detect utf8 BOM
+    const uchar *dd = (const uchar *)data.constData();
+    if (data.size() >= 3 && dd[0] == 0xef && dd[1] == 0xbb && dd[2] == 0xbf) {
+        iniCodec = QTextCodec::codecForName("UTF-8");
+        dataPos = 3;
+    }
+#endif
 
     while (readIniLine(data, dataPos, lineStart, lineLen, equalsPos)) {
         char ch = data.at(lineStart);
@@ -2072,7 +1923,7 @@ void QConfFileSettingsPrivate::ensureSectionParsed(QConfFile *confFile,
     Users normally expect an application to remember its settings
     (window sizes and positions, options, etc.) across sessions. This
     information is often stored in the system registry on Windows,
-    and in XML preferences files on Mac OS X. On Unix systems, in the
+    and in property list files on OS X and iOS. On Unix systems, in the
     absence of a standard, many applications (including the KDE
     applications) use INI text files.
 
@@ -2117,8 +1968,8 @@ void QConfFileSettingsPrivate::ensureSectionParsed(QConfFile *confFile,
     \snippet settings/settings.cpp 4
 
     (Here, we also specify the organization's Internet domain. When
-    the Internet domain is set, it is used on Mac OS X instead of the
-    organization name, since Mac OS X applications conventionally use
+    the Internet domain is set, it is used on OS X and iOS instead of the
+    organization name, since OS X and iOS applications conventionally use
     Internet domains to identify themselves. If no domain is set, a
     fake domain is derived from the organization name. See the
     \l{Platform-Specific Notes} below for details.)
@@ -2176,7 +2027,7 @@ void QConfFileSettingsPrivate::ensureSectionParsed(QConfFile *confFile,
 
     Setting keys can contain any Unicode characters. The Windows
     registry and INI files use case-insensitive keys, whereas the
-    Carbon Preferences API on Mac OS X uses case-sensitive keys. To
+    CFPreferences API on OS X and iOS uses case-sensitive keys. To
     avoid portability problems, follow these simple rules:
 
     \list 1
@@ -2379,7 +2230,7 @@ void QConfFileSettingsPrivate::ensureSectionParsed(QConfFile *confFile,
     in the application's home directory.
 
     If the file format is IniFormat, the following files are
-    used on Unix and Mac OS X:
+    used on Unix, OS X, and iOS:
 
     \list 1
     \li \c{$HOME/.config/MySoft/Star Runner.ini} (Qt for Embedded Linux: \c{$HOME/Settings/MySoft/Star Runner.ini})
@@ -2407,7 +2258,7 @@ void QConfFileSettingsPrivate::ensureSectionParsed(QConfFile *confFile,
     in the application's home directory.
 
     The paths for the \c .ini and \c .conf files can be changed using
-    setPath(). On Unix and Mac OS X, the user can override them by
+    setPath(). On Unix, OS X, and iOS the user can override them by
     setting the \c XDG_CONFIG_HOME environment variable; see
     setPath() for details.
 
@@ -2424,7 +2275,7 @@ void QConfFileSettingsPrivate::ensureSectionParsed(QConfFile *confFile,
     You can then use the QSettings object to read and write settings
     in the file.
 
-    On Mac OS X, you can access XML-based \c .plist files by passing
+    On OS X and iOS, you can access property list \c .plist files by passing
     QSettings::NativeFormat as second argument. For example:
 
     \snippet code/src_corelib_io_qsettings.cpp 3
@@ -2478,13 +2329,13 @@ void QConfFileSettingsPrivate::ensureSectionParsed(QConfFile *confFile,
         limitations is to store the settings using the IniFormat
         instead of the NativeFormat.
 
-    \li  On Mac OS X, allKeys() will return some extra keys for global
+    \li  On OS X and iOS, allKeys() will return some extra keys for global
         settings that apply to all applications. These keys can be
         read using value() but cannot be changed, only shadowed.
         Calling setFallbacksEnabled(false) will hide these global
         settings.
 
-    \li  On Mac OS X, the CFPreferences API used by QSettings expects
+    \li  On OS X and iOS, the CFPreferences API used by QSettings expects
         Internet domain names rather than organization names. To
         provide a uniform API, QSettings derives a fake domain name
         from the organization name (unless the organization name
@@ -2501,17 +2352,11 @@ void QConfFileSettingsPrivate::ensureSectionParsed(QConfFile *confFile,
 
         \snippet code/src_corelib_io_qsettings.cpp 7
 
-    \li On Mac OS X, permissions to access settings not belonging to the
+    \li On OS X, permissions to access settings not belonging to the
        current user (i.e. SystemScope) have changed with 10.7 (Lion). Prior to
        that version, users having admin rights could access these. For 10.7 and
        10.8 (Mountain Lion), only root can. However, 10.9 (Mavericks) changes
        that rule again but only for the native format (plist files).
-
-    \li On Unix and Mac OS X systems, the advisory file locking is disabled
-       if NFS (or AutoFS or CacheFS) is detected to work around a bug in the
-       NFS fcntl() implementation, which hangs forever if statd or lockd aren't
-       running. Also, the locking isn't performed when accessing \c .plist
-       files.
 
     \li On the BlackBerry platform, applications run in a sandbox. They are not
        allowed to read or write outside of this sandbox. This involves the
@@ -2547,7 +2392,7 @@ void QConfFileSettingsPrivate::ensureSectionParsed(QConfFile *confFile,
     \value NativeFormat  Store the settings using the most
                          appropriate storage format for the platform.
                          On Windows, this means the system registry;
-                         on Mac OS X, this means the CFPreferences
+                         on OS X and iOS, this means the CFPreferences
                          API; on Unix, this means textual
                          configuration files in INI format.
     \value IniFormat  Store the settings in INI files.
@@ -2710,7 +2555,7 @@ QSettings::QSettings(Format format, Scope scope, const QString &organization,
 
     If \a format is QSettings::NativeFormat, the meaning of \a
     fileName depends on the platform. On Unix, \a fileName is the
-    name of an INI file. On Mac OS X, \a fileName is the name of a
+    name of an INI file. On OS X and iOS, \a fileName is the name of a
     \c .plist file. On Windows, \a fileName is a path in the system
     registry.
 
@@ -2763,7 +2608,7 @@ QSettings::QSettings(const QString &fileName, Format format, QObject *parent)
     called, the QSettings object will not be able to read or write
     any settings, and status() will return AccessError.
 
-    On Mac OS X, if both a name and an Internet domain are specified
+    On OS X and iOS, if both a name and an Internet domain are specified
     for the organization, the domain is preferred over the name. On
     other platforms, the name is preferred over the domain.
 
@@ -3279,7 +3124,7 @@ bool QSettings::isWritable() const
   exists, the previous value is overwritten.
 
   Note that the Windows registry and INI files use case-insensitive
-  keys, whereas the Carbon Preferences API on Mac OS X uses
+  keys, whereas the CFPreferences API on OS X and iOS uses
   case-sensitive keys. To avoid portability problems, see the
   \l{Section and Key Syntax} rules.
 
@@ -3292,6 +3137,10 @@ bool QSettings::isWritable() const
 void QSettings::setValue(const QString &key, const QVariant &value)
 {
     Q_D(QSettings);
+    if (key.isEmpty()) {
+        qWarning("QSettings::setValue: Empty key passed");
+        return;
+    }
     QString k = d->actualKey(key);
     d->set(k, value);
     d->requestUpdate();
@@ -3314,7 +3163,7 @@ void QSettings::setValue(const QString &key, const QVariant &value)
     \snippet code/src_corelib_io_qsettings.cpp 25
 
     Note that the Windows registry and INI files use case-insensitive
-    keys, whereas the Carbon Preferences API on Mac OS X uses
+    keys, whereas the CFPreferences API on OS X and iOS uses
     case-sensitive keys. To avoid portability problems, see the
     \l{Section and Key Syntax} rules.
 
@@ -3349,7 +3198,7 @@ void QSettings::remove(const QString &key)
     relative to that group.
 
     Note that the Windows registry and INI files use case-insensitive
-    keys, whereas the Carbon Preferences API on Mac OS X uses
+    keys, whereas the CFPreferences API on OS X and iOS uses
     case-sensitive keys. To avoid portability problems, see the
     \l{Section and Key Syntax} rules.
 
@@ -3411,7 +3260,7 @@ bool QSettings::event(QEvent *event)
     returned.
 
     Note that the Windows registry and INI files use case-insensitive
-    keys, whereas the Carbon Preferences API on Mac OS X uses
+    keys, whereas the CFPreferences API on OS X and iOS uses
     case-sensitive keys. To avoid portability problems, see the
     \l{Section and Key Syntax} rules.
 
@@ -3424,6 +3273,10 @@ bool QSettings::event(QEvent *event)
 QVariant QSettings::value(const QString &key, const QVariant &defaultValue) const
 {
     Q_D(const QSettings);
+    if (key.isEmpty()) {
+        qWarning("QSettings::value: Empty key passed");
+        return QVariant();
+    }
     QVariant result = defaultValue;
     QString k = d->actualKey(key);
     d->get(k, &result);
@@ -3510,18 +3363,18 @@ void QSettings::setUserIniPath(const QString &dir)
     \row                                                        \li SystemScope \li \c /etc/xdg
     \row    \li{1,2} Qt for Embedded Linux \li{1,2} NativeFormat, IniFormat \li UserScope   \li \c $HOME/Settings
     \row                                                        \li SystemScope \li \c /etc/xdg
-    \row    \li{1,2} Mac OS X    \li{1,2} IniFormat               \li UserScope   \li \c $HOME/.config
+    \row    \li{1,2} OS X and iOS   \li{1,2} IniFormat               \li UserScope   \li \c $HOME/.config
     \row                                                        \li SystemScope \li \c /etc/xdg
     \endtable
 
-    The default UserScope paths on Unix and Mac OS X (\c
+    The default UserScope paths on Unix, OS X, and iOS (\c
     $HOME/.config or $HOME/Settings) can be overridden by the user by setting the
     \c XDG_CONFIG_HOME environment variable. The default SystemScope
-    paths on Unix and Mac OS X (\c /etc/xdg) can be overridden when
+    paths on Unix, OS X, and iOS (\c /etc/xdg) can be overridden when
     building the Qt library using the \c configure script's \c
     -sysconfdir flag (see QLibraryInfo for details).
 
-    Setting the NativeFormat paths on Windows and Mac OS X has no
+    Setting the NativeFormat paths on Windows, OS X, and iOS has no
     effect.
 
     \warning This function doesn't affect existing QSettings objects.

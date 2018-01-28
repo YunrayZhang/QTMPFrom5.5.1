@@ -1,39 +1,31 @@
 /****************************************************************************
 **
-** Copyright (C) 2013 Digia Plc and/or its subsidiary(-ies).
-** Contact: http://www.qt-project.org/legal
+** Copyright (C) 2015 The Qt Company Ltd.
+** Contact: http://www.qt.io/licensing/
 **
 ** This file is part of the QtCore module of the Qt Toolkit.
 **
-** $QT_BEGIN_LICENSE:LGPL$
+** $QT_BEGIN_LICENSE:LGPL21$
 ** Commercial License Usage
 ** Licensees holding valid commercial Qt licenses may use this file in
 ** accordance with the commercial license agreement provided with the
 ** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and Digia.  For licensing terms and
-** conditions see http://qt.digia.com/licensing.  For further information
-** use the contact form at http://qt.digia.com/contact-us.
+** a written agreement between you and The Qt Company. For licensing terms
+** and conditions see http://www.qt.io/terms-conditions. For further
+** information use the contact form at http://www.qt.io/contact-us.
 **
 ** GNU Lesser General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 2.1 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU Lesser General Public License version 2.1 requirements
-** will be met: http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
+** General Public License version 2.1 or version 3 as published by the Free
+** Software Foundation and appearing in the file LICENSE.LGPLv21 and
+** LICENSE.LGPLv3 included in the packaging of this file. Please review the
+** following information to ensure the GNU Lesser General Public License
+** requirements will be met: https://www.gnu.org/licenses/lgpl.html and
+** http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
 **
-** In addition, as a special exception, Digia gives you certain additional
-** rights.  These rights are described in the Digia Qt LGPL Exception
+** As a special exception, The Qt Company gives you certain additional
+** rights. These rights are described in The Qt Company LGPL Exception
 ** version 1.1, included in the file LGPL_EXCEPTION.txt in this package.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3.0 as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU General Public License version 3.0 requirements will be
-** met: http://www.gnu.org/copyleft/gpl.html.
-**
 **
 ** $QT_END_LICENSE$
 **
@@ -48,7 +40,6 @@
 
 #include <QtCore/qatomic.h>
 #include <QtCore/qthread.h>
-#include <QtCore/qthreadpool.h>
 #include <private/qthreadpool_p.h>
 
 QT_BEGIN_NAMESPACE
@@ -195,23 +186,26 @@ void QFutureInterfaceBase::waitForResume()
         return;
 
     // decrease active thread count since this thread will wait.
-    const ThreadPoolThreadReleaser releaser(QThreadPool::globalInstance());
+    const ThreadPoolThreadReleaser releaser(d->pool());
 
     d->pausedWaitCondition.wait(&d->m_mutex);
 }
 
 int QFutureInterfaceBase::progressValue() const
 {
+    const QMutexLocker lock(&d->m_mutex);
     return d->m_progressValue;
 }
 
 int QFutureInterfaceBase::progressMinimum() const
 {
+    const QMutexLocker lock(&d->m_mutex);
     return d->m_progressMinimum;
 }
 
 int QFutureInterfaceBase::progressMaximum() const
 {
+    const QMutexLocker lock(&d->m_mutex);
     return d->m_progressMaximum;
 }
 
@@ -301,7 +295,7 @@ void QFutureInterfaceBase::waitForResult(int resultIndex)
 
     // To avoid deadlocks and reduce the number of threads used, try to
     // run the runnable in the current thread.
-    QThreadPool::globalInstance()->d_func()->stealRunnable(d->runnable);
+    d->pool()->d_func()->stealAndRunRunnable(d->runnable);
 
     lock.relock();
 
@@ -322,7 +316,7 @@ void QFutureInterfaceBase::waitForFinished()
     lock.unlock();
 
     if (!alreadyFinished) {
-        QThreadPool::globalInstance()->d_func()->stealRunnable(d->runnable);
+        d->pool()->d_func()->stealAndRunRunnable(d->runnable);
 
         lock.relock();
 
@@ -362,6 +356,11 @@ void QFutureInterfaceBase::reportResultsReady(int beginIndex, int endIndex)
 void QFutureInterfaceBase::setRunnable(QRunnable *runnable)
 {
     d->runnable = runnable;
+}
+
+void QFutureInterfaceBase::setThreadPool(QThreadPool *pool)
+{
+    d->m_pool = pool;
 }
 
 void QFutureInterfaceBase::setFilterMode(bool enable)
@@ -444,7 +443,7 @@ bool QFutureInterfaceBase::derefT() const
 QFutureInterfaceBasePrivate::QFutureInterfaceBasePrivate(QFutureInterfaceBase::State initialState)
     : refCount(1), m_progressValue(0), m_progressMinimum(0), m_progressMaximum(0),
       state(initialState),
-      manualProgress(false), m_expectedResultCount(0), runnable(0)
+      manualProgress(false), m_expectedResultCount(0), runnable(0), m_pool(0)
 {
     progressTime.invalidate();
 }

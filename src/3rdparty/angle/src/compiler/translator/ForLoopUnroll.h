@@ -4,49 +4,47 @@
 // found in the LICENSE file.
 //
 
-#ifndef COMPILER_FORLOOPUNROLL_H_
-#define COMPILER_FORLOOPUNROLL_H_
+#ifndef COMPILER_TRANSLATOR_FORLOOPUNROLL_H_
+#define COMPILER_TRANSLATOR_FORLOOPUNROLL_H_
 
-#include "compiler/translator/intermediate.h"
+#include "compiler/translator/LoopInfo.h"
 
-struct TLoopIndexInfo {
-    int id;
-    int initValue;
-    int stopValue;
-    int incrementValue;
-    TOperator op;
-    int currentValue;
+// This class detects for-loops that needs to be unrolled.
+// Currently we support two unroll conditions:
+//   1) kForLoopWithIntegerIndex: unroll if the index type is integer.
+//   2) kForLoopWithSamplerArrayIndex: unroll where a sampler array index
+//      is also the loop integer index, and reject and fail a compile
+//      where a sampler array index is also the loop float index.
+class ForLoopUnrollMarker : public TIntermTraverser
+{
+  public:
+    enum UnrollCondition
+    {
+        kIntegerIndex,
+        kSamplerArrayIndex
+    };
+
+    ForLoopUnrollMarker(UnrollCondition condition)
+        : mUnrollCondition(condition),
+          mSamplerArrayIndexIsFloatLoopIndex(false),
+          mVisitSamplerArrayIndexNodeInsideLoop(false)
+    {
+    }
+
+    virtual bool visitBinary(Visit, TIntermBinary *node);
+    virtual bool visitLoop(Visit, TIntermLoop *node);
+    virtual void visitSymbol(TIntermSymbol *node);
+
+    bool samplerArrayIndexIsFloatLoopIndex() const
+    {
+        return mSamplerArrayIndexIsFloatLoopIndex;
+    }
+
+  private:
+    UnrollCondition mUnrollCondition;
+    TLoopStack mLoopStack;
+    bool mSamplerArrayIndexIsFloatLoopIndex;
+    bool mVisitSamplerArrayIndexNodeInsideLoop;
 };
 
-class ForLoopUnroll {
-public:
-    ForLoopUnroll() { }
-
-    void FillLoopIndexInfo(TIntermLoop* node, TLoopIndexInfo& info);
-
-    // Update the info.currentValue for the next loop iteration.
-    void Step();
-
-    // Return false if loop condition is no longer satisfied.
-    bool SatisfiesLoopCondition();
-
-    // Check if the symbol is the index of a loop that's unrolled.
-    bool NeedsToReplaceSymbolWithValue(TIntermSymbol* symbol);
-
-    // Return the current value of a given loop index symbol.
-    int GetLoopIndexValue(TIntermSymbol* symbol);
-
-    void Push(TLoopIndexInfo& info);
-    void Pop();
-
-    static void MarkForLoopsWithIntegerIndicesForUnrolling(TIntermNode* root);
-
-private:
-    int getLoopIncrement(TIntermLoop* node);
-
-    int evaluateIntConstant(TIntermConstantUnion* node);
-
-    TVector<TLoopIndexInfo> mLoopIndexStack;
-};
-
-#endif
+#endif // COMPILER_TRANSLATOR_FORLOOPUNROLL_H_

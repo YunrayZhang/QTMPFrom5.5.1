@@ -1,39 +1,31 @@
 /****************************************************************************
 **
-** Copyright (C) 2013 Digia Plc and/or its subsidiary(-ies).
-** Contact: http://www.qt-project.org/legal
+** Copyright (C) 2015 The Qt Company Ltd.
+** Contact: http://www.qt.io/licensing/
 **
 ** This file is part of the QtWidgets module of the Qt Toolkit.
 **
-** $QT_BEGIN_LICENSE:LGPL$
+** $QT_BEGIN_LICENSE:LGPL21$
 ** Commercial License Usage
 ** Licensees holding valid commercial Qt licenses may use this file in
 ** accordance with the commercial license agreement provided with the
 ** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and Digia.  For licensing terms and
-** conditions see http://qt.digia.com/licensing.  For further information
-** use the contact form at http://qt.digia.com/contact-us.
+** a written agreement between you and The Qt Company. For licensing terms
+** and conditions see http://www.qt.io/terms-conditions. For further
+** information use the contact form at http://www.qt.io/contact-us.
 **
 ** GNU Lesser General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 2.1 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU Lesser General Public License version 2.1 requirements
-** will be met: http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
+** General Public License version 2.1 or version 3 as published by the Free
+** Software Foundation and appearing in the file LICENSE.LGPLv21 and
+** LICENSE.LGPLv3 included in the packaging of this file. Please review the
+** following information to ensure the GNU Lesser General Public License
+** requirements will be met: https://www.gnu.org/licenses/lgpl.html and
+** http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
 **
-** In addition, as a special exception, Digia gives you certain additional
-** rights.  These rights are described in the Digia Qt LGPL Exception
+** As a special exception, The Qt Company gives you certain additional
+** rights. These rights are described in The Qt Company LGPL Exception
 ** version 1.1, included in the file LGPL_EXCEPTION.txt in this package.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3.0 as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU General Public License version 3.0 requirements will be
-** met: http://www.gnu.org/copyleft/gpl.html.
-**
 **
 ** $QT_END_LICENSE$
 **
@@ -44,6 +36,7 @@
 #include "private/qstandardgestures_p.h"
 #include "qgraphicsview.h"
 
+#include <private/qdebug_p.h>
 #ifndef QT_NO_GESTURES
 
 QT_BEGIN_NAMESPACE
@@ -1094,46 +1087,95 @@ QPointF QGestureEvent::mapToGraphicsScene(const QPointF &gesturePoint) const
 }
 #endif //QT_NO_GRAPHICSVIEW
 
-#ifdef Q_NO_USING_KEYWORD
-/*!
-    \fn void QGestureEvent::setAccepted(bool accepted)
+#ifndef QT_NO_DEBUG_STREAM
 
-    Sets or clears the event's internal flag that determines whether it should
-    be delivered to other objects.
+static void formatGestureHeader(QDebug d, const char *className, const QGesture *gesture)
+{
+     d << className << "(state=";
+     QtDebugUtils::formatQEnum(d, gesture->state());
+     if (gesture->hasHotSpot()) {
+         d << ",hotSpot=";
+         QtDebugUtils::formatQPoint(d, gesture->hotSpot());
+     }
+}
 
-    Calling this function with a value of true for \a accepted indicates that the
-    caller has accepted the event and that it should not be propagated further.
-    Calling this function with a value of false indicates that the caller has
-    ignored the event and that it should be delivered to other objects.
+Q_WIDGETS_EXPORT QDebug operator<<(QDebug d, const QGesture *gesture)
+{
+    QDebugStateSaver saver(d);
+    d.nospace();
+    switch (gesture->gestureType()) {
+    case Qt::TapGesture:
+        formatGestureHeader(d, "QTapGesture", gesture);
+        d << ",position=";
+        QtDebugUtils::formatQPoint(d, static_cast<const QTapGesture*>(gesture)->position());
+        d << ')';
+        break;
+    case Qt::TapAndHoldGesture: {
+        const QTapAndHoldGesture *tap = static_cast<const QTapAndHoldGesture*>(gesture);
+        formatGestureHeader(d, "QTapAndHoldGesture", tap);
+        d << ",position=";
+        QtDebugUtils::formatQPoint(d, tap->position());
+        d << ",timeout=" << tap->timeout() << ')';
+    }
+        break;
+    case Qt::PanGesture: {
+        const QPanGesture *pan = static_cast<const QPanGesture*>(gesture);
+        formatGestureHeader(d, "QPanGesture", pan);
+        d << ",lastOffset=";
+        QtDebugUtils::formatQPoint(d, pan->lastOffset());
+        d << pan->lastOffset();
+        d << ",offset=";
+        QtDebugUtils::formatQPoint(d, pan->offset());
+        d  << ",acceleration=" << pan->acceleration() << ",delta=";
+        QtDebugUtils::formatQPoint(d, pan->delta());
+        d << ')';
+    }
+        break;
+    case Qt::PinchGesture: {
+        const QPinchGesture *pinch = static_cast<const QPinchGesture*>(gesture);
+        formatGestureHeader(d, "QPinchGesture", pinch);
+        d << ",totalChangeFlags=" << pinch->totalChangeFlags()
+          << ",changeFlags=" << pinch->changeFlags() << ",startCenterPoint=";
+        QtDebugUtils::formatQPoint(d, pinch->startCenterPoint());
+        d << ",lastCenterPoint=";
+        QtDebugUtils::formatQPoint(d, pinch->lastCenterPoint());
+        d << ",centerPoint=";
+        QtDebugUtils::formatQPoint(d, pinch->centerPoint());
+        d << ",totalScaleFactor=" << pinch->totalScaleFactor()
+            << ",lastScaleFactor=" << pinch->lastScaleFactor()
+            << ",scaleFactor=" << pinch->scaleFactor()
+            << ",totalRotationAngle=" << pinch->totalRotationAngle()
+            << ",lastRotationAngle=" << pinch->lastRotationAngle()
+            << ",rotationAngle=" << pinch->rotationAngle() << ')';
+    }
+        break;
+    case Qt::SwipeGesture: {
+        const QSwipeGesture *swipe = static_cast<const QSwipeGesture*>(gesture);
+        formatGestureHeader(d, "QSwipeGesture", swipe);
+        d << ",horizontalDirection=";
+        QtDebugUtils::formatQEnum(d, swipe->horizontalDirection());
+        d << ",verticalDirection=";
+        QtDebugUtils::formatQEnum(d, swipe->verticalDirection());
+        d << ",swipeAngle=" << swipe->swipeAngle() << ')';
+    }
+        break;
+    default:
+        formatGestureHeader(d, "Custom gesture", gesture);
+        d << ",type=" << gesture->gestureType() << ')';
+        break;
+    }
+    return d;
+}
 
-    For convenience, the accept flag can also be set with accept(), and cleared
-    with ignore().
+Q_WIDGETS_EXPORT QDebug operator<<(QDebug d, const QGestureEvent *gestureEvent)
+{
+    QDebugStateSaver saver(d);
+    d.nospace();
+    d << "QGestureEvent(" << gestureEvent->gestures() << ')';
+    return d;
+}
 
-    \sa QEvent::accepted
-*/
-/*!
-    \fn bool QGestureEvent::isAccepted() const
-
-    Returns \c true is the event has been accepted; otherwise returns \c false.
-
-    \sa QEvent::accepted
-*/
-/*!
-    \fn void QGestureEvent::accept()
-
-    Accepts the event, the equivalent of calling setAccepted(true).
-
-    \sa QEvent::accept()
-*/
-/*!
-    \fn void QGestureEvent::ignore()
-
-    Ignores the event, the equivalent of calling setAccepted(false).
-
-    \sa QEvent::ignore()
-*/
-#endif
-
+#endif // !QT_NO_DEBUG_STREAM
 QT_END_NAMESPACE
 
 #include <moc_qgesture.cpp>

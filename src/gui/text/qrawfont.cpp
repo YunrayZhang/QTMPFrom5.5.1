@@ -1,39 +1,31 @@
 /****************************************************************************
 **
-** Copyright (C) 2013 Digia Plc and/or its subsidiary(-ies).
-** Contact: http://www.qt-project.org/legal
+** Copyright (C) 2015 The Qt Company Ltd.
+** Contact: http://www.qt.io/licensing/
 **
 ** This file is part of the QtGui module of the Qt Toolkit.
 **
-** $QT_BEGIN_LICENSE:LGPL$
+** $QT_BEGIN_LICENSE:LGPL21$
 ** Commercial License Usage
 ** Licensees holding valid commercial Qt licenses may use this file in
 ** accordance with the commercial license agreement provided with the
 ** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and Digia.  For licensing terms and
-** conditions see http://qt.digia.com/licensing.  For further information
-** use the contact form at http://qt.digia.com/contact-us.
+** a written agreement between you and The Qt Company. For licensing terms
+** and conditions see http://www.qt.io/terms-conditions. For further
+** information use the contact form at http://www.qt.io/contact-us.
 **
 ** GNU Lesser General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 2.1 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU Lesser General Public License version 2.1 requirements
-** will be met: http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
+** General Public License version 2.1 or version 3 as published by the Free
+** Software Foundation and appearing in the file LICENSE.LGPLv21 and
+** LICENSE.LGPLv3 included in the packaging of this file. Please review the
+** following information to ensure the GNU Lesser General Public License
+** requirements will be met: https://www.gnu.org/licenses/lgpl.html and
+** http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
 **
-** In addition, as a special exception, Digia gives you certain additional
-** rights.  These rights are described in the Digia Qt LGPL Exception
+** As a special exception, The Qt Company gives you certain additional
+** rights. These rights are described in The Qt Company LGPL Exception
 ** version 1.1, included in the file LGPL_EXCEPTION.txt in this package.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3.0 as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU General Public License version 3.0 requirements will be
-** met: http://www.gnu.org/copyleft/gpl.html.
-**
 **
 ** $QT_END_LICENSE$
 **
@@ -46,6 +38,10 @@
 #include "qrawfont.h"
 #include "qrawfont_p.h"
 #include "qplatformfontdatabase.h"
+
+#include <private/qguiapplication_p.h>
+#include <qpa/qplatformintegration.h>
+#include <qpa/qplatformfontdatabase.h>
 
 #include <QtCore/qendian.h>
 
@@ -84,7 +80,7 @@ QT_BEGIN_NAMESPACE
    also have accessors to some relevant data in the physical font.
 
    QRawFont only provides support for the main font technologies: GDI and DirectWrite on Windows
-   platforms, FreeType on Linux platforms and CoreText on Mac OS X. For other
+   platforms, FreeType on Linux platforms and CoreText on OS X. For other
    font back-ends, the APIs will be disabled.
 
    QRawFont can be constructed in a number of ways:
@@ -251,8 +247,7 @@ void QRawFont::loadFromData(const QByteArray &fontData,
     d.detach();
     d->cleanUp();
     d->hintingPreference = hintingPreference;
-    d->thread = QThread::currentThread();
-    d->platformLoadFromData(fontData, pixelSize, hintingPreference);
+    d->loadFromData(fontData, pixelSize, hintingPreference);
 }
 
 /*!
@@ -704,8 +699,7 @@ QRawFont QRawFont::fromFont(const QFont &font, QFontDatabase::WritingSystem writ
     }
 
     if (fe != 0) {
-        rawFont.d.data()->fontEngine = fe;
-        rawFont.d.data()->fontEngine->ref.ref();
+        rawFont.d.data()->setFontEngine(fe);
         rawFont.d.data()->hintingPreference = font.hintingPreference();
     }
     return rawFont;
@@ -716,32 +710,23 @@ QRawFont QRawFont::fromFont(const QFont &font, QFontDatabase::WritingSystem writ
 */
 void QRawFont::setPixelSize(qreal pixelSize)
 {
-    if (d->fontEngine == 0 || qFuzzyCompare(d->fontEngine->fontDef.pixelSize, pixelSize))
+    if (!d->isValid() || qFuzzyCompare(d->fontEngine->fontDef.pixelSize, pixelSize))
         return;
 
     d.detach();
-    QFontEngine *oldFontEngine = d->fontEngine;
-
-    d->fontEngine = d->fontEngine->cloneWithSize(pixelSize);
-    if (d->fontEngine != 0)
-        d->fontEngine->ref.ref();
-
-    if (!oldFontEngine->ref.deref())
-        delete oldFontEngine;
+    d->setFontEngine(d->fontEngine->cloneWithSize(pixelSize));
 }
 
 /*!
     \internal
 */
-void QRawFontPrivate::cleanUp()
+void QRawFontPrivate::loadFromData(const QByteArray &fontData, qreal pixelSize,
+                                           QFont::HintingPreference hintingPreference)
 {
-    platformCleanUp();
-    if (fontEngine != 0) {
-        if (!fontEngine->ref.deref())
-            delete fontEngine;
-        fontEngine = 0;
-    }
-    hintingPreference = QFont::PreferDefaultHinting;
+    Q_ASSERT(fontEngine == 0);
+
+    QPlatformFontDatabase *pfdb = QGuiApplicationPrivate::platformIntegration()->fontDatabase();
+    setFontEngine(pfdb->fontEngine(fontData, pixelSize, hintingPreference));
 }
 
 /*!
@@ -751,7 +736,7 @@ void QRawFontPrivate::cleanUp()
 */
 QRectF QRawFont::boundingRect(quint32 glyphIndex) const
 {
-    if (!isValid())
+    if (!d->isValid())
         return QRectF();
 
     glyph_metrics_t gm = d->fontEngine->boundingBox(glyphIndex);

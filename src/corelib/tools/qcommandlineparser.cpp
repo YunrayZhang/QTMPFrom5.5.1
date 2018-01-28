@@ -2,39 +2,31 @@
 **
 ** Copyright (C) 2013 Laszlo Papp <lpapp@kde.org>
 ** Copyright (C) 2013 David Faure <faure@kde.org>
-** Contact: http://www.qt-project.org/legal
+** Contact: http://www.qt.io/licensing/
 **
 ** This file is part of the QtCore module of the Qt Toolkit.
 **
-** $QT_BEGIN_LICENSE:LGPL$
+** $QT_BEGIN_LICENSE:LGPL21$
 ** Commercial License Usage
 ** Licensees holding valid commercial Qt licenses may use this file in
 ** accordance with the commercial license agreement provided with the
 ** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and Digia.  For licensing terms and
-** conditions see http://qt.digia.com/licensing.  For further information
-** use the contact form at http://qt.digia.com/contact-us.
+** a written agreement between you and The Qt Company. For licensing terms
+** and conditions see http://www.qt.io/terms-conditions. For further
+** information use the contact form at http://www.qt.io/contact-us.
 **
 ** GNU Lesser General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 2.1 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU Lesser General Public License version 2.1 requirements
-** will be met: http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
+** General Public License version 2.1 or version 3 as published by the Free
+** Software Foundation and appearing in the file LICENSE.LGPLv21 and
+** LICENSE.LGPLv3 included in the packaging of this file. Please review the
+** following information to ensure the GNU Lesser General Public License
+** requirements will be met: https://www.gnu.org/licenses/lgpl.html and
+** http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
 **
-** In addition, as a special exception, Digia gives you certain additional
-** rights.  These rights are described in the Digia Qt LGPL Exception
+** As a special exception, The Qt Company gives you certain additional
+** rights. These rights are described in The Qt Company LGPL Exception
 ** version 1.1, included in the file LGPL_EXCEPTION.txt in this package.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3.0 as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU General Public License version 3.0 requirements will be
-** met: http://www.gnu.org/copyleft/gpl.html.
-**
 **
 ** $QT_END_LICENSE$
 **
@@ -45,6 +37,10 @@
 #include <qcoreapplication.h>
 #include <qhash.h>
 #include <qvector.h>
+#include <qdebug.h>
+#if defined(Q_OS_WIN) && !defined(QT_BOOTSTRAPPED) && !defined(Q_OS_WINCE) && !defined(Q_OS_WINRT)
+#  include <qt_windows.h>
+#endif
 #include <stdio.h>
 #include <stdlib.h>
 
@@ -119,8 +115,8 @@ public:
 
 QStringList QCommandLineParserPrivate::aliases(const QString &optionName) const
 {
-    const NameHash_t::const_iterator it = nameHash.find(optionName);
-    if (it == nameHash.end()) {
+    const NameHash_t::const_iterator it = nameHash.constFind(optionName);
+    if (it == nameHash.cend()) {
         qWarning("QCommandLineParser: option not defined: \"%s\"", qPrintable(optionName));
         return QStringList();
     }
@@ -179,6 +175,10 @@ QStringList QCommandLineParserPrivate::aliases(const QString &optionName) const
     Example:
     \snippet code/src_corelib_tools_qcommandlineparser_main.cpp 0
 
+    If your compiler supports the C++11 standard, the three addOption() calls in
+    the above example can be simplified:
+    \snippet code/src_corelib_tools_qcommandlineparser_main.cpp cxx11
+
     Known limitation: the parsing of Qt options inside QCoreApplication and subclasses
     happens before QCommandLineParser exists, so it can't take it into account. This
     means any option value that looks like a builtin Qt option, will be treated by
@@ -213,7 +213,10 @@ QStringList QCommandLineParserPrivate::aliases(const QString &optionName) const
     platforms. These applications may not use the standard output or error channels
     since the output is either discarded or not accessible.
 
-    For such GUI applications, it is recommended to display help texts and error messages
+    On Windows, QCommandLineParser uses message boxes to display usage information
+    and errors if no console window can be obtained.
+
+    For other platforms, it is recommended to display help texts and error messages
     using a QMessageBox. To preserve the formatting of the help text, rich text
     with \c <pre> elements should be used:
 
@@ -223,36 +226,20 @@ QStringList QCommandLineParserPrivate::aliases(const QString &optionName) const
     case CommandLineOk:
         break;
     case CommandLineError:
-#ifdef Q_OS_WIN
         QMessageBox::warning(0, QGuiApplication::applicationDisplayName(),
                              "<html><head/><body><h2>" + errorMessage + "</h2><pre>"
                              + parser.helpText() + "</pre></body></html>");
-#else
-        fputs(qPrintable(errorMessage), stderr);
-        fputs("\n\n", stderr);
-        fputs(qPrintable(parser.helpText()), stderr);
-#endif
         return 1;
     case CommandLineVersionRequested:
-#ifdef Q_OS_WIN
         QMessageBox::information(0, QGuiApplication::applicationDisplayName(),
                                  QGuiApplication::applicationDisplayName() + ' '
                                  + QCoreApplication::applicationVersion());
-#else
-        printf("%s %s\n", QGuiApplication::applicationDisplayName(),
-               qPrintable(QCoreApplication::applicationVersion()));
-#endif
         return 0;
     case CommandLineHelpRequested:
-#ifdef Q_OS_WIN
         QMessageBox::warning(0, QGuiApplication::applicationDisplayName(),
                              "<html><head/><body><pre>"
                              + parser.helpText() + "</pre></body></html>");
         return 0;
-#else
-        parser.showHelp();
-        Q_UNREACHABLE();
-#endif
     }
     \endcode
 
@@ -339,6 +326,26 @@ bool QCommandLineParser::addOption(const QCommandLineOption &option)
     }
 
     return false;
+}
+
+/*!
+    \since 5.4
+
+    Adds the options to look for while parsing. The options are specified by
+    the parameter \a options.
+
+    Returns \c true if adding all of the options was successful; otherwise
+    returns \c false.
+
+    See the documentation for addOption() for when this function may fail.
+*/
+bool QCommandLineParser::addOptions(const QList<QCommandLineOption> &options)
+{
+    // should be optimized (but it's no worse than what was possible before)
+    bool result = true;
+    for (QList<QCommandLineOption>::const_iterator it = options.begin(), end = options.end(); it != end; ++it)
+        result &= addOption(*it);
+    return result;
 }
 
 /*!
@@ -475,6 +482,41 @@ QString QCommandLineParser::errorText() const
     return QString();
 }
 
+enum MessageType { UsageMessage, ErrorMessage };
+
+#if defined(Q_OS_WIN) && !defined(QT_BOOTSTRAPPED) && !defined(Q_OS_WINCE) && !defined(Q_OS_WINRT)
+// Return whether to use a message box. Use handles if a console can be obtained
+// or we are run with redirected handles (for example, by QProcess).
+static inline bool displayMessageBox()
+{
+    if (GetConsoleWindow())
+        return false;
+    STARTUPINFO startupInfo;
+    startupInfo.cb = sizeof(STARTUPINFO);
+    GetStartupInfo(&startupInfo);
+    return !(startupInfo.dwFlags & STARTF_USESTDHANDLES);
+}
+#endif // Q_OS_WIN && !QT_BOOTSTRAPPED && !Q_OS_WIN && !Q_OS_WINRT
+
+static void showParserMessage(const QString &message, MessageType type)
+{
+#if defined(Q_OS_WIN) && !defined(QT_BOOTSTRAPPED) && !defined(Q_OS_WINCE) && !defined(Q_OS_WINRT)
+    if (displayMessageBox()) {
+        const UINT flags = MB_OK | MB_TOPMOST | MB_SETFOREGROUND
+            | (type == UsageMessage ? MB_ICONINFORMATION : MB_ICONERROR);
+        QString title;
+        if (QCoreApplication::instance())
+            title = QCoreApplication::instance()->property("applicationDisplayName").toString();
+        if (title.isEmpty())
+            title = QCoreApplication::applicationName();
+        MessageBoxW(0, reinterpret_cast<const wchar_t *>(message.utf16()),
+                    reinterpret_cast<const wchar_t *>(title.utf16()), flags);
+        return;
+    }
+#endif // Q_OS_WIN && !QT_BOOTSTRAPPED && !Q_OS_WIN && !Q_OS_WINRT
+    fputs(qPrintable(message), type == UsageMessage ? stdout : stderr);
+}
+
 /*!
     Processes the command line \a arguments.
 
@@ -491,14 +533,12 @@ QString QCommandLineParser::errorText() const
 void QCommandLineParser::process(const QStringList &arguments)
 {
     if (!d->parse(arguments)) {
-        fprintf(stderr, "%s\n", qPrintable(errorText()));
+        showParserMessage(errorText() + QLatin1Char('\n'), ErrorMessage);
         ::exit(EXIT_FAILURE);
     }
 
-    if (d->builtinVersionOption && isSet(QStringLiteral("version"))) {
-        printf("%s %s\n", qPrintable(QCoreApplication::applicationName()), qPrintable(QCoreApplication::applicationVersion()));
-        ::exit(EXIT_SUCCESS);
-    }
+    if (d->builtinVersionOption && isSet(QStringLiteral("version")))
+        showVersion();
 
     if (d->builtinHelpOption && isSet(QStringLiteral("help")))
         showHelp(EXIT_SUCCESS);
@@ -766,8 +806,8 @@ QString QCommandLineParser::value(const QString &optionName) const
 QStringList QCommandLineParser::values(const QString &optionName) const
 {
     d->checkParsed("values");
-    const NameHash_t::const_iterator it = d->nameHash.find(optionName);
-    if (it != d->nameHash.end()) {
+    const NameHash_t::const_iterator it = d->nameHash.constFind(optionName);
+    if (it != d->nameHash.cend()) {
         const int optionOffset = *it;
         QStringList values = d->optionValuesHash.value(optionOffset);
         if (values.isEmpty())
@@ -888,6 +928,24 @@ QStringList QCommandLineParser::unknownOptionNames() const
 }
 
 /*!
+    Displays the version information from QCoreApplication::applicationVersion(),
+    and exits the application.
+    This is automatically triggered by the --version option, but can also
+    be used to display the version when not using process().
+    The exit code is set to EXIT_SUCCESS (0).
+
+    \sa addVersionOption()
+    \since 5.4
+*/
+Q_NORETURN void QCommandLineParser::showVersion()
+{
+    showParserMessage(QCoreApplication::applicationName() + QLatin1Char(' ')
+                      + QCoreApplication::applicationVersion() + QLatin1Char('\n'),
+                      UsageMessage);
+    ::exit(EXIT_SUCCESS);
+}
+
+/*!
     Displays the help information, and exits the application.
     This is automatically triggered by the --help option, but can also
     be used to display the help when the user is not invoking the
@@ -900,7 +958,7 @@ QStringList QCommandLineParser::unknownOptionNames() const
 */
 Q_NORETURN void QCommandLineParser::showHelp(int exitCode)
 {
-    fprintf(stdout, "%s", qPrintable(d->helpText()));
+    showParserMessage(d->helpText(), UsageMessage);
     ::exit(exitCode);
 }
 

@@ -1,39 +1,31 @@
 /****************************************************************************
 **
-** Copyright (C) 2013 Digia Plc and/or its subsidiary(-ies).
-** Contact: http://www.qt-project.org/legal
+** Copyright (C) 2015 The Qt Company Ltd.
+** Contact: http://www.qt.io/licensing/
 **
 ** This file is part of the test suite of the Qt Toolkit.
 **
-** $QT_BEGIN_LICENSE:LGPL$
+** $QT_BEGIN_LICENSE:LGPL21$
 ** Commercial License Usage
 ** Licensees holding valid commercial Qt licenses may use this file in
 ** accordance with the commercial license agreement provided with the
 ** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and Digia.  For licensing terms and
-** conditions see http://qt.digia.com/licensing.  For further information
-** use the contact form at http://qt.digia.com/contact-us.
+** a written agreement between you and The Qt Company. For licensing terms
+** and conditions see http://www.qt.io/terms-conditions. For further
+** information use the contact form at http://www.qt.io/contact-us.
 **
 ** GNU Lesser General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 2.1 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU Lesser General Public License version 2.1 requirements
-** will be met: http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
+** General Public License version 2.1 or version 3 as published by the Free
+** Software Foundation and appearing in the file LICENSE.LGPLv21 and
+** LICENSE.LGPLv3 included in the packaging of this file. Please review the
+** following information to ensure the GNU Lesser General Public License
+** requirements will be met: https://www.gnu.org/licenses/lgpl.html and
+** http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
 **
-** In addition, as a special exception, Digia gives you certain additional
-** rights.  These rights are described in the Digia Qt LGPL Exception
+** As a special exception, The Qt Company gives you certain additional
+** rights. These rights are described in The Qt Company LGPL Exception
 ** version 1.1, included in the file LGPL_EXCEPTION.txt in this package.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3.0 as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU General Public License version 3.0 requirements will be
-** met: http://www.gnu.org/copyleft/gpl.html.
-**
 **
 ** $QT_END_LICENSE$
 **
@@ -169,12 +161,17 @@ QString tst_Selftests::logName(const QString &logger) const
     return (logger.startsWith("stdout") ? "" : QString(tempDir.path() + "/test_output." + logger));
 }
 
+static QString expectedFileNameFromTest(const QString &subdir, const QString &logger)
+{
+    return QStringLiteral("expected_") + subdir + QLatin1Char('.') + logFormat(logger);
+}
+
 // Load the expected test output for the nominated test (subdir) and logger
 // as an array of lines.  If there is no expected output file, return an
 // empty array.
-static QList<QByteArray> expectedResult(const QString &subdir, const QString &logger)
+static QList<QByteArray> expectedResult(const QString &fileName)
 {
-    QFile file(":/expected_" + subdir + "." + logFormat(logger));
+    QFile file(QStringLiteral(":/") + fileName);
     if (!file.open(QIODevice::ReadOnly))
         return QList<QByteArray>();
     return splitLines(file.readAll());
@@ -355,6 +352,7 @@ void tst_Selftests::runSubTest_data()
         << "benchlibcounting"
         << "benchlibeventcounter"
         << "benchliboptions"
+        << "blacklisted"
         << "cmptest"
         << "commandlinedata"
         << "counting"
@@ -473,6 +471,9 @@ void tst_Selftests::runSubTest_data()
                 if (subtest == "benchliboptions") {
                     continue;
                 }
+                if (subtest == "blacklisted") {
+                    continue;
+                }
                 if (subtest == "printdatatags") {
                     continue;
                 }
@@ -506,7 +507,8 @@ void tst_Selftests::runSubTest_data()
 
             const bool crashes = subtest == QLatin1String("assert") || subtest == QLatin1String("exceptionthrow")
                 || subtest == QLatin1String("fetchbogus") || subtest == QLatin1String("crashedterminate")
-                || subtest == QLatin1String("crashes") || subtest == QLatin1String("silent");
+                || subtest == QLatin1String("crashes") || subtest == QLatin1String("silent")
+                || subtest == QLatin1String("blacklisted");
             QTest::newRow(qPrintable(QString("%1 %2").arg(subtest).arg(loggerSet.name)))
                 << subtest
                 << loggers
@@ -613,6 +615,7 @@ void tst_Selftests::doRunSubTest(QString const& subdir, QStringList const& logge
         && subdir != QLatin1String("fetchbogus")
         && subdir != QLatin1String("xunit")
 #ifdef Q_CC_MINGW
+        && subdir != QLatin1String("blacklisted") // calls qFatal()
         && subdir != QLatin1String("silent") // calls qFatal()
 #endif
         && subdir != QLatin1String("benchlibcallgrind"))
@@ -621,7 +624,8 @@ void tst_Selftests::doRunSubTest(QString const& subdir, QStringList const& logge
     for (int n = 0; n < loggers.count(); ++n) {
         QString logger = loggers[n];
         QList<QByteArray> res = splitLines(actualOutputs[n]);
-        QList<QByteArray> exp = expectedResult(subdir, logger);
+        const QString expectedFileName = expectedFileNameFromTest(subdir, logger);
+        QList<QByteArray> exp = expectedResult(expectedFileName);
 #if defined (Q_CC_MSVC) || defined(Q_CC_MINGW)
         // MSVC, MinGW format double numbers differently
         if (n == 0 && subdir == QStringLiteral("float")) {
@@ -640,7 +644,7 @@ void tst_Selftests::doRunSubTest(QString const& subdir, QStringList const& logge
             QList<QByteArray> tmp;
             int i = 1;
             do {
-                tmp = expectedResult(subdir + QString("_%1").arg(i++), logger);
+                tmp = expectedResult(expectedFileNameFromTest(subdir + QLatin1Char('_') + QString::number(i++), logger));
                 if (tmp.count())
                     expArr += tmp;
             } while (tmp.count());
@@ -669,8 +673,8 @@ void tst_Selftests::doRunSubTest(QString const& subdir, QStringList const& logge
                 qDebug() << ">>>>>>";
 
                 QVERIFY2(res.count() == exp.count(),
-                     qPrintable(QString::fromLatin1("Mismatch in line count: %1 != %2 (%3).")
-                                .arg(res.count()).arg(exp.count()).arg(loggers.at(n))));
+                     qPrintable(QString::fromLatin1("Mismatch in line count: %1 != %2 (%3, %4).")
+                                .arg(res.count()).arg(exp.count()).arg(loggers.at(n), expectedFileName)));
             }
         }
 
@@ -713,6 +717,12 @@ void tst_Selftests::doRunSubTest(QString const& subdir, QStringList const& logge
             if (line.endsWith(" : failure location"))
                 continue;
 
+            if (line.startsWith("Config: Using QtTest library") // Text build string
+                || line.startsWith("    <QtBuild") // XML, Light XML build string
+                || (line.startsWith("    <property value=") &&  line.endsWith("name=\"QtBuild\"/>"))) { // XUNIT-XML build string
+                    continue;
+            }
+
             const QString output(QString::fromLatin1(line));
             const QString expected(QString::fromLatin1(exp.at(i)).replace("@INSERT_QT_VERSION_HERE@", QT_VERSION_STR));
 
@@ -742,8 +752,8 @@ void tst_Selftests::doRunSubTest(QString const& subdir, QStringList const& logge
                                                       .arg(i).arg(loggers.at(n), output)));
             } else {
                 QVERIFY2(output == expected,
-                         qPrintable(QString::fromLatin1("Mismatch at line %1 (%2): '%3' != '%4'")
-                                    .arg(i).arg(loggers.at(n), output, expected)));
+                         qPrintable(QString::fromLatin1("Mismatch at line %1 (%2, %3):\n'%4'\n !=\n'%5'")
+                                    .arg(i + 1).arg(loggers.at(n), expectedFileName, output, expected)));
             }
 
             benchmark = line.startsWith("RESULT : ");

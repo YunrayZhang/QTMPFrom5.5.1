@@ -1,39 +1,31 @@
 /****************************************************************************
 **
-** Copyright (C) 2013 Digia Plc and/or its subsidiary(-ies).
-** Contact: http://www.qt-project.org/legal
+** Copyright (C) 2015 The Qt Company Ltd.
+** Contact: http://www.qt.io/licensing/
 **
 ** This file is part of the QtCore module of the Qt Toolkit.
 **
-** $QT_BEGIN_LICENSE:LGPL$
+** $QT_BEGIN_LICENSE:LGPL21$
 ** Commercial License Usage
 ** Licensees holding valid commercial Qt licenses may use this file in
 ** accordance with the commercial license agreement provided with the
 ** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and Digia.  For licensing terms and
-** conditions see http://qt.digia.com/licensing.  For further information
-** use the contact form at http://qt.digia.com/contact-us.
+** a written agreement between you and The Qt Company. For licensing terms
+** and conditions see http://www.qt.io/terms-conditions. For further
+** information use the contact form at http://www.qt.io/contact-us.
 **
 ** GNU Lesser General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 2.1 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU Lesser General Public License version 2.1 requirements
-** will be met: http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
+** General Public License version 2.1 or version 3 as published by the Free
+** Software Foundation and appearing in the file LICENSE.LGPLv21 and
+** LICENSE.LGPLv3 included in the packaging of this file. Please review the
+** following information to ensure the GNU Lesser General Public License
+** requirements will be met: https://www.gnu.org/licenses/lgpl.html and
+** http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
 **
-** In addition, as a special exception, Digia gives you certain additional
-** rights.  These rights are described in the Digia Qt LGPL Exception
+** As a special exception, The Qt Company gives you certain additional
+** rights. These rights are described in The Qt Company LGPL Exception
 ** version 1.1, included in the file LGPL_EXCEPTION.txt in this package.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3.0 as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU General Public License version 3.0 requirements will be
-** met: http://www.gnu.org/copyleft/gpl.html.
-**
 **
 ** $QT_END_LICENSE$
 **
@@ -749,7 +741,6 @@ int QDateTimeParser::parseSection(const QDateTime &currentValue, int sectionInde
             break;
         }
         if (state != Invalid) {
-            QString str = text;
             text.replace(index, used, sectiontext.left(used));
         }
         break; }
@@ -770,7 +761,6 @@ int QDateTimeParser::parseSection(const QDateTime &currentValue, int sectionInde
 
             if (num != -1) {
                 state = (used == sectiontext.size() ? Acceptable : Intermediate);
-                QString str = text;
                 text.replace(index, used, sectiontext.left(used));
             } else {
                 state = Intermediate;
@@ -1372,11 +1362,11 @@ int QDateTimeParser::findDay(const QString &str1, int startDay, int sectionIndex
   \internal
 
   returns
-  0 if str == QDateTimeEdit::tr("AM")
-  1 if str == QDateTimeEdit::tr("PM")
-  2 if str can become QDateTimeEdit::tr("AM")
-  3 if str can become QDateTimeEdit::tr("PM")
-  4 if str can become QDateTimeEdit::tr("PM") and can become QDateTimeEdit::tr("AM")
+  0 if str == tr("AM")
+  1 if str == tr("PM")
+  2 if str can become tr("AM")
+  3 if str can become tr("PM")
+  4 if str can become tr("PM") and can become tr("AM")
   -1 can't become anything sensible
 
 */
@@ -1747,9 +1737,9 @@ QDateTime QDateTimeParser::getMaximum() const
 QString QDateTimeParser::getAmPmText(AmPm ap, Case cs) const
 {
     if (ap == AmText) {
-        return (cs == UpperCase ? QLatin1String("AM") : QLatin1String("am"));
+        return (cs == UpperCase ? tr("AM") : tr("am"));
     } else {
-        return (cs == UpperCase ? QLatin1String("PM") : QLatin1String("pm"));
+        return (cs == UpperCase ? tr("PM") : tr("pm"));
     }
 }
 

@@ -1,48 +1,41 @@
 /****************************************************************************
 **
-** Copyright (C) 2013 Digia Plc and/or its subsidiary(-ies).
-** Contact: http://www.qt-project.org/legal
+** Copyright (C) 2015 The Qt Company Ltd.
+** Contact: http://www.qt.io/licensing/
 **
 ** This file is part of the plugins of the Qt Toolkit.
 **
-** $QT_BEGIN_LICENSE:LGPL$
+** $QT_BEGIN_LICENSE:LGPL21$
 ** Commercial License Usage
 ** Licensees holding valid commercial Qt licenses may use this file in
 ** accordance with the commercial license agreement provided with the
 ** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and Digia.  For licensing terms and
-** conditions see http://qt.digia.com/licensing.  For further information
-** use the contact form at http://qt.digia.com/contact-us.
+** a written agreement between you and The Qt Company. For licensing terms
+** and conditions see http://www.qt.io/terms-conditions. For further
+** information use the contact form at http://www.qt.io/contact-us.
 **
 ** GNU Lesser General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 2.1 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU Lesser General Public License version 2.1 requirements
-** will be met: http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
+** General Public License version 2.1 or version 3 as published by the Free
+** Software Foundation and appearing in the file LICENSE.LGPLv21 and
+** LICENSE.LGPLv3 included in the packaging of this file. Please review the
+** following information to ensure the GNU Lesser General Public License
+** requirements will be met: https://www.gnu.org/licenses/lgpl.html and
+** http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
 **
-** In addition, as a special exception, Digia gives you certain additional
-** rights.  These rights are described in the Digia Qt LGPL Exception
+** As a special exception, The Qt Company gives you certain additional
+** rights. These rights are described in The Qt Company LGPL Exception
 ** version 1.1, included in the file LGPL_EXCEPTION.txt in this package.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3.0 as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU General Public License version 3.0 requirements will be
-** met: http://www.gnu.org/copyleft/gpl.html.
-**
 **
 ** $QT_END_LICENSE$
 **
 ****************************************************************************/
 
 #include <qpa/qwindowsysteminterface.h>
+#include <QtPlatformSupport/private/qopenglcompositor_p.h>
+#include <QtPlatformSupport/private/qopenglcompositorbackingstore_p.h>
 
 #include "qeglplatformwindow_p.h"
-#include "qeglplatformbackingstore_p.h"
 #include "qeglplatformscreen_p.h"
 
 QT_BEGIN_NAMESPACE
@@ -55,7 +48,7 @@ QT_BEGIN_NAMESPACE
     \ingroup qpa
 
     Lightweight class providing some basic platform window operations
-    and interfacing with QEGLPlatformBackingStore.
+    and interfacing with QOpenGLCompositorBackingStore.
 
     Almost no QPlatformWindow functions are implemented here. This is
     intentional because different platform plugins may use different
@@ -65,13 +58,15 @@ QT_BEGIN_NAMESPACE
     enforce anything for these functions.
 
     \note Subclasses are responsible for invoking this class'
-    implementation of create(). When using QEGLPlatformScreen, the
-    subclasses of this class are expected to utilize the window stack
-    management functions (addWindow() etc.) provided there.
+    implementation of create() and are expected to utilize the window
+    stack management functions (addWindow() etc.) in
+    QOpenGLCompositor.
  */
 
 QEGLPlatformWindow::QEGLPlatformWindow(QWindow *w)
     : QPlatformWindow(w),
+      m_backingStore(0),
+      m_raster(false),
       m_winId(0)
 {
 }
@@ -108,6 +103,11 @@ bool QEGLPlatformWindow::isRaster() const
     return m_raster || window()->surfaceType() == QSurface::RasterGLSurface;
 }
 
+QWindow *QEGLPlatformWindow::sourceWindow() const
+{
+    return window();
+}
+
 const QPlatformTextureList *QEGLPlatformWindow::textures() const
 {
     if (m_backingStore)
@@ -116,15 +116,23 @@ const QPlatformTextureList *QEGLPlatformWindow::textures() const
     return 0;
 }
 
-void QEGLPlatformWindow::composited()
+void QEGLPlatformWindow::endCompositing()
 {
     if (m_backingStore)
-        m_backingStore->composited();
+        m_backingStore->notifyComposited();
 }
 
 WId QEGLPlatformWindow::winId() const
 {
     return m_winId;
+}
+
+void QEGLPlatformWindow::setOpacity(qreal)
+{
+    if (!isRaster())
+        qWarning("QEGLPlatformWindow: Cannot set opacity for non-raster windows");
+
+    // Nothing to do here. The opacity is stored in the QWindow.
 }
 
 QT_END_NAMESPACE

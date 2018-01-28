@@ -1,39 +1,31 @@
 /****************************************************************************
 **
-** Copyright (C) 2013 Digia Plc and/or its subsidiary(-ies).
-** Contact: http://www.qt-project.org/legal
+** Copyright (C) 2015 The Qt Company Ltd.
+** Contact: http://www.qt.io/licensing/
 **
 ** This file is part of the QtGui module of the Qt Toolkit.
 **
-** $QT_BEGIN_LICENSE:LGPL$
+** $QT_BEGIN_LICENSE:LGPL21$
 ** Commercial License Usage
 ** Licensees holding valid commercial Qt licenses may use this file in
 ** accordance with the commercial license agreement provided with the
 ** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and Digia.  For licensing terms and
-** conditions see http://qt.digia.com/licensing.  For further information
-** use the contact form at http://qt.digia.com/contact-us.
+** a written agreement between you and The Qt Company. For licensing terms
+** and conditions see http://www.qt.io/terms-conditions. For further
+** information use the contact form at http://www.qt.io/contact-us.
 **
 ** GNU Lesser General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 2.1 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU Lesser General Public License version 2.1 requirements
-** will be met: http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
+** General Public License version 2.1 or version 3 as published by the Free
+** Software Foundation and appearing in the file LICENSE.LGPLv21 and
+** LICENSE.LGPLv3 included in the packaging of this file. Please review the
+** following information to ensure the GNU Lesser General Public License
+** requirements will be met: https://www.gnu.org/licenses/lgpl.html and
+** http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
 **
-** In addition, as a special exception, Digia gives you certain additional
-** rights.  These rights are described in the Digia Qt LGPL Exception
+** As a special exception, The Qt Company gives you certain additional
+** rights. These rights are described in The Qt Company LGPL Exception
 ** version 1.1, included in the file LGPL_EXCEPTION.txt in this package.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3.0 as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU General Public License version 3.0 requirements will be
-** met: http://www.gnu.org/copyleft/gpl.html.
-**
 **
 ** $QT_END_LICENSE$
 **
@@ -597,33 +589,51 @@ void QItemSelection::split(const QItemSelectionRange &range,
 }
 
 
-void QItemSelectionModelPrivate::initModel(QAbstractItemModel *model)
+void QItemSelectionModelPrivate::initModel(QAbstractItemModel *m)
 {
-    this->model = model;
+    struct Cx {
+        const char *signal;
+        const char *slot;
+    };
+    static const Cx connections[] = {
+        { SIGNAL(rowsAboutToBeRemoved(QModelIndex,int,int)),
+          SLOT(_q_rowsAboutToBeRemoved(QModelIndex,int,int)) },
+        { SIGNAL(columnsAboutToBeRemoved(QModelIndex,int,int)),
+          SLOT(_q_columnsAboutToBeRemoved(QModelIndex,int,int)) },
+        { SIGNAL(rowsAboutToBeInserted(QModelIndex,int,int)),
+          SLOT(_q_rowsAboutToBeInserted(QModelIndex,int,int)) },
+        { SIGNAL(columnsAboutToBeInserted(QModelIndex,int,int)),
+          SLOT(_q_columnsAboutToBeInserted(QModelIndex,int,int)) },
+        { SIGNAL(rowsAboutToBeMoved(QModelIndex,int,int,QModelIndex,int)),
+          SLOT(_q_layoutAboutToBeChanged()) },
+        { SIGNAL(columnsAboutToBeMoved(QModelIndex,int,int,QModelIndex,int)),
+          SLOT(_q_layoutAboutToBeChanged()) },
+        { SIGNAL(rowsMoved(QModelIndex,int,int,QModelIndex,int)),
+          SLOT(_q_layoutChanged()) },
+        { SIGNAL(columnsMoved(QModelIndex,int,int,QModelIndex,int)),
+          SLOT(_q_layoutChanged()) },
+        { SIGNAL(layoutAboutToBeChanged(QList<QPersistentModelIndex>,QAbstractItemModel::LayoutChangeHint)),
+          SLOT(_q_layoutAboutToBeChanged(QList<QPersistentModelIndex>,QAbstractItemModel::LayoutChangeHint)) },
+        { SIGNAL(layoutChanged(QList<QPersistentModelIndex>,QAbstractItemModel::LayoutChangeHint)),
+          SLOT(_q_layoutChanged(QList<QPersistentModelIndex>,QAbstractItemModel::LayoutChangeHint)) },
+        { SIGNAL(modelReset()),
+          SLOT(reset()) },
+        { 0, 0 }
+    };
+
+    if (model == m)
+        return;
+
+    Q_Q(QItemSelectionModel);
     if (model) {
-        Q_Q(QItemSelectionModel);
-        QObject::connect(model, SIGNAL(rowsAboutToBeRemoved(QModelIndex,int,int)),
-                q, SLOT(_q_rowsAboutToBeRemoved(QModelIndex,int,int)));
-        QObject::connect(model, SIGNAL(columnsAboutToBeRemoved(QModelIndex,int,int)),
-                q, SLOT(_q_columnsAboutToBeRemoved(QModelIndex,int,int)));
-        QObject::connect(model, SIGNAL(rowsAboutToBeInserted(QModelIndex,int,int)),
-                q, SLOT(_q_rowsAboutToBeInserted(QModelIndex,int,int)));
-        QObject::connect(model, SIGNAL(columnsAboutToBeInserted(QModelIndex,int,int)),
-                q, SLOT(_q_columnsAboutToBeInserted(QModelIndex,int,int)));
-        QObject::connect(model, SIGNAL(rowsAboutToBeMoved(QModelIndex,int,int,QModelIndex,int)),
-                q, SLOT(_q_layoutAboutToBeChanged()));
-        QObject::connect(model, SIGNAL(columnsAboutToBeMoved(QModelIndex,int,int,QModelIndex,int)),
-                q, SLOT(_q_layoutAboutToBeChanged()));
-        QObject::connect(model, SIGNAL(rowsMoved(QModelIndex,int,int,QModelIndex,int)),
-                q, SLOT(_q_layoutChanged()));
-        QObject::connect(model, SIGNAL(columnsMoved(QModelIndex,int,int,QModelIndex,int)),
-                q, SLOT(_q_layoutChanged()));
-        QObject::connect(model, SIGNAL(layoutAboutToBeChanged(QList<QPersistentModelIndex>,QAbstractItemModel::LayoutChangeHint)),
-                q, SLOT(_q_layoutAboutToBeChanged(QList<QPersistentModelIndex>,QAbstractItemModel::LayoutChangeHint)));
-        QObject::connect(model, SIGNAL(layoutChanged(QList<QPersistentModelIndex>,QAbstractItemModel::LayoutChangeHint)),
-                q, SLOT(_q_layoutChanged(QList<QPersistentModelIndex>,QAbstractItemModel::LayoutChangeHint)));
-        QObject::connect(model, SIGNAL(modelReset()),
-                q, SLOT(reset()));
+        for (const Cx *cx = &connections[0]; cx->signal; cx++)
+            QObject::disconnect(model, cx->signal, q, cx->slot);
+        q->reset();
+    }
+    model = m;
+    if (model) {
+        for (const Cx *cx = &connections[0]; cx->signal; cx++)
+            QObject::connect(model, cx->signal, q, cx->slot);
     }
 }
 
@@ -979,6 +989,22 @@ static QItemSelection mergeIndexes(const QVector<QPersistentModelIndex> &indexes
 /*!
     \internal
 
+    Sort predicate function for QItemSelectionModelPrivate::_q_layoutChanged(),
+    sorting by parent first in addition to operator<(). This is to prevent
+    fragmentation of the selection by grouping indexes with the same row, column
+    of different parents next to each other, which may happen when a selection
+    spans sub-trees.
+*/
+static bool qt_PersistentModelIndexLessThan(const QPersistentModelIndex &i1, const QPersistentModelIndex &i2)
+{
+    const QModelIndex parent1 = i1.parent();
+    const QModelIndex parent2 = i2.parent();
+    return parent1 == parent2 ? i1 < i2 : parent1 < parent2;
+}
+
+/*!
+    \internal
+
     Merge the selected indexes into selection ranges again.
 */
 void QItemSelectionModelPrivate::_q_layoutChanged(const QList<QPersistentModelIndex> &, QAbstractItemModel::LayoutChangeHint hint)
@@ -1011,8 +1037,10 @@ void QItemSelectionModelPrivate::_q_layoutChanged(const QList<QPersistentModelIn
 
     if (hint != QAbstractItemModel::VerticalSortHint) {
         // sort the "new" selection, as preparation for merging
-        std::stable_sort(savedPersistentIndexes.begin(), savedPersistentIndexes.end());
-        std::stable_sort(savedPersistentCurrentIndexes.begin(), savedPersistentCurrentIndexes.end());
+        std::stable_sort(savedPersistentIndexes.begin(), savedPersistentIndexes.end(),
+                         qt_PersistentModelIndexLessThan);
+        std::stable_sort(savedPersistentCurrentIndexes.begin(), savedPersistentCurrentIndexes.end(),
+                         qt_PersistentModelIndexLessThan);
 
         // update the selection by merging the individual indexes
         ranges = mergeIndexes(savedPersistentIndexes);
@@ -1066,7 +1094,11 @@ void QItemSelectionModelPrivate::_q_layoutChanged(const QList<QPersistentModelIn
     If you omit the QItemSelectionModel::Current command, a new current
     selection will be created, and the previous one added to the whole
     selection. All functions operate on both layers; for example,
-    selectedItems() will return items from both layers.
+    \l {QTableWidget::selectedItems()}{selecteditems()} will return items from both layers.
+
+    \note Since 5.5, \l{QItemSelectionModel::model()}{model},
+    \l{QItemSelectionModel::hasSelection()}{hasSelection}, and
+    \l{QItemSelectionModel::currentIndex()}{currentIndex} are meta-object properties.
 
     \sa {Model/View Programming}, QAbstractItemModel, {Chart Example}
 */
@@ -1165,6 +1197,16 @@ void QItemSelectionModel::select(const QModelIndex &index, QItemSelectionModel::
 */
 
 /*!
+    \fn void QItemSelectionModel::modelChanged(QAbstractItemModel *model)
+    \since 5.5
+
+    This signal is emitted when the \a model is successfully set with setModel().
+
+    \sa model(), setModel()
+*/
+
+
+/*!
     \enum QItemSelectionModel::SelectionFlag
 
     This enum describes the way the selection model will be updated.
@@ -1195,6 +1237,10 @@ void QItemSelectionModel::select(const QModelIndex &index, QItemSelectionModel::
 void QItemSelectionModel::select(const QItemSelection &selection, QItemSelectionModel::SelectionFlags command)
 {
     Q_D(QItemSelectionModel);
+    if (!d->model) {
+        qWarning("QItemSelectionModel: Selecting when no model has been set will result in a no-op.");
+        return;
+    }
     if (command == NoUpdate)
         return;
 
@@ -1302,6 +1348,10 @@ void QItemSelectionModel::clearSelection()
 void QItemSelectionModel::setCurrentIndex(const QModelIndex &index, QItemSelectionModel::SelectionFlags command)
 {
     Q_D(QItemSelectionModel);
+    if (!d->model) {
+        qWarning("QItemSelectionModel: Setting the current index when no model has been set will result in a no-op.");
+        return;
+    }
     if (index == d->currentIndex) {
         if (command != NoUpdate)
             select(index, command); // select item
@@ -1377,6 +1427,8 @@ bool QItemSelectionModel::isSelected(const QModelIndex &index) const
 bool QItemSelectionModel::isRowSelected(int row, const QModelIndex &parent) const
 {
     Q_D(const QItemSelectionModel);
+    if (!d->model)
+        return false;
     if (parent.isValid() && d->model != parent.model())
         return false;
 
@@ -1437,6 +1489,8 @@ bool QItemSelectionModel::isRowSelected(int row, const QModelIndex &parent) cons
 bool QItemSelectionModel::isColumnSelected(int column, const QModelIndex &parent) const
 {
     Q_D(const QItemSelectionModel);
+    if (!d->model)
+        return false;
     if (parent.isValid() && d->model != parent.model())
         return false;
 
@@ -1493,6 +1547,8 @@ bool QItemSelectionModel::isColumnSelected(int column, const QModelIndex &parent
 bool QItemSelectionModel::rowIntersectsSelection(int row, const QModelIndex &parent) const
 {
     Q_D(const QItemSelectionModel);
+    if (!d->model)
+        return false;
     if (parent.isValid() && d->model != parent.model())
          return false;
 
@@ -1525,6 +1581,8 @@ bool QItemSelectionModel::rowIntersectsSelection(int row, const QModelIndex &par
 bool QItemSelectionModel::columnIntersectsSelection(int column, const QModelIndex &parent) const
 {
     Q_D(const QItemSelectionModel);
+    if (!d->model)
+        return false;
     if (parent.isValid() && d->model != parent.model())
         return false;
 
@@ -1662,11 +1720,68 @@ const QItemSelection QItemSelectionModel::selection() const
 }
 
 /*!
+    \since 5.5
+
+    \property QItemSelectionModel::hasSelection
+    \internal
+*/
+/*!
+    \since 5.5
+
+    \property QItemSelectionModel::currentIndex
+    \internal
+*/
+/*!
+    \since 5.5
+
+    \property QItemSelectionModel::selectedIndexes
+*/
+
+/*!
+    \since 5.5
+
+    \property QItemSelectionModel::selection
+    \internal
+*/
+/*!
+    \since 5.5
+
+    \property QItemSelectionModel::model
+    \internal
+*/
+/*!
+    \since 5.5
+
+    Returns the item model operated on by the selection model.
+*/
+QAbstractItemModel *QItemSelectionModel::model()
+{
+    return d_func()->model;
+}
+
+/*!
     Returns the item model operated on by the selection model.
 */
 const QAbstractItemModel *QItemSelectionModel::model() const
 {
     return d_func()->model;
+}
+
+/*!
+    \since 5.5
+
+    Sets the model. The modelChanged() signal will be emitted.
+
+    \sa model(), modelChanged()
+*/
+void QItemSelectionModel::setModel(QAbstractItemModel *model)
+{
+    Q_D(QItemSelectionModel);
+    if (d->model == model)
+        return;
+
+    d->initModel(model);
+    emit modelChanged(model);
 }
 
 /*!
@@ -1745,9 +1860,10 @@ void QItemSelectionModel::emitSelectionChanged(const QItemSelection &newSelectio
 #ifndef QT_NO_DEBUG_STREAM
 QDebug operator<<(QDebug dbg, const QItemSelectionRange &range)
 {
+    QDebugStateSaver saver(dbg);
     dbg.nospace() << "QItemSelectionRange(" << range.topLeft()
                   << ',' << range.bottomRight() << ')';
-    return dbg.space();
+    return dbg;
 }
 #endif
 

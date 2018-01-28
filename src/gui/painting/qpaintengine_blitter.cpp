@@ -1,39 +1,31 @@
 /****************************************************************************
 **
-** Copyright (C) 2013 Digia Plc and/or its subsidiary(-ies).
-** Contact: http://www.qt-project.org/legal
+** Copyright (C) 2015 The Qt Company Ltd.
+** Contact: http://www.qt.io/licensing/
 **
 ** This file is part of the QtGui module of the Qt Toolkit.
 **
-** $QT_BEGIN_LICENSE:LGPL$
+** $QT_BEGIN_LICENSE:LGPL21$
 ** Commercial License Usage
 ** Licensees holding valid commercial Qt licenses may use this file in
 ** accordance with the commercial license agreement provided with the
 ** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and Digia.  For licensing terms and
-** conditions see http://qt.digia.com/licensing.  For further information
-** use the contact form at http://qt.digia.com/contact-us.
+** a written agreement between you and The Qt Company. For licensing terms
+** and conditions see http://www.qt.io/terms-conditions. For further
+** information use the contact form at http://www.qt.io/contact-us.
 **
 ** GNU Lesser General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 2.1 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU Lesser General Public License version 2.1 requirements
-** will be met: http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
+** General Public License version 2.1 or version 3 as published by the Free
+** Software Foundation and appearing in the file LICENSE.LGPLv21 and
+** LICENSE.LGPLv3 included in the packaging of this file. Please review the
+** following information to ensure the GNU Lesser General Public License
+** requirements will be met: https://www.gnu.org/licenses/lgpl.html and
+** http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
 **
-** In addition, as a special exception, Digia gives you certain additional
-** rights.  These rights are described in the Digia Qt LGPL Exception
+** As a special exception, The Qt Company gives you certain additional
+** rights. These rights are described in The Qt Company LGPL Exception
 ** version 1.1, included in the file LGPL_EXCEPTION.txt in this package.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3.0 as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU General Public License version 3.0 requirements will be
-** met: http://www.gnu.org/copyleft/gpl.html.
-**
 **
 ** $QT_END_LICENSE$
 **
@@ -130,6 +122,19 @@ public:
             return false;
 
         return checkStateAgainstMask(capabillitiesState, opacityPixmapMask);
+    }
+
+    bool canBlitterDrawCachedGlyphs(const QTransform &transform, QFontEngine::GlyphFormat requestedGlyphFormat, bool complexClip) const
+    {
+        if (transform.type() > QTransform::TxScale)
+            return false;
+        if (!(m_capabilities & QBlittable::DrawScaledCachedGlyphsCapability))
+            return false;
+        if (requestedGlyphFormat == QFontEngine::Format_ARGB && !(m_capabilities & QBlittable::SubPixelGlyphsCapability))
+            return false;
+        if (complexClip && !(m_capabilities & QBlittable::ComplexClipCapability))
+            return false;
+        return true;
     }
 
     inline void updateState(uint mask, bool on) {
@@ -526,7 +531,7 @@ void QBlitterPaintEngine::fill(const QVectorPath &path, const QBrush &brush)
 {
     Q_D(QBlitterPaintEngine);
     if (path.shape() == QVectorPath::RectangleHint) {
-        QRectF rect(((QPointF *) path.points())[0], ((QPointF *) path.points())[2]);
+        QRectF rect(((const QPointF *) path.points())[0], ((const QPointF *) path.points())[2]);
         fillRect(rect, brush);
     } else {
         d->lock();
@@ -597,12 +602,11 @@ void QBlitterPaintEngine::fillRect(const QRectF &rect, const QBrush &brush)
                     d->pmData->blittable()->drawPixmap(targetRect, pm, srcRect);
                 }
             } else if (clipData->hasRegionClip) {
-                QVector<QRect> clipRects = clipData->clipRegion.rects();
                 QRect unclippedTargetRect(x, y, blitWidth, blitHeight);
-                QRegion intersectedRects = clipData->clipRegion.intersected(unclippedTargetRect);
-
-                for (int i = 0; i < intersectedRects.rects().size(); ++i) {
-                    QRect targetRect = intersectedRects.rects().at(i);
+                const QVector<QRect> intersectedRects = clipData->clipRegion.intersected(unclippedTargetRect).rects();
+                const int intersectedSize = intersectedRects.size();
+                for (int i = 0; i < intersectedSize; ++i) {
+                    const QRect &targetRect = intersectedRects.at(i);
                     if (!targetRect.isValid() || targetRect.isEmpty())
                         continue;
                     int tmpSrcX = srcX + (targetRect.x() - x);
@@ -796,6 +800,28 @@ void QBlitterPaintEngine::drawStaticTextItem(QStaticTextItem *sti)
 //#### d->pmData->markRasterOverlay(sti);
     qWarning("not implemented: markRasterOverlay for QStaticTextItem");
 #endif
+}
+
+bool QBlitterPaintEngine::drawCachedGlyphs(int numGlyphs, const glyph_t *glyphs, const QFixedPoint *positions, QFontEngine *fontEngine)
+{
+    Q_D(QBlitterPaintEngine);
+    QFontEngine::GlyphFormat glyphFormat = d->glyphCacheFormat;
+    if (fontEngine->glyphFormat != QFontEngine::Format_None)
+        glyphFormat = fontEngine->glyphFormat;
+
+    const QClipData *clipData = d->clip();
+    const bool complexClip = clipData && !clipData->hasRectClip;
+
+    const QPainterState *s = state();
+    if (d->caps.canBlitterDrawCachedGlyphs(s->transform(), glyphFormat, complexClip)) {
+        d->unlock();
+        const bool result = d->pmData->blittable()->drawCachedGlyphs(s, glyphFormat, numGlyphs, glyphs, positions, fontEngine);
+        // Lock again as the raster paint engine might draw decorations now.
+        d->lock();
+        return result;
+    } else {
+        return QRasterPaintEngine::drawCachedGlyphs(numGlyphs, glyphs, positions, fontEngine);
+    }
 }
 
 QT_END_NAMESPACE

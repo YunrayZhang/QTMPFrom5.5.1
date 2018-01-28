@@ -1,39 +1,31 @@
 /****************************************************************************
 **
-** Copyright (C) 2013 Digia Plc and/or its subsidiary(-ies).
-** Contact: http://www.qt-project.org/legal
+** Copyright (C) 2015 The Qt Company Ltd.
+** Contact: http://www.qt.io/licensing/
 **
 ** This file is part of the test suite of the Qt Toolkit.
 **
-** $QT_BEGIN_LICENSE:LGPL$
+** $QT_BEGIN_LICENSE:LGPL21$
 ** Commercial License Usage
 ** Licensees holding valid commercial Qt licenses may use this file in
 ** accordance with the commercial license agreement provided with the
 ** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and Digia.  For licensing terms and
-** conditions see http://qt.digia.com/licensing.  For further information
-** use the contact form at http://qt.digia.com/contact-us.
+** a written agreement between you and The Qt Company. For licensing terms
+** and conditions see http://www.qt.io/terms-conditions. For further
+** information use the contact form at http://www.qt.io/contact-us.
 **
 ** GNU Lesser General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 2.1 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU Lesser General Public License version 2.1 requirements
-** will be met: http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
+** General Public License version 2.1 or version 3 as published by the Free
+** Software Foundation and appearing in the file LICENSE.LGPLv21 and
+** LICENSE.LGPLv3 included in the packaging of this file. Please review the
+** following information to ensure the GNU Lesser General Public License
+** requirements will be met: https://www.gnu.org/licenses/lgpl.html and
+** http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
 **
-** In addition, as a special exception, Digia gives you certain additional
-** rights.  These rights are described in the Digia Qt LGPL Exception
+** As a special exception, The Qt Company gives you certain additional
+** rights. These rights are described in The Qt Company LGPL Exception
 ** version 1.1, included in the file LGPL_EXCEPTION.txt in this package.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3.0 as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU General Public License version 3.0 requirements will be
-** met: http://www.gnu.org/copyleft/gpl.html.
-**
 **
 ** $QT_END_LICENSE$
 **
@@ -44,7 +36,6 @@
 #include <QLoggingCategory>
 
 Q_LOGGING_CATEGORY(TST_LOG, "tst.log")
-Q_LOGGING_CATEGORY(TST_LOG1, "tst.log1")
 Q_LOGGING_CATEGORY(Digia_Oslo_Office_com, "Digia.Oslo.Office.com")
 Q_LOGGING_CATEGORY(Digia_Oulu_Office_com, "Digia.Oulu.Office.com")
 Q_LOGGING_CATEGORY(Digia_Berlin_Office_com, "Digia.Berlin.Office.com")
@@ -66,6 +57,7 @@ QByteArray qMyMessageFormatString(QtMsgType type, const QMessageLogContext &cont
         message.append(context.category);
         switch (type) {
         case QtDebugMsg:   message.append(".debug"); break;
+        case QtInfoMsg:    message.append(".info"); break;
         case QtWarningMsg: message.append(".warning"); break;
         case QtCriticalMsg:message.append(".critical"); break;
         case QtFatalMsg:   message.append(".fatal"); break;
@@ -278,6 +270,14 @@ private slots:
         QCOMPARE(customCategory.isCriticalEnabled(), true);
         QCOMPARE(customCategory.isEnabled(QtCriticalMsg), true);
 
+        QLoggingCategory onlyWarningsCategory("withType", QtWarningMsg);
+        QCOMPARE(onlyWarningsCategory.isDebugEnabled(), false);
+        QCOMPARE(onlyWarningsCategory.isEnabled(QtDebugMsg), false);
+        QCOMPARE(onlyWarningsCategory.isWarningEnabled(), true);
+        QCOMPARE(onlyWarningsCategory.isEnabled(QtWarningMsg), true);
+        QCOMPARE(onlyWarningsCategory.isCriticalEnabled(), true);
+        QCOMPARE(onlyWarningsCategory.isEnabled(QtCriticalMsg), true);
+
         // make sure nothing has printed warnings
         QVERIFY(logMessage.isEmpty());
     }
@@ -340,6 +340,11 @@ private slots:
         qDebug("%s", "Check debug with no filter active");
         QCOMPARE(logMessage, buf);
 
+        // Check default info
+        buf = QStringLiteral("default.info: Check info with no filter active");
+        qInfo("%s", "Check info with no filter active");
+        QCOMPARE(logMessage, buf);
+
         // Check default warning
         buf = QStringLiteral("default.warning: Check warning with no filter active");
         qWarning("%s", "Check warning with no filter active");
@@ -367,6 +372,46 @@ private slots:
         QCOMPARE(logMessage, buf);
     }
 
+    Q_LOGGING_CATEGORY(TST_MACRO_1, "tst.macro.1")
+#ifdef Q_COMPILER_VARIADIC_MACROS
+    Q_LOGGING_CATEGORY(TST_MACRO_2, "tst.macro.2", QtDebugMsg)
+    Q_LOGGING_CATEGORY(TST_MACRO_3, "tst.macro.3", QtFatalMsg)
+    Q_LOGGING_CATEGORY(TST_MACRO_4, "tst.macro.4", QtInfoMsg)
+#endif
+
+    void QLoggingCategoryMacro()
+    {
+        const QLoggingCategory &cat1 = TST_MACRO_1();
+        QCOMPARE(cat1.categoryName(), "tst.macro.1");
+        QCOMPARE(cat1.isDebugEnabled(), true);
+        QCOMPARE(cat1.isInfoEnabled(), true);
+        QCOMPARE(cat1.isWarningEnabled(), true);
+        QCOMPARE(cat1.isCriticalEnabled(), true);
+
+#ifdef Q_COMPILER_VARIADIC_MACROS
+        const QLoggingCategory &cat2 = TST_MACRO_2();
+        QCOMPARE(cat2.categoryName(), "tst.macro.2");
+        QCOMPARE(cat2.isDebugEnabled(), true);
+        QCOMPARE(cat2.isInfoEnabled(), true);
+        QCOMPARE(cat2.isWarningEnabled(), true);
+        QCOMPARE(cat2.isCriticalEnabled(), true);
+
+        const QLoggingCategory &cat3 = TST_MACRO_3();
+        QCOMPARE(cat3.categoryName(), "tst.macro.3");
+        QCOMPARE(cat3.isDebugEnabled(), false);
+        QCOMPARE(cat3.isInfoEnabled(), false);
+        QCOMPARE(cat3.isWarningEnabled(), false);
+        QCOMPARE(cat3.isCriticalEnabled(), false);
+
+        const QLoggingCategory &cat4 = TST_MACRO_4();
+        QCOMPARE(cat4.categoryName(), "tst.macro.4");
+        QCOMPARE(cat4.isDebugEnabled(), false);
+        QCOMPARE(cat4.isInfoEnabled(), true);
+        QCOMPARE(cat4.isWarningEnabled(), true);
+        QCOMPARE(cat4.isCriticalEnabled(), true);
+#endif
+    }
+
     void qCDebugMacros()
     {
         QString buf;
@@ -377,6 +422,13 @@ private slots:
         qCDebug(defaultCategory) << "Check debug with no filter active";
         QCOMPARE(logMessage, buf);
         qCDebug(defaultCategory, "Check debug with no filter active");
+        QCOMPARE(logMessage, buf);
+
+        // Check default info
+        buf = QStringLiteral("default.info: Check info with no filter active");
+        qCInfo(defaultCategory) << "Check info with no filter active";
+        QCOMPARE(logMessage, buf);
+        qCInfo(defaultCategory, "Check info with no filter active");
         QCOMPARE(logMessage, buf);
 
         // Check default warning
@@ -402,6 +454,11 @@ private slots:
         QCOMPARE(logMessage, buf);
 
         qCDebug(customCategory) << "Check debug with no filter active";
+        QCOMPARE(logMessage, buf);
+
+        // Check custom info
+        buf = QStringLiteral("custom.info: Check info with no filter active");
+        qCInfo(customCategory) << "Check info with no filter active";
         QCOMPARE(logMessage, buf);
 
         // Check custom warning
@@ -465,12 +522,17 @@ private slots:
         usedefaultformat = false;
     }
 
-    // Check the Debug, Warning and critical without having category active. should be active.
+    // Check the Debug, Info, Warning and critical without having category active. should be active.
     void checkNoCategoryLogActive()
     {
         // Check default debug
         QString buf = QStringLiteral("default.debug: Check default Debug with no log active");
         qDebug() << "Check default Debug with no log active";
+        QCOMPARE(cleanLogLine(logMessage), cleanLogLine(buf));
+
+        // Check default info
+        buf = QStringLiteral("default.info: Check default Info with no log active");
+        qInfo() << "Check default Info with no log active";
         QCOMPARE(cleanLogLine(logMessage), cleanLogLine(buf));
 
         // Check default warning
@@ -486,8 +548,11 @@ private slots:
         // Check category debug
         buf = QStringLiteral("tst.log.debug: Check category Debug with no log active");
         qCDebug(TST_LOG) << "Check category Debug with no log active";
-        QCOMPARE(logMessage, buf);
 
+        // Check category info
+        buf = QStringLiteral("tst.log.info: Check category Info with no log active");
+        qCInfo(TST_LOG) << "Check category Info with no log active";
+        QCOMPARE(logMessage, buf);
 
         // Check default warning
         buf = QStringLiteral("tst.log.warning: Check category Warning with no log active");
@@ -522,6 +587,9 @@ private slots:
         qCDebug(TST_LOG) << "DebugType";
         buf = QStringLiteral("tst.log.debug: DebugType");
         QCOMPARE(cleanLogLine(logMessage), cleanLogLine(buf));
+        qCInfo(TST_LOG) << "InfoType";
+        buf = QStringLiteral("tst.log.info: InfoType");
+        QCOMPARE(cleanLogLine(logMessage), cleanLogLine(buf));
         qCWarning(TST_LOG) << "WarningType";
         buf = QStringLiteral("tst.log.warning: WarningType");
         QCOMPARE(cleanLogLine(logMessage), cleanLogLine(buf));
@@ -533,11 +601,13 @@ private slots:
     void checkLegacyLogs()
     {
         logMessage = "";
+        // all are on by default
         qDebug() << "DefaultDebug";
         QString buf = QStringLiteral("default.debug: DefaultDebug");
         QCOMPARE(cleanLogLine(logMessage), cleanLogLine(buf));
-
-        // debug off by default, warning and critical are on
+        qInfo() << "DefaultInfo";
+        buf = QStringLiteral("default.info: DefaultInfo");
+        QCOMPARE(cleanLogLine(logMessage), cleanLogLine(buf));
         qWarning() << "DefaultWarning";
         buf = QStringLiteral("default.warning: DefaultWarning");
         QCOMPARE(cleanLogLine(logMessage), cleanLogLine(buf));
@@ -545,12 +615,16 @@ private slots:
         buf = QStringLiteral("default.critical: DefaultCritical");
         QCOMPARE(cleanLogLine(logMessage), cleanLogLine(buf));
 
-        // Enable debug
-        _config->addKey("default.debug", true);
+        // Disable debug
+        _config->addKey("default.debug", false);
         QLoggingCategory::setFilterRules(_config->array());
 
+        logMessage = "no change";
         qDebug() << "DefaultDebug1";
-        buf = QStringLiteral("default.debug: DefaultDebug1");
+        buf = QStringLiteral("no change");
+        QCOMPARE(cleanLogLine(logMessage), cleanLogLine(buf));
+        qInfo() << "DefaultInfo1";
+        buf = QStringLiteral("default.info: DefaultInfo1");
         QCOMPARE(cleanLogLine(logMessage), cleanLogLine(buf));
         qWarning() << "DefaultWarning1";
         buf = QStringLiteral("default.warning: DefaultWarning1");
@@ -559,7 +633,11 @@ private slots:
         buf = QStringLiteral("default.critical: DefaultCritical1");
         QCOMPARE(cleanLogLine(logMessage), cleanLogLine(buf));
 
-        // Disable warning
+        _config->clear();
+        QLoggingCategory::setFilterRules(_config->array());
+
+        // Disable info, warning
+        _config->addKey("default.info", false);
         _config->addKey("default.warning", false);
         QLoggingCategory::setFilterRules(_config->array());
 
@@ -567,6 +645,9 @@ private slots:
         buf = QStringLiteral("default.debug: DefaultDebug2");
         QCOMPARE(cleanLogLine(logMessage), cleanLogLine(buf));
         logMessage = "no change";
+        qInfo() << "DefaultInfo2";
+        buf = QStringLiteral("no change");
+        QCOMPARE(cleanLogLine(logMessage), cleanLogLine(buf));
         qWarning() << "DefaultWarning2";
         buf = QStringLiteral("no change");
         QCOMPARE(cleanLogLine(logMessage), cleanLogLine(buf));
@@ -583,6 +664,8 @@ private slots:
         qDebug() << "DefaultDebug3";
         buf = QStringLiteral("no change");
         QCOMPARE(cleanLogLine(logMessage), cleanLogLine(buf));
+        qInfo() << "DefaultInfo3";
+        QCOMPARE(cleanLogLine(logMessage), cleanLogLine(buf));
         qWarning() << "DefaultWarning3";
         QCOMPARE(cleanLogLine(logMessage), cleanLogLine(buf));
         qCritical() << "DefaultCritical3";
@@ -591,12 +674,16 @@ private slots:
         // Enable default logs
         _config->addKey("default.critical", true);
         _config->addKey("default.warning", true);
+        _config->addKey("default.info", true);
         _config->addKey("default.debug", true);
         QLoggingCategory::setFilterRules(_config->array());
 
         // Ensure all are on
         qDebug() << "DefaultDebug4";
         buf = QStringLiteral("default.debug: DefaultDebug4");
+        QCOMPARE(cleanLogLine(logMessage), cleanLogLine(buf));
+        qInfo() << "DefaultInfo4";
+        buf = QStringLiteral("default.info: DefaultInfo4");
         QCOMPARE(cleanLogLine(logMessage), cleanLogLine(buf));
         qWarning() << "DefaultWarning4";
         buf = QStringLiteral("default.warning: DefaultWarning4");
@@ -613,6 +700,8 @@ private slots:
         logMessage = "no change";
         buf = QStringLiteral("no change");
         qDebug() << "DefaultDebug5";
+        QCOMPARE(cleanLogLine(logMessage), cleanLogLine(buf));
+        qDebug() << "DefaultInfo5";
         QCOMPARE(cleanLogLine(logMessage), cleanLogLine(buf));
         qWarning() << "DefaultWarning5";
         QCOMPARE(cleanLogLine(logMessage), cleanLogLine(buf));
@@ -683,6 +772,7 @@ private slots:
         QCOMPARE(cleanLogLine(logMessage), cleanLogLine(buf));
         logMessage = "no change";
         buf = QStringLiteral("no change");
+        qCInfo(Digia_Oulu_Office_com) << "Info: Digia.Oulu.Office.com 4";
         qCWarning(Digia_Oulu_Office_com) << "Warning: Digia.Oulu.Office.com 4";
         qCCritical(Digia_Berlin_Office_com) << "Critical: Digia.Berlin.Office.com 4";
         QCOMPARE(cleanLogLine(logMessage), cleanLogLine(buf));
@@ -694,6 +784,9 @@ private slots:
 
         qCDebug(Digia_Oslo_Office_com) << "Debug: Digia.Oslo.Office.com 5";
         buf = QStringLiteral("Digia.Oslo.Office.com.debug: Debug: Digia.Oslo.Office.com 5");
+        QCOMPARE(cleanLogLine(logMessage), cleanLogLine(buf));
+        qCInfo(Digia_Oulu_Office_com) << "Info: Digia.Oulu.Office.com 5";
+        buf = QStringLiteral("Digia.Oulu.Office.com.info: Info: Digia.Oulu.Office.com 5");
         QCOMPARE(cleanLogLine(logMessage), cleanLogLine(buf));
         qCWarning(Digia_Oulu_Office_com) << "Warning: Digia.Oulu.Office.com 5";
         buf = QStringLiteral("Digia.Oulu.Office.com.warning: Warning: Digia.Oulu.Office.com 5");
@@ -709,6 +802,7 @@ private slots:
         logMessage = "no change";
         buf = QStringLiteral("no change");
         qCDebug(Digia_Oslo_Office_com) << "Debug: Digia.Oslo.Office.com 6";
+        qCInfo(Digia_Oslo_Office_com) << "Info: Digia.Oslo.Office.com 6";
         qCWarning(Digia_Oulu_Office_com) << "Warning: Digia.Oulu.Office.com 6";
         qCCritical(Digia_Berlin_Office_com) << "Critical: Digia.Berlin.Office.com 6";
         QCOMPARE(cleanLogLine(logMessage), cleanLogLine(buf));
@@ -718,6 +812,9 @@ private slots:
 
         qCDebug(Digia_Oslo_Office_com) << "Debug: Digia.Oslo.Office.com 7";
         buf = QStringLiteral("Digia.Oslo.Office.com.debug: Debug: Digia.Oslo.Office.com 7");
+        QCOMPARE(cleanLogLine(logMessage), cleanLogLine(buf));
+        qCInfo(Digia_Oulu_Office_com) << "Info: Digia.Oulu.Office.com 7";
+        buf = QStringLiteral("Digia.Oulu.Office.com.info: Info: Digia.Oulu.Office.com 7");
         QCOMPARE(cleanLogLine(logMessage), cleanLogLine(buf));
         qCWarning(Digia_Oulu_Office_com) << "Warning: Digia.Oulu.Office.com 7";
         buf = QStringLiteral("Digia.Oulu.Office.com.warning: Warning: Digia.Oulu.Office.com 7");
@@ -742,6 +839,10 @@ private slots:
             qCDebug(mycategoryobject) << "My Category Object";
             QCOMPARE(cleanLogLine(logMessage), cleanLogLine(buf));
 
+            buf = QStringLiteral("LoggingCategoryObject.info: My Category Object");
+            qCInfo(mycategoryobject) << "My Category Object";
+            QCOMPARE(cleanLogLine(logMessage), cleanLogLine(buf));
+
             buf = QStringLiteral("LoggingCategoryObject.warning: My Category Object");
             qCWarning(mycategoryobject) << "My Category Object";
             QCOMPARE(cleanLogLine(logMessage), cleanLogLine(buf));
@@ -757,6 +858,10 @@ private slots:
 
             buf = QStringLiteral("LoggingCategoryObject.warning: My Category Object");
             qCWarning(mycategoryobject) << "My Category Object";
+            QCOMPARE(cleanLogLine(logMessage), cleanLogLine(buf));
+
+            buf = QStringLiteral("LoggingCategoryObject.info: My Category Object");
+            qCInfo(mycategoryobject) << "My Category Object";
             QCOMPARE(cleanLogLine(logMessage), cleanLogLine(buf));
 
             buf = QStringLiteral("LoggingCategoryObject.critical: My Category Object");

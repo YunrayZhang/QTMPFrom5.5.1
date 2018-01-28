@@ -1,40 +1,32 @@
 /****************************************************************************
 **
 ** Copyright (C) 2014 BogDan Vatra <bogdan@kde.org>
-** Copyright (C) 2013 Digia Plc and/or its subsidiary(-ies).
-** Contact: http://www.qt-project.org/legal
+** Copyright (C) 2015 The Qt Company Ltd.
+** Contact: http://www.qt.io/licensing/
 **
 ** This file is part of the Android port of the Qt Toolkit.
 **
-** $QT_BEGIN_LICENSE:LGPL$
+** $QT_BEGIN_LICENSE:LGPL21$
 ** Commercial License Usage
 ** Licensees holding valid commercial Qt licenses may use this file in
 ** accordance with the commercial license agreement provided with the
 ** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and Digia.  For licensing terms and
-** conditions see http://qt.digia.com/licensing.  For further information
-** use the contact form at http://qt.digia.com/contact-us.
+** a written agreement between you and The Qt Company. For licensing terms
+** and conditions see http://www.qt.io/terms-conditions. For further
+** information use the contact form at http://www.qt.io/contact-us.
 **
 ** GNU Lesser General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 2.1 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU Lesser General Public License version 2.1 requirements
-** will be met: http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
+** General Public License version 2.1 or version 3 as published by the Free
+** Software Foundation and appearing in the file LICENSE.LGPLv21 and
+** LICENSE.LGPLv3 included in the packaging of this file. Please review the
+** following information to ensure the GNU Lesser General Public License
+** requirements will be met: https://www.gnu.org/licenses/lgpl.html and
+** http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
 **
-** In addition, as a special exception, Digia gives you certain additional
-** rights.  These rights are described in the Digia Qt LGPL Exception
+** As a special exception, The Qt Company gives you certain additional
+** rights. These rights are described in The Qt Company LGPL Exception
 ** version 1.1, included in the file LGPL_EXCEPTION.txt in this package.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3.0 as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU General Public License version 3.0 requirements will be
-** met: http://www.gnu.org/copyleft/gpl.html.
-**
 **
 ** $QT_END_LICENSE$
 **
@@ -108,13 +100,15 @@ public class QtNative
         }
     }
 
-    public static boolean openURL(String url)
+    public static boolean openURL(String url, String mime)
     {
         boolean ok = true;
 
         try {
             Uri uri = Uri.parse(url);
             Intent intent = new Intent(Intent.ACTION_VIEW, uri);
+            if (!mime.isEmpty())
+                intent.setDataAndType(uri, mime);
             activity().startActivity(intent);
         } catch (Exception e) {
             e.printStackTrace();
@@ -189,6 +183,16 @@ public class QtNative
                 m_activity.runOnUiThread(action);
             return m_activity != null;
         }
+    }
+
+    private static void runQtOnUiThread(final long id)
+    {
+        runAction(new Runnable() {
+            @Override
+            public void run() {
+                QtNative.onAndroidUiThread(id);
+            }
+        });
     }
 
     public static boolean startApplication(String params,
@@ -277,12 +281,14 @@ public class QtNative
         if (action == MotionEvent.ACTION_MOVE) {
             int hsz = event.getHistorySize();
             if (hsz > 0) {
-                if (event.getX(index) != event.getHistoricalX(index, hsz-1)
-                    || event.getY(index) != event.getHistoricalY(index, hsz-1)) {
-                    return 1;
-                } else {
-                    return 2;
+                float x = event.getX(index);
+                float y = event.getY(index);
+                for (int h = 0; h < hsz; ++h) {
+                    if ( event.getHistoricalX(index, h) != x ||
+                         event.getHistoricalY(index, h) != y )
+                        return 1;
                 }
+                return 2;
             }
             return 1;
         }
@@ -440,12 +446,12 @@ public class QtNative
         return m_clipboardManager.getText().toString();
     }
 
-    private static void openContextMenu()
+    private static void openContextMenu(final int x, final int y, final int w, final int h)
     {
         runAction(new Runnable() {
             @Override
             public void run() {
-                m_activityDelegate.openContextMenu();
+                m_activityDelegate.openContextMenu(x, y, w, h);
             }
         });
     }
@@ -466,6 +472,16 @@ public class QtNative
             @Override
             public void run() {
                 m_activityDelegate.resetOptionsMenu();
+            }
+        });
+    }
+
+    private static void openOptionsMenu()
+    {
+        runAction(new Runnable() {
+            @Override
+            public void run() {
+                m_activity.openOptionsMenu();
             }
         });
     }
@@ -527,12 +543,42 @@ public class QtNative
         });
     }
 
+    private static void bringChildToFront(final int id)
+    {
+        runAction(new Runnable() {
+            @Override
+            public void run() {
+                m_activityDelegate.bringChildToFront(id);
+            }
+        });
+    }
+
+    private static void bringChildToBack(final int id)
+    {
+        runAction(new Runnable() {
+            @Override
+            public void run() {
+                m_activityDelegate.bringChildToBack(id);
+            }
+        });
+    }
+
     private static void destroySurface(final int id)
     {
         runAction(new Runnable() {
             @Override
             public void run() {
                 m_activityDelegate.destroySurface(id);
+            }
+        });
+    }
+
+    private static void initializeAccessibility()
+    {
+        runAction(new Runnable() {
+            @Override
+            public void run() {
+                m_activityDelegate.initializeAccessibility();
             }
         });
     }
@@ -559,8 +605,8 @@ public class QtNative
     // pointer methods
 
     // keyboard methods
-    public static native void keyDown(int key, int unicode, int modifier);
-    public static native void keyUp(int key, int unicode, int modifier);
+    public static native void keyDown(int key, int unicode, int modifier, boolean autoRepeat);
+    public static native void keyUp(int key, int unicode, int modifier, boolean autoRepeat);
     public static native void keyboardVisibilityChanged(boolean visibility);
     // keyboard methods
 
@@ -581,10 +627,14 @@ public class QtNative
     public static native void onOptionsMenuClosed(Menu menu);
 
     public static native void onCreateContextMenu(ContextMenu menu);
+    public static native void fillContextMenu(Menu menu);
     public static native boolean onContextItemSelected(int itemId, boolean checked);
     public static native void onContextMenuClosed(Menu menu);
     // menu methods
 
     // activity methods
     public static native void onActivityResult(int requestCode, int resultCode, Intent data);
+    public static native void onNewIntent(Intent data);
+
+    public static native void onAndroidUiThread(long id);
 }

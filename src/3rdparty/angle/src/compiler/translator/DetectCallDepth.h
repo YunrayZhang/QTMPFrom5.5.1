@@ -4,13 +4,11 @@
 // found in the LICENSE file.
 //
 
-#ifndef COMPILER_DETECT_RECURSION_H_
-#define COMPILER_DETECT_RECURSION_H_
-
-#include "GLSLANG/ShaderLang.h"
+#ifndef COMPILER_TRANSLATOR_DETECTCALLDEPTH_H_
+#define COMPILER_TRANSLATOR_DETECTCALLDEPTH_H_
 
 #include <limits.h>
-#include "compiler/translator/intermediate.h"
+#include "compiler/translator/IntermNode.h"
 #include "compiler/translator/VariableInfo.h"
 
 class TInfoSink;
@@ -77,4 +75,4 @@ private:
     void operator=(const DetectCallDepth&);
 };
 
-#endif  // COMPILER_DETECT_RECURSION_H_
+#endif  // COMPILER_TRANSLATOR_DETECTCALLDEPTH_H_

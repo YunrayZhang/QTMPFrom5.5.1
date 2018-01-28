@@ -1,39 +1,31 @@
 /****************************************************************************
 **
-** Copyright (C) 2013 Digia Plc and/or its subsidiary(-ies).
-** Contact: http://www.qt-project.org/legal
+** Copyright (C) 2015 The Qt Company Ltd.
+** Contact: http://www.qt.io/licensing/
 **
 ** This file is part of the test suite of the Qt Toolkit.
 **
-** $QT_BEGIN_LICENSE:LGPL$
+** $QT_BEGIN_LICENSE:LGPL21$
 ** Commercial License Usage
 ** Licensees holding valid commercial Qt licenses may use this file in
 ** accordance with the commercial license agreement provided with the
 ** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and Digia.  For licensing terms and
-** conditions see http://qt.digia.com/licensing.  For further information
-** use the contact form at http://qt.digia.com/contact-us.
+** a written agreement between you and The Qt Company. For licensing terms
+** and conditions see http://www.qt.io/terms-conditions. For further
+** information use the contact form at http://www.qt.io/contact-us.
 **
 ** GNU Lesser General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 2.1 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU Lesser General Public License version 2.1 requirements
-** will be met: http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
+** General Public License version 2.1 or version 3 as published by the Free
+** Software Foundation and appearing in the file LICENSE.LGPLv21 and
+** LICENSE.LGPLv3 included in the packaging of this file. Please review the
+** following information to ensure the GNU Lesser General Public License
+** requirements will be met: https://www.gnu.org/licenses/lgpl.html and
+** http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
 **
-** In addition, as a special exception, Digia gives you certain additional
-** rights.  These rights are described in the Digia Qt LGPL Exception
+** As a special exception, The Qt Company gives you certain additional
+** rights. These rights are described in The Qt Company LGPL Exception
 ** version 1.1, included in the file LGPL_EXCEPTION.txt in this package.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3.0 as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU General Public License version 3.0 requirements will be
-** met: http://www.gnu.org/copyleft/gpl.html.
-**
 **
 ** $QT_END_LICENSE$
 **
@@ -54,6 +46,7 @@
 #include <qlabel.h>
 #include <qtextedit.h>
 #include <qstylehints.h>
+#include <qdesktopwidget.h>
 #include <private/qmainwindowlayout_p.h>
 #include <private/qdockarealayout_p.h>
 
@@ -112,6 +105,7 @@ public:
     tst_QMainWindow();
 
 private slots:
+    void cleanup();
     void getSetCheck();
     void constructor();
     void iconSize();
@@ -139,12 +133,15 @@ private slots:
     void saveRestore_data();
     void statusBar();
 #endif
+    void contentsMargins_data();
+    void contentsMargins();
     void isSeparator();
 #ifndef QTEST_NO_CURSOR
     void setCursor();
 #endif
     void addToolbarAfterShow();
     void centralWidgetSize();
+    void fixedSizeCentralWidget();
     void dockWidgetSize();
     void QTBUG2774_stylechange();
     void QTBUG15080_restoreState();
@@ -153,6 +150,12 @@ private slots:
 #endif
     void QTBUG21378_animationFinished();
 };
+
+
+void tst_QMainWindow::cleanup()
+{
+    QVERIFY(QApplication::topLevelWidgets().isEmpty());
+}
 
 // Testing get/set functions
 void tst_QMainWindow::getSetCheck()
@@ -749,7 +752,40 @@ void tst_QMainWindow::statusBar()
         QVERIFY(indexOfSb == -1);
     }
 }
+
 #endif
+
+void tst_QMainWindow::contentsMargins_data()
+{
+    QTest::addColumn<int>("contentsMargin");
+    QTest::newRow("0") << 0;
+    QTest::newRow("10") << 10;
+}
+
+void tst_QMainWindow::contentsMargins()
+{
+    QFETCH(int, contentsMargin);
+
+    QMainWindow mw;
+    const QRect availGeometry = QApplication::desktop()->availableGeometry();
+    mw.menuBar()->addMenu("File");
+    mw.setWindowTitle(QLatin1String(QTest::currentTestFunction())
+                      + QLatin1Char(' ') + QLatin1String(QTest::currentDataTag()));
+    mw.resize(availGeometry.size() / 4);
+    mw.move((availGeometry.width() - mw.width()) / 2,
+            (availGeometry.height() - mw.height()) / 2);
+    mw.setContentsMargins(contentsMargin, contentsMargin, contentsMargin, contentsMargin);
+    mw.statusBar()->showMessage("Hello");
+
+    mw.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&mw));
+
+    QCOMPARE(mw.menuBar()->geometry().left(), contentsMargin);
+    QCOMPARE(mw.menuBar()->geometry().top(), contentsMargin);
+
+    QCOMPARE(mw.statusBar()->geometry().left(), contentsMargin);
+    QCOMPARE(mw.statusBar()->geometry().bottom() + 1, mw.height() - contentsMargin);
+}
 
 void tst_QMainWindow::centralWidget()
 {
@@ -861,6 +897,7 @@ void tst_QMainWindow::takeCentralWidget() {
 
     QVERIFY(!w2.isNull());
     QCOMPARE(w2.data(), hopefullyW2);
+    delete w2;
 }
 
 void tst_QMainWindow::corner()
@@ -1743,6 +1780,50 @@ void tst_QMainWindow::centralWidgetSize()
 
     mainWindow.show();
     QTRY_COMPARE(widget.size(), widget.sizeHint());
+}
+
+void tst_QMainWindow::fixedSizeCentralWidget()
+{
+    // QTBUG-40410: dock widgets does not get all the available space when
+    // central widget is fixed size
+    QMainWindow mainWindow;
+    mainWindow.setCorner(Qt::TopLeftCorner, Qt::LeftDockWidgetArea);
+
+    MyWidget widget;
+    widget.setFixedSize(100,100);
+    mainWindow.setCentralWidget(&widget);
+
+    QDockWidget dock("D1");
+    QWidget *child = new MyWidget;
+    dock.setWidget(child);
+    mainWindow.addDockWidget(Qt::TopDockWidgetArea, &dock);
+
+    QDockWidget dock2("D2");
+    dock2.setWidget(new MyWidget);
+    mainWindow.addDockWidget(Qt::LeftDockWidgetArea, &dock2);
+
+    QSize sizeH = mainWindow.sizeHint();
+    QSize mwSize = QSize(sizeH.width(), sizeH.height() * 2);
+    mainWindow.resize(mwSize);
+    mainWindow.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&mainWindow));
+    if (mainWindow.height() < mwSize.height())
+        QSKIP("The screen is too small for this test");
+
+    // first, check that we get more than the size hint when we have more space
+    QTRY_VERIFY(child->height() > child->sizeHint().height());
+    int childHeight = child->height();
+
+    if (qGuiApp->styleHints()->showIsFullScreen())
+        QSKIP("The platform is auto maximizing, so we cannot resize the window");
+
+    // then, check that we get nothing when there is no space
+    mainWindow.resize(100,100);
+    QTRY_COMPARE(child->height(), 0);
+
+    // finally verify that we get the space back when we resize to the old size
+    mainWindow.resize(mwSize);
+    QTRY_COMPARE(child->height(), childHeight);
 }
 
 void tst_QMainWindow::dockWidgetSize()

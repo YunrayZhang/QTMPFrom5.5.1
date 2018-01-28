@@ -1,40 +1,32 @@
 /****************************************************************************
 **
-** Copyright (C) 2013 Digia Plc and/or its subsidiary(-ies).
+** Copyright (C) 2015 The Qt Company Ltd.
 ** Copyright (C) 2014 BlackBerry Limited. All rights reserved.
-** Contact: http://www.qt-project.org/legal
+** Contact: http://www.qt.io/licensing/
 **
 ** This file is part of the QtNetwork module of the Qt Toolkit.
 **
-** $QT_BEGIN_LICENSE:LGPL$
+** $QT_BEGIN_LICENSE:LGPL21$
 ** Commercial License Usage
 ** Licensees holding valid commercial Qt licenses may use this file in
 ** accordance with the commercial license agreement provided with the
 ** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and Digia.  For licensing terms and
-** conditions see http://qt.digia.com/licensing.  For further information
-** use the contact form at http://qt.digia.com/contact-us.
+** a written agreement between you and The Qt Company. For licensing terms
+** and conditions see http://www.qt.io/terms-conditions. For further
+** information use the contact form at http://www.qt.io/contact-us.
 **
 ** GNU Lesser General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 2.1 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU Lesser General Public License version 2.1 requirements
-** will be met: http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
+** General Public License version 2.1 or version 3 as published by the Free
+** Software Foundation and appearing in the file LICENSE.LGPLv21 and
+** LICENSE.LGPLv3 included in the packaging of this file. Please review the
+** following information to ensure the GNU Lesser General Public License
+** requirements will be met: https://www.gnu.org/licenses/lgpl.html and
+** http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
 **
-** In addition, as a special exception, Digia gives you certain additional
-** rights.  These rights are described in the Digia Qt LGPL Exception
+** As a special exception, The Qt Company gives you certain additional
+** rights. These rights are described in The Qt Company LGPL Exception
 ** version 1.1, included in the file LGPL_EXCEPTION.txt in this package.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3.0 as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU General Public License version 3.0 requirements will be
-** met: http://www.gnu.org/copyleft/gpl.html.
-**
 **
 ** $QT_END_LICENSE$
 **
@@ -245,7 +237,12 @@ void QHttpProtocolHandler::_q_readyRead()
     }
 
     if (m_channel->isSocketWaiting() || m_channel->isSocketReading()) {
-        m_channel->state = QHttpNetworkConnectionChannel::ReadingState;
+        if (m_socket->bytesAvailable()) {
+            // We might get a spurious call from readMoreLater()
+            // call of the QHttpNetworkConnection even while the socket is disconnecting.
+            // Therefore check if there is actually bytes available before changing the channel state.
+            m_channel->state = QHttpNetworkConnectionChannel::ReadingState;
+        }
         if (m_reply)
             _q_receiveReply();
     }
@@ -258,7 +255,6 @@ bool QHttpProtocolHandler::sendRequest()
     if (!m_reply) {
         // heh, how should that happen!
         qWarning() << "QAbstractProtocolHandler::sendRequest() called without QHttpNetworkReply";
-        m_channel->state = QHttpNetworkConnectionChannel::IdleState;
         return false;
     }
 
@@ -376,6 +372,13 @@ bool QHttpProtocolHandler::sendRequest()
                 // nothing to read currently, break the loop
                 break;
             } else {
+                if (m_channel->written != uploadByteDevice->pos()) {
+                    // Sanity check. This was useful in tracking down an upload corruption.
+                    qWarning() << "QHttpProtocolHandler: Internal error in sendRequest. Expected to write at position" << m_channel->written << "but read device is at" << uploadByteDevice->pos();
+                    Q_ASSERT(m_channel->written == uploadByteDevice->pos());
+                    m_connection->d_func()->emitReplyError(m_socket, m_reply, QNetworkReply::ProtocolFailure);
+                    return false;
+                }
                 qint64 currentWriteSize = m_socket->write(readPointer, currentReadSize);
                 if (currentWriteSize == -1 || currentWriteSize != currentReadSize) {
                     // socket broke down

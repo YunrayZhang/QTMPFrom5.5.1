@@ -1,39 +1,31 @@
 /****************************************************************************
 **
-** Copyright (C) 2013 Digia Plc and/or its subsidiary(-ies).
-** Contact: http://www.qt-project.org/legal
+** Copyright (C) 2015 The Qt Company Ltd.
+** Contact: http://www.qt.io/licensing/
 **
 ** This file is part of the plugins of the Qt Toolkit.
 **
-** $QT_BEGIN_LICENSE:LGPL$
+** $QT_BEGIN_LICENSE:LGPL21$
 ** Commercial License Usage
 ** Licensees holding valid commercial Qt licenses may use this file in
 ** accordance with the commercial license agreement provided with the
 ** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and Digia.  For licensing terms and
-** conditions see http://qt.digia.com/licensing.  For further information
-** use the contact form at http://qt.digia.com/contact-us.
+** a written agreement between you and The Qt Company. For licensing terms
+** and conditions see http://www.qt.io/terms-conditions. For further
+** information use the contact form at http://www.qt.io/contact-us.
 **
 ** GNU Lesser General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 2.1 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU Lesser General Public License version 2.1 requirements
-** will be met: http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
+** General Public License version 2.1 or version 3 as published by the Free
+** Software Foundation and appearing in the file LICENSE.LGPLv21 and
+** LICENSE.LGPLv3 included in the packaging of this file. Please review the
+** following information to ensure the GNU Lesser General Public License
+** requirements will be met: https://www.gnu.org/licenses/lgpl.html and
+** http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
 **
-** In addition, as a special exception, Digia gives you certain additional
-** rights.  These rights are described in the Digia Qt LGPL Exception
+** As a special exception, The Qt Company gives you certain additional
+** rights. These rights are described in The Qt Company LGPL Exception
 ** version 1.1, included in the file LGPL_EXCEPTION.txt in this package.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3.0 as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU General Public License version 3.0 requirements will be
-** met: http://www.gnu.org/copyleft/gpl.html.
-**
 **
 ** $QT_END_LICENSE$
 **
@@ -45,11 +37,15 @@
 #include "qfbbackingstore_p.h"
 
 #include <QtGui/QPainter>
+#include <QtCore/QCoreApplication>
 #include <qpa/qwindowsysteminterface.h>
+
+#include <QtCore/QDebug>
+#include <QtCore/QElapsedTimer>
 
 QT_BEGIN_NAMESPACE
 
-QFbScreen::QFbScreen() : mCursor(0), mGeometry(), mDepth(16), mFormat(QImage::Format_RGB16), mScreenImage(0), mCompositePainter(0), mIsUpToDate(false)
+QFbScreen::QFbScreen() : mUpdatePending(false), mCursor(0), mGeometry(), mDepth(16), mFormat(QImage::Format_RGB16), mScreenImage(0), mCompositePainter(0), mIsUpToDate(false)
 {
 }
 
@@ -62,24 +58,31 @@ QFbScreen::~QFbScreen()
 void QFbScreen::initializeCompositor()
 {
     mScreenImage = new QImage(mGeometry.size(), mFormat);
+    scheduleUpdate();
+}
 
-    mRedrawTimer.setSingleShot(true);
-    mRedrawTimer.setInterval(0);
-    connect(&mRedrawTimer, SIGNAL(timeout()), this, SLOT(doRedraw()));
+bool QFbScreen::event(QEvent *event)
+{
+    if (event->type() == QEvent::UpdateRequest) {
+        doRedraw();
+        mUpdatePending = false;
+        return true;
+    }
+    return QObject::event(event);
 }
 
 void QFbScreen::addWindow(QFbWindow *window)
 {
     mWindowStack.prepend(window);
-    if (!mBackingStores.isEmpty()) {
+    if (!mPendingBackingStores.isEmpty()) {
         //check if we have a backing store for this window
-        for (int i = 0; i < mBackingStores.size(); ++i) {
-            QFbBackingStore *bs = mBackingStores.at(i);
+        for (int i = 0; i < mPendingBackingStores.size(); ++i) {
+            QFbBackingStore *bs = mPendingBackingStores.at(i);
             // this gets called during QWindow::create() at a point where the
             // invariant (window->handle()->window() == window) is broken
             if (bs->window() == window->window()) {
                 window->setBackingStore(bs);
-                mBackingStores.removeAt(i);
+                mPendingBackingStores.removeAt(i);
                 break;
             }
         }
@@ -154,8 +157,10 @@ void QFbScreen::setDirty(const QRect &rect)
 
 void QFbScreen::scheduleUpdate()
 {
-    if (!mRedrawTimer.isActive())
-        mRedrawTimer.start();
+    if (!mUpdatePending) {
+        mUpdatePending = true;
+        QCoreApplication::postEvent(this, new QEvent(QEvent::UpdateRequest));
+    }
 }
 
 void QFbScreen::setPhysicalSize(const QSize &size)
@@ -171,8 +176,7 @@ void QFbScreen::setGeometry(const QRect &rect)
     mGeometry = rect;
     mScreenImage = new QImage(mGeometry.size(), mFormat);
     invalidateRectCache();
-    QWindowSystemInterface::handleScreenGeometryChange(QPlatformScreen::screen(), geometry());
-    QWindowSystemInterface::handleScreenAvailableGeometryChange(QPlatformScreen::screen(), availableGeometry());
+    QWindowSystemInterface::handleScreenGeometryChange(QPlatformScreen::screen(), geometry(), availableGeometry());
     resizeMaximizedWindows();
 }
 
@@ -196,13 +200,13 @@ void QFbScreen::generateRects()
             remainingScreen -= localGeometry;
             QRegion windowRegion(localGeometry);
             windowRegion -= remainingScreen;
-            foreach (QRect rect, windowRegion.rects()) {
+            foreach (const QRect &rect, windowRegion.rects()) {
                 mCachedRects += QPair<QRect, int>(rect, i);
             }
         }
 #endif
     }
-    foreach (QRect rect, remainingScreen.rects())
+    foreach (const QRect &rect, remainingScreen.rects())
         mCachedRects += QPair<QRect, int>(rect, -1);
     mIsUpToDate = true;
     return;
@@ -242,7 +246,7 @@ QRegion QFbScreen::doRedraw()
             rectRegion -= intersect;
 
             // we only expect one rectangle, but defensive coding...
-            foreach (QRect rect, intersect.rects()) {
+            foreach (const QRect &rect, intersect.rects()) {
                 bool firstLayer = true;
                 if (layer == -1) {
                     mCompositePainter->fillRect(rect, Qt::black);
@@ -255,12 +259,19 @@ QRegion QFbScreen::doRedraw()
                         continue;
                     // if (mWindowStack[layerIndex]->isMinimized())
                     //     continue;
+
                     QRect windowRect = mWindowStack[layerIndex]->geometry().translated(-screenOffset);
                     QRect windowIntersect = rect.translated(-windowRect.left(),
                                                             -windowRect.top());
+
+
                     QFbBackingStore *backingStore = mWindowStack[layerIndex]->backingStore();
-                    if (backingStore)
+
+                    if (backingStore) {
+                        backingStore->lock();
                         mCompositePainter->drawImage(rect, backingStore->image(), windowIntersect);
+                        backingStore->unlock();
+                    }
                     if (firstLayer) {
                         firstLayer = false;
                     }
@@ -281,8 +292,16 @@ QRegion QFbScreen::doRedraw()
 
 //    qDebug() << "QFbScreen::doRedraw"  << mWindowStack.size() << mScreenImage->size() << touchedRegion;
 
-
     return touchedRegion;
+}
+
+QFbWindow *QFbScreen::windowForId(WId wid) const
+{
+    for (int i = 0; i < mWindowStack.count(); ++i)
+        if (mWindowStack[i]->winId() == wid)
+            return mWindowStack[i];
+
+    return 0;
 }
 
 QT_END_NAMESPACE

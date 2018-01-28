@@ -1,40 +1,32 @@
 /****************************************************************************
 **
-** Copyright (C) 2013 Digia Plc and/or its subsidiary(-ies).
+** Copyright (C) 2015 The Qt Company Ltd.
 ** Copyright (C) 2013 Intel Corporation
-** Contact: http://www.qt-project.org/legal
+** Contact: http://www.qt.io/licensing/
 **
 ** This file is part of the QtCore module of the Qt Toolkit.
 **
-** $QT_BEGIN_LICENSE:LGPL$
+** $QT_BEGIN_LICENSE:LGPL21$
 ** Commercial License Usage
 ** Licensees holding valid commercial Qt licenses may use this file in
 ** accordance with the commercial license agreement provided with the
 ** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and Digia.  For licensing terms and
-** conditions see http://qt.digia.com/licensing.  For further information
-** use the contact form at http://qt.digia.com/contact-us.
+** a written agreement between you and The Qt Company. For licensing terms
+** and conditions see http://www.qt.io/terms-conditions. For further
+** information use the contact form at http://www.qt.io/contact-us.
 **
 ** GNU Lesser General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 2.1 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU Lesser General Public License version 2.1 requirements
-** will be met: http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
+** General Public License version 2.1 or version 3 as published by the Free
+** Software Foundation and appearing in the file LICENSE.LGPLv21 and
+** LICENSE.LGPLv3 included in the packaging of this file. Please review the
+** following information to ensure the GNU Lesser General Public License
+** requirements will be met: https://www.gnu.org/licenses/lgpl.html and
+** http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
 **
-** In addition, as a special exception, Digia gives you certain additional
-** rights.  These rights are described in the Digia Qt LGPL Exception
+** As a special exception, The Qt Company gives you certain additional
+** rights. These rights are described in The Qt Company LGPL Exception
 ** version 1.1, included in the file LGPL_EXCEPTION.txt in this package.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3.0 as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU General Public License version 3.0 requirements will be
-** met: http://www.gnu.org/copyleft/gpl.html.
-**
 **
 ** $QT_END_LICENSE$
 **
@@ -176,6 +168,11 @@ QT_BEGIN_NAMESPACE
     Prevents the library from being unloaded from the address space if close()
     is called. The library's static variables are not reinitialized if open()
     is called at a later time.
+    \value DeepBindHint
+    Instructs the linker to prefer definitions in the loaded library
+    over exported definitions in the loading application when resolving
+    external symbols in the loaded library. This option is only supported
+    on Linux.
 
     \sa loadHints
 */
@@ -455,7 +452,7 @@ inline QLibraryPrivate *QLibraryStore::findOrCreate(const QString &fileName, con
         lib = new QLibraryPrivate(fileName, version, loadHints);
 
     // track this library
-    if (Q_LIKELY(data))
+    if (Q_LIKELY(data) && !fileName.isEmpty())
         data->libraryMap.insert(fileName, lib);
 
     lib->libraryRefCount.ref();
@@ -475,7 +472,7 @@ inline void QLibraryStore::releaseLibrary(QLibraryPrivate *lib)
     // no one else is using
     Q_ASSERT(lib->libraryUnloadCount.load() == 0);
 
-    if (Q_LIKELY(data)) {
+    if (Q_LIKELY(data) && !lib->fileName.isEmpty()) {
         QLibraryPrivate *that = data->libraryMap.take(lib->fileName);
         Q_ASSERT(lib == that);
         Q_UNUSED(that);
@@ -485,9 +482,9 @@ inline void QLibraryStore::releaseLibrary(QLibraryPrivate *lib)
 
 QLibraryPrivate::QLibraryPrivate(const QString &canonicalFileName, const QString &version, QLibrary::LoadHints loadHints)
     : pHnd(0), fileName(canonicalFileName), fullVersion(version), instance(0),
-      loadHints(loadHints),
       libraryRefCount(0), libraryUnloadCount(0), pluginState(MightBeAPlugin)
 {
+    loadHintsInt.store(loadHints);
     if (canonicalFileName.isEmpty())
         errorString = QLibrary::tr("The shared library was not found.");
 }
@@ -508,7 +505,7 @@ void QLibraryPrivate::mergeLoadHints(QLibrary::LoadHints lh)
     if (pHnd)
         return;
 
-    loadHints = lh;
+    loadHintsInt.store(lh);
 }
 
 QFunctionPointer QLibraryPrivate::resolve(const char *symbol)
@@ -518,6 +515,12 @@ QFunctionPointer QLibraryPrivate::resolve(const char *symbol)
     return resolve_sys(symbol);
 }
 
+void QLibraryPrivate::setLoadHints(QLibrary::LoadHints lh)
+{
+    // this locks a global mutex
+    QMutexLocker lock(&qt_library_mutex);
+    mergeLoadHints(lh);
+}
 
 bool QLibraryPrivate::load()
 {
@@ -596,14 +599,14 @@ bool QLibraryPrivate::loadPlugin()
     \row \li Unix/Linux  \li \c .so
     \row \li AIX  \li \c .a
     \row \li HP-UX       \li \c .sl, \c .so (HP-UXi)
-    \row \li Mac OS X    \li \c .dylib, \c .bundle, \c .so
+    \row \li OS X and iOS   \li \c .dylib, \c .bundle, \c .so
     \endtable
 
     Trailing versioning numbers on Unix are ignored.
  */
 bool QLibrary::isLibrary(const QString &fileName)
 {
-#if defined(Q_OS_WIN32) || defined(Q_OS_WINCE)
+#if defined(Q_OS_WIN)
     return fileName.endsWith(QLatin1String(".dll"), Qt::CaseInsensitive);
 #else
     QString completeSuffix = QFileInfo(fileName).completeSuffix();
@@ -833,7 +836,7 @@ QLibrary::QLibrary(QObject *parent)
     We recommend omitting the file's suffix in \a fileName, since
     QLibrary will automatically look for the file with the appropriate
     suffix in accordance with the platform, e.g. ".so" on Unix,
-    ".dylib" on Mac OS X, and ".dll" on Windows. (See \l{fileName}.)
+    ".dylib" on OS X and iOS, and ".dll" on Windows. (See \l{fileName}.)
  */
 QLibrary::QLibrary(const QString& fileName, QObject *parent)
     :QObject(parent), d(0), did_load(false)
@@ -850,7 +853,7 @@ QLibrary::QLibrary(const QString& fileName, QObject *parent)
     We recommend omitting the file's suffix in \a fileName, since
     QLibrary will automatically look for the file with the appropriate
     suffix in accordance with the platform, e.g. ".so" on Unix,
-    ".dylib" on Mac OS X, and ".dll" on Windows. (See \l{fileName}.)
+    ".dylib" on OS X and iOS, and ".dll" on Windows. (See \l{fileName}.)
 */
 QLibrary::QLibrary(const QString& fileName, int verNum, QObject *parent)
     :QObject(parent), d(0), did_load(false)
@@ -866,7 +869,7 @@ QLibrary::QLibrary(const QString& fileName, int verNum, QObject *parent)
     We recommend omitting the file's suffix in \a fileName, since
     QLibrary will automatically look for the file with the appropriate
     suffix in accordance with the platform, e.g. ".so" on Unix,
-    ".dylib" on Mac OS X, and ".dll" on Windows. (See \l{fileName}.)
+    ".dylib" on OS X and iOS, and ".dll" on Windows. (See \l{fileName}.)
  */
 QLibrary::QLibrary(const QString& fileName, const QString &version, QObject *parent)
     :QObject(parent), d(0), did_load(false)
@@ -898,7 +901,7 @@ QLibrary::~QLibrary()
     suffix (see isLibrary()).
 
     When loading the library, QLibrary searches in all system-specific
-    library locations (e.g. \c LD_LIBRARY_PATH on Unix), unless the
+    library locations (for example, \c LD_LIBRARY_PATH on Unix), unless the
     file name has an absolute path. After loading the library
     successfully, fileName() returns the fully-qualified file name of
     the library, including the full path to the library if one was given
@@ -914,13 +917,12 @@ void QLibrary::setFileName(const QString &fileName)
 {
     QLibrary::LoadHints lh;
     if (d) {
-        lh = d->loadHints;
+        lh = d->loadHints();
         d->release();
         d = 0;
         did_load = false;
     }
-    d = QLibraryPrivate::findOrCreate(fileName);
-    d->loadHints = lh;
+    d = QLibraryPrivate::findOrCreate(fileName, QString(), lh);
 }
 
 QString QLibrary::fileName() const
@@ -943,13 +945,12 @@ void QLibrary::setFileNameAndVersion(const QString &fileName, int verNum)
 {
     QLibrary::LoadHints lh;
     if (d) {
-        lh = d->loadHints;
+        lh = d->loadHints();
         d->release();
         d = 0;
         did_load = false;
     }
-    d = QLibraryPrivate::findOrCreate(fileName, verNum >= 0 ? QString::number(verNum) : QString());
-    d->loadHints = lh;
+    d = QLibraryPrivate::findOrCreate(fileName, verNum >= 0 ? QString::number(verNum) : QString(), lh);
 }
 
 /*!
@@ -965,13 +966,12 @@ void QLibrary::setFileNameAndVersion(const QString &fileName, const QString &ver
 {
     QLibrary::LoadHints lh;
     if (d) {
-        lh = d->loadHints;
+        lh = d->loadHints();
         d->release();
         d = 0;
         did_load = false;
     }
-    d = QLibraryPrivate::findOrCreate(fileName, version);
-    d->loadHints = lh;
+    d = QLibraryPrivate::findOrCreate(fileName, version, lh);
 }
 
 /*!
@@ -1078,7 +1078,7 @@ QString QLibrary::errorString() const
 
     You can give some hints on how the symbols are resolved. Usually,
     the symbols are not resolved at load time, but resolved lazily,
-    (that is, when resolve() is called). If you set the loadHint to
+    (that is, when resolve() is called). If you set the loadHints to
     ResolveAllSymbolsHint, then all symbols will be resolved at load time
     if the platform supports it.
 
@@ -1102,6 +1102,12 @@ QString QLibrary::errorString() const
     By default, none of these flags are set, so libraries will be loaded with
     lazy symbol resolution, and will not export external symbols for resolution
     in other dynamically-loaded libraries.
+
+    \note Setting this property after the library has been loaded has no effect
+    and loadHints() will not reflect those changes.
+
+    \note This property is shared among all QLibrary instances that refer to
+    the same library.
 */
 void QLibrary::setLoadHints(LoadHints hints)
 {
@@ -1109,21 +1115,18 @@ void QLibrary::setLoadHints(LoadHints hints)
         d = QLibraryPrivate::findOrCreate(QString());   // ugly, but we need a d-ptr
         d->errorString.clear();
     }
-    d->loadHints = hints;
+    d->setLoadHints(hints);
 }
 
 QLibrary::LoadHints QLibrary::loadHints() const
 {
-    return d ? d->loadHints : (QLibrary::LoadHints)0;
+    return d ? d->loadHints() : QLibrary::LoadHints();
 }
 
 /* Internal, for debugging */
 bool qt_debug_component()
 {
-    static int debug_env = -1;
-    if (debug_env == -1)
-       debug_env = QT_PREPEND_NAMESPACE(qgetenv)("QT_DEBUG_PLUGINS").toInt();
-
+    static int debug_env = QT_PREPEND_NAMESPACE(qEnvironmentVariableIntValue)("QT_DEBUG_PLUGINS");
     return debug_env != 0;
 }
 

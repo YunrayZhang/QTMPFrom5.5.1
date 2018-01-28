@@ -77,10 +77,8 @@ SOURCES += \
     text/qdistancefield.cpp
 
 SOURCES += \
-    text/qfont_qpa.cpp \
-    text/qfontengine_qpa.cpp \
-    text/qplatformfontdatabase.cpp \
-    text/qrawfont_qpa.cpp
+    text/qfontengine_qpf2.cpp \
+    text/qplatformfontdatabase.cpp
 
 HEADERS += \
     text/qplatformfontdatabase.h
@@ -88,7 +86,7 @@ HEADERS += \
 contains(QT_CONFIG, harfbuzz)|contains(QT_CONFIG, system-harfbuzz) {
     DEFINES += QT_ENABLE_HARFBUZZ_NG
 
-    include($$PWD/../../3rdparty/harfbuzzng.pri)
+    include($$PWD/../../3rdparty/harfbuzz_dependency.pri)
 
     SOURCES += text/qharfbuzzng.cpp
     HEADERS += text/qharfbuzzng_p.h

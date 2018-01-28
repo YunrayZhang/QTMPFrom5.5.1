@@ -1,39 +1,31 @@
 /****************************************************************************
 **
-** Copyright (C) 2013 Digia Plc and/or its subsidiary(-ies).
-** Contact: http://www.qt-project.org/legal
+** Copyright (C) 2015 The Qt Company Ltd.
+** Contact: http://www.qt.io/licensing/
 **
 ** This file is part of the QtWidgets module of the Qt Toolkit.
 **
-** $QT_BEGIN_LICENSE:LGPL$
+** $QT_BEGIN_LICENSE:LGPL21$
 ** Commercial License Usage
 ** Licensees holding valid commercial Qt licenses may use this file in
 ** accordance with the commercial license agreement provided with the
 ** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and Digia.  For licensing terms and
-** conditions see http://qt.digia.com/licensing.  For further information
-** use the contact form at http://qt.digia.com/contact-us.
+** a written agreement between you and The Qt Company. For licensing terms
+** and conditions see http://www.qt.io/terms-conditions. For further
+** information use the contact form at http://www.qt.io/contact-us.
 **
 ** GNU Lesser General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 2.1 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU Lesser General Public License version 2.1 requirements
-** will be met: http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
+** General Public License version 2.1 or version 3 as published by the Free
+** Software Foundation and appearing in the file LICENSE.LGPLv21 and
+** LICENSE.LGPLv3 included in the packaging of this file. Please review the
+** following information to ensure the GNU Lesser General Public License
+** requirements will be met: https://www.gnu.org/licenses/lgpl.html and
+** http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
 **
-** In addition, as a special exception, Digia gives you certain additional
-** rights.  These rights are described in the Digia Qt LGPL Exception
+** As a special exception, The Qt Company gives you certain additional
+** rights. These rights are described in The Qt Company LGPL Exception
 ** version 1.1, included in the file LGPL_EXCEPTION.txt in this package.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3.0 as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU General Public License version 3.0 requirements will be
-** met: http://www.gnu.org/copyleft/gpl.html.
-**
 **
 ** $QT_END_LICENSE$
 **
@@ -118,7 +110,7 @@ QWidgetTextControlPrivate::QWidgetTextControlPrivate()
 #ifndef Q_OS_ANDROID
       interactionFlags(Qt::TextEditorInteraction),
 #else
-      interactionFlags(Qt::TextEditable),
+      interactionFlags(Qt::TextEditable | Qt::TextSelectableByKeyboard),
 #endif
       dragEnabled(true),
 #ifndef QT_NO_DRAGANDDROP
@@ -256,7 +248,7 @@ bool QWidgetTextControlPrivate::cursorMoveKeyEvent(QKeyEvent *e)
         return false;
     }
 
-// Except for pageup and pagedown, Mac OS X has very different behavior, we don't do it all, but
+// Except for pageup and pagedown, OS X has very different behavior, we don't do it all, but
 // here's the breakdown:
 // Shift still works as an anchor, but only one of the other keys can be down Ctrl (Command),
 // Alt (Option), or Meta (Control).
@@ -645,13 +637,15 @@ void QWidgetTextControlPrivate::_q_emitCursorPosChanged(const QTextCursor &someC
 
 void QWidgetTextControlPrivate::_q_contentsChanged(int from, int charsRemoved, int charsAdded)
 {
-    Q_Q(QWidgetTextControl);
 #ifndef QT_NO_ACCESSIBILITY
+    Q_Q(QWidgetTextControl);
 
     if (QAccessible::isActive() && q->parent() && q->parent()->isWidgetType()) {
         QTextCursor tmp(doc);
         tmp.setPosition(from);
-        tmp.setPosition(from + charsAdded, QTextCursor::KeepAnchor);
+        // when setting a new text document the length is off
+        // QTBUG-32583 - characterCount is off by 1 requires the -1
+        tmp.setPosition(qMin(doc->characterCount() - 1, from + charsAdded), QTextCursor::KeepAnchor);
         QString newText = tmp.selectedText();
 
         // always report the right number of removed chars, but in lack of the real string use spaces
@@ -668,6 +662,10 @@ void QWidgetTextControlPrivate::_q_contentsChanged(int from, int charsRemoved, i
         QAccessible::updateAccessibility(ev);
         delete ev;
     }
+#else
+    Q_UNUSED(from)
+    Q_UNUSED(charsRemoved)
+    Q_UNUSED(charsAdded)
 #endif
 }
 
@@ -1314,8 +1312,10 @@ void QWidgetTextControlPrivate::keyPressEvent(QKeyEvent *e)
     else if (e == QKeySequence::Delete) {
         QTextCursor localCursor = cursor;
         localCursor.deleteChar();
-    }
-    else if (e == QKeySequence::DeleteEndOfWord) {
+    } else if (e == QKeySequence::Backspace) {
+        QTextCursor localCursor = cursor;
+        localCursor.deletePreviousChar();
+    }else if (e == QKeySequence::DeleteEndOfWord) {
         if (!cursor.hasSelection())
             cursor.movePosition(QTextCursor::NextWord, QTextCursor::KeepAnchor);
         cursor.removeSelectedText();
@@ -1341,6 +1341,12 @@ void QWidgetTextControlPrivate::keyPressEvent(QKeyEvent *e)
 
 process:
     {
+        // QTBUG-35734: ignore Ctrl/Ctrl+Shift; accept only AltGr (Alt+Ctrl) on German keyboards
+        if (e->modifiers() == Qt::ControlModifier
+            || e->modifiers() == (Qt::ShiftModifier | Qt::ControlModifier)) {
+            e->ignore();
+            return;
+        }
         QString text = e->text();
         if (!text.isEmpty() && (text.at(0).isPrint() || text.at(0) == QLatin1Char('\t'))) {
             if (overwriteMode
@@ -1733,7 +1739,7 @@ void QWidgetTextControlPrivate::mouseMoveEvent(QEvent *e, Qt::MouseButton button
             _q_updateCurrentCharFormatAndSelection();
 #ifndef QT_NO_IM
             if (contextWidget)
-                qApp->inputMethod()->update(Qt::ImQueryInput);
+                QGuiApplication::inputMethod()->update(Qt::ImQueryInput);
 #endif //QT_NO_IM
         } else {
             //emit q->visibilityRequest(QRectF(mousePos, QSizeF(1, 1)));
@@ -1881,7 +1887,7 @@ bool QWidgetTextControlPrivate::sendMouseEventToInputContext(
 
         if (cursorPos >= 0) {
             if (eventType == QEvent::MouseButtonRelease)
-                qApp->inputMethod()->invokeAction(QInputMethod::Click, cursorPos);
+                QGuiApplication::inputMethod()->invokeAction(QInputMethod::Click, cursorPos);
 
             e->setAccepted(true);
             return true;
@@ -2190,7 +2196,7 @@ void QWidgetTextControlPrivate::editFocusEvent(QEvent *e)
             setBlinkingCursorEnabled(false);
     }
 
-    hasEditFocus = e->type() == QEvent::EnterEditFocus ? true : false;
+    hasEditFocus = e->type() == QEvent::EnterEditFocus;
 }
 #endif
 
@@ -2221,15 +2227,18 @@ QMenu *QWidgetTextControl::createStandardContextMenu(const QPointF &pos, QWidget
     if (d->interactionFlags & Qt::TextEditable) {
         a = menu->addAction(tr("&Undo") + ACCEL_KEY(QKeySequence::Undo), this, SLOT(undo()));
         a->setEnabled(d->doc->isUndoAvailable());
+        a->setObjectName(QStringLiteral("edit-undo"));
         setActionIcon(a, QStringLiteral("edit-undo"));
         a = menu->addAction(tr("&Redo") + ACCEL_KEY(QKeySequence::Redo), this, SLOT(redo()));
         a->setEnabled(d->doc->isRedoAvailable());
+        a->setObjectName(QStringLiteral("edit-redo"));
         setActionIcon(a, QStringLiteral("edit-redo"));
         menu->addSeparator();
 
 #ifndef QT_NO_CLIPBOARD
         a = menu->addAction(tr("Cu&t") + ACCEL_KEY(QKeySequence::Cut), this, SLOT(cut()));
         a->setEnabled(d->cursor.hasSelection());
+        a->setObjectName(QStringLiteral("edit-cut"));
         setActionIcon(a, QStringLiteral("edit-cut"));
 #endif
     }
@@ -2238,6 +2247,7 @@ QMenu *QWidgetTextControl::createStandardContextMenu(const QPointF &pos, QWidget
     if (showTextSelectionActions) {
         a = menu->addAction(tr("&Copy") + ACCEL_KEY(QKeySequence::Copy), this, SLOT(copy()));
         a->setEnabled(d->cursor.hasSelection());
+        a->setObjectName(QStringLiteral("edit-copy"));
         setActionIcon(a, QStringLiteral("edit-copy"));
     }
 
@@ -2246,6 +2256,7 @@ QMenu *QWidgetTextControl::createStandardContextMenu(const QPointF &pos, QWidget
 
         a = menu->addAction(tr("Copy &Link Location"), this, SLOT(_q_copyLink()));
         a->setEnabled(!d->linkToCopy.isEmpty());
+        a->setObjectName(QStringLiteral("link-copy"));
     }
 #endif // QT_NO_CLIPBOARD
 
@@ -2253,10 +2264,12 @@ QMenu *QWidgetTextControl::createStandardContextMenu(const QPointF &pos, QWidget
 #ifndef QT_NO_CLIPBOARD
         a = menu->addAction(tr("&Paste") + ACCEL_KEY(QKeySequence::Paste), this, SLOT(paste()));
         a->setEnabled(canPaste());
+        a->setObjectName(QStringLiteral("edit-paste"));
         setActionIcon(a, QStringLiteral("edit-paste"));
 #endif
         a = menu->addAction(tr("Delete"), this, SLOT(_q_deleteSelected()));
         a->setEnabled(d->cursor.hasSelection());
+        a->setObjectName(QStringLiteral("edit-delete"));
         setActionIcon(a, QStringLiteral("edit-delete"));
     }
 
@@ -2265,9 +2278,10 @@ QMenu *QWidgetTextControl::createStandardContextMenu(const QPointF &pos, QWidget
         menu->addSeparator();
         a = menu->addAction(tr("Select All") + ACCEL_KEY(QKeySequence::SelectAll), this, SLOT(selectAll()));
         a->setEnabled(!d->doc->isEmpty());
+        a->setObjectName(QStringLiteral("select-all"));
     }
 
-    if ((d->interactionFlags & Qt::TextEditable) && qApp->styleHints()->useRtlExtensions()) {
+    if ((d->interactionFlags & Qt::TextEditable) && QGuiApplication::styleHints()->useRtlExtensions()) {
         menu->addSeparator();
         QUnicodeControlCharacterMenu *ctrlCharacterMenu = new QUnicodeControlCharacterMenu(this, menu);
         menu->addMenu(ctrlCharacterMenu);
@@ -2853,7 +2867,7 @@ void QWidgetTextControlPrivate::commitPreedit()
     if (!isPreediting())
         return;
 
-    qApp->inputMethod()->commit();
+    QGuiApplication::inputMethod()->commit();
 
     if (!isPreediting())
         return;

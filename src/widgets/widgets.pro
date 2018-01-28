@@ -1,5 +1,5 @@
 TARGET     = QtWidgets
-wince*:ORIG_TARGET = $$TARGET
+wince: ORIG_TARGET = $$TARGET
 QT = core-private gui-private
 MODULE_CONFIG = uic
 
@@ -9,8 +9,7 @@ win32-msvc*|win32-icc:QMAKE_LFLAGS += /BASE:0x65000000
 irix-cc*:QMAKE_CXXFLAGS += -no_prelink -ptused
 
 MODULE_PLUGIN_TYPES += \
-    styles \
-    accessible/libqtaccessiblewidgets.so
+    styles
 
 QMAKE_DOCS = $$PWD/doc/qtwidgets.qdocconf
 

@@ -1,52 +1,104 @@
 /****************************************************************************
 **
-** Copyright (C) 2013 Digia Plc and/or its subsidiary(-ies).
-** Contact: http://www.qt-project.org/legal
+** Copyright (C) 2015 The Qt Company Ltd.
+** Contact: http://www.qt.io/licensing/
 **
 ** This file is part of the plugins of the Qt Toolkit.
 **
-** $QT_BEGIN_LICENSE:LGPL$
+** $QT_BEGIN_LICENSE:LGPL21$
 ** Commercial License Usage
 ** Licensees holding valid commercial Qt licenses may use this file in
 ** accordance with the commercial license agreement provided with the
 ** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and Digia.  For licensing terms and
-** conditions see http://qt.digia.com/licensing.  For further information
-** use the contact form at http://qt.digia.com/contact-us.
+** a written agreement between you and The Qt Company. For licensing terms
+** and conditions see http://www.qt.io/terms-conditions. For further
+** information use the contact form at http://www.qt.io/contact-us.
 **
 ** GNU Lesser General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 2.1 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU Lesser General Public License version 2.1 requirements
-** will be met: http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
+** General Public License version 2.1 or version 3 as published by the Free
+** Software Foundation and appearing in the file LICENSE.LGPLv21 and
+** LICENSE.LGPLv3 included in the packaging of this file. Please review the
+** following information to ensure the GNU Lesser General Public License
+** requirements will be met: https://www.gnu.org/licenses/lgpl.html and
+** http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
 **
-** In addition, as a special exception, Digia gives you certain additional
-** rights.  These rights are described in the Digia Qt LGPL Exception
+** As a special exception, The Qt Company gives you certain additional
+** rights. These rights are described in The Qt Company LGPL Exception
 ** version 1.1, included in the file LGPL_EXCEPTION.txt in this package.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3.0 as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU General Public License version 3.0 requirements will be
-** met: http://www.gnu.org/copyleft/gpl.html.
-**
 **
 ** $QT_END_LICENSE$
 **
 ****************************************************************************/
 
 #include "qiosglobal.h"
+#include "qiosintegration.h"
 #include "qiosscreen.h"
 #include "qioswindow.h"
 #include <qpa/qwindowsysteminterface.h>
 #include "qiosapplicationdelegate.h"
 #include "qiosviewcontroller.h"
+#include "quiview.h"
 
 #include <sys/sysctl.h>
+
+// -------------------------------------------------------------------------
+
+static QIOSScreen* qtPlatformScreenFor(UIScreen *uiScreen)
+{
+    foreach (QScreen *screen, QGuiApplication::screens()) {
+        QIOSScreen *platformScreen = static_cast<QIOSScreen *>(screen->handle());
+        if (platformScreen->uiScreen() == uiScreen)
+            return platformScreen;
+    }
+
+    return 0;
+}
+
+@interface QIOSScreenTracker : NSObject
+@end
+
+@implementation QIOSScreenTracker
+
++ (void)load
+{
+    NSNotificationCenter *center = [NSNotificationCenter defaultCenter];
+    [center addObserver:self selector:@selector(screenConnected:)
+            name:UIScreenDidConnectNotification object:nil];
+    [center addObserver:self selector:@selector(screenDisconnected:)
+            name:UIScreenDidDisconnectNotification object:nil];
+    [center addObserver:self selector:@selector(screenModeChanged:)
+            name:UIScreenModeDidChangeNotification object:nil];
+}
+
++ (void)screenConnected:(NSNotification*)notification
+{
+    QIOSIntegration *integration = QIOSIntegration::instance();
+    Q_ASSERT_X(integration, Q_FUNC_INFO, "Screen connected before QIOSIntegration creation");
+
+    integration->addScreen(new QIOSScreen([notification object]));
+}
+
++ (void)screenDisconnected:(NSNotification*)notification
+{
+    QIOSScreen *screen = qtPlatformScreenFor([notification object]);
+    Q_ASSERT_X(screen, Q_FUNC_INFO, "Screen disconnected that we didn't know about");
+
+    QIOSIntegration *integration = QIOSIntegration::instance();
+    integration->destroyScreen(screen);
+}
+
++ (void)screenModeChanged:(NSNotification*)notification
+{
+    QIOSScreen *screen = qtPlatformScreenFor([notification object]);
+    Q_ASSERT_X(screen, Q_FUNC_INFO, "Screen changed that we didn't know about");
+
+    screen->updateProperties();
+}
+
+@end
+
+// -------------------------------------------------------------------------
 
 @interface QIOSOrientationListener : NSObject {
     @public
@@ -83,21 +135,12 @@
 - (void) orientationChanged:(NSNotification *)notification
 {
     Q_UNUSED(notification);
-
-    UIDeviceOrientation deviceOrientation = [UIDevice currentDevice].orientation;
-    switch (deviceOrientation) {
-    case UIDeviceOrientationFaceUp:
-    case UIDeviceOrientationFaceDown:
-        // We ignore these events, as iOS will send events with the 'regular'
-        // orientations alongside these two orientations.
-        return;
-    default:
-        Qt::ScreenOrientation screenOrientation = toQtScreenOrientation(deviceOrientation);
-        QWindowSystemInterface::handleScreenOrientationChange(m_screen->screen(), screenOrientation);
-    }
+    m_screen->updateProperties();
 }
 
 @end
+
+// -------------------------------------------------------------------------
 
 /*!
     Returns the model identifier of the device.
@@ -118,30 +161,46 @@ static QString deviceModelIdentifier()
     return QString::fromLatin1(value);
 }
 
-QIOSScreen::QIOSScreen(unsigned int screenIndex)
+QIOSScreen::QIOSScreen(UIScreen *screen)
     : QPlatformScreen()
-    , m_uiScreen([[UIScreen screens] count] > screenIndex
-        ? [[UIScreen screens] objectAtIndex:screenIndex]
-        : [UIScreen mainScreen])
+    , m_uiScreen(screen)
+    , m_uiWindow(0)
     , m_orientationListener(0)
 {
-    QString deviceIdentifier = deviceModelIdentifier();
+    if (screen == [UIScreen mainScreen]) {
+        QString deviceIdentifier = deviceModelIdentifier();
 
-    if (deviceIdentifier == QStringLiteral("iPhone2,1") /* iPhone 3GS */
-        || deviceIdentifier == QStringLiteral("iPod3,1") /* iPod touch 3G */) {
-        m_depth = 18;
+        if (deviceIdentifier == QLatin1String("iPhone2,1") /* iPhone 3GS */
+            || deviceIdentifier == QLatin1String("iPod3,1") /* iPod touch 3G */) {
+            m_depth = 18;
+        } else {
+            m_depth = 24;
+        }
+
+        if ([[UIDevice currentDevice] userInterfaceIdiom] == UIUserInterfaceIdiomPad
+            && !deviceIdentifier.contains(QRegularExpression("^iPad2,[567]$")) /* excluding iPad Mini */) {
+            m_unscaledDpi = 132;
+        } else {
+            m_unscaledDpi = 163; // Regular iPhone DPI
+        }
     } else {
+        // External display, hard to say
         m_depth = 24;
+        m_unscaledDpi = 96;
     }
 
-    if ([[UIDevice currentDevice] userInterfaceIdiom] == UIUserInterfaceIdiomPad
-        && !deviceIdentifier.contains(QRegularExpression("^iPad2,[567]$")) /* excluding iPad Mini */) {
-        m_unscaledDpi = 132;
-    } else {
-        m_unscaledDpi = 163; // Regular iPhone DPI
+    for (UIWindow *existingWindow in [[UIApplication sharedApplication] windows]) {
+        if (existingWindow.screen == m_uiScreen) {
+            m_uiWindow = [m_uiWindow retain];
+            break;
+        }
     }
 
-    connect(qGuiApp, &QGuiApplication::focusWindowChanged, this, &QIOSScreen::updateStatusBarVisibility);
+    if (!m_uiWindow) {
+        // Create a window and associated view-controller that we can use
+        m_uiWindow = [[UIWindow alloc] initWithFrame:[m_uiScreen bounds]];
+        m_uiWindow.rootViewController = [[[QIOSViewController alloc] initWithQIOSScreen:this] autorelease];
+    }
 
     updateProperties();
 }
@@ -149,112 +208,67 @@ QIOSScreen::QIOSScreen(unsigned int screenIndex)
 QIOSScreen::~QIOSScreen()
 {
     [m_orientationListener release];
+    [m_uiWindow release];
 }
 
 void QIOSScreen::updateProperties()
 {
-    UIWindow *uiWindow = 0;
-    for (uiWindow in [[UIApplication sharedApplication] windows]) {
-        if (uiWindow.screen == m_uiScreen)
-            break;
+    QRect previousGeometry = m_geometry;
+    QRect previousAvailableGeometry = m_availableGeometry;
+
+    m_geometry = fromCGRect(m_uiScreen.bounds).toRect();
+    m_availableGeometry = fromCGRect(m_uiScreen.applicationFrame).toRect();
+
+    if (m_uiScreen == [UIScreen mainScreen]) {
+        Qt::ScreenOrientation statusBarOrientation = toQtScreenOrientation(UIDeviceOrientation([UIApplication sharedApplication].statusBarOrientation));
+
+        if (QSysInfo::MacintoshVersion < QSysInfo::MV_IOS_8_0) {
+            // On iOS < 8.0 the UIScreen geometry is always in portait, and the system applies
+            // the screen rotation to the root view-controller's view instead of directly to the
+            // screen, like iOS 8 and above does.
+            m_geometry = mapBetween(Qt::PortraitOrientation, statusBarOrientation, m_geometry);
+            m_availableGeometry = transformBetween(Qt::PortraitOrientation, statusBarOrientation, m_geometry).mapRect(m_availableGeometry);
+        }
+
+        QIOSViewController *qtViewController = [m_uiWindow.rootViewController isKindOfClass:[QIOSViewController class]] ?
+            static_cast<QIOSViewController *>(m_uiWindow.rootViewController) : nil;
+
+        if (qtViewController.lockedOrientation) {
+            // Setting the statusbar orientation (content orientation) on will affect the screen geometry,
+            // which is not what we want. We want to reflect the screen geometry based on the locked orientation,
+            // and adjust the available geometry based on the repositioned status bar for the current status
+            // bar orientation.
+
+            Qt::ScreenOrientation lockedOrientation = toQtScreenOrientation(UIDeviceOrientation(qtViewController.lockedOrientation));
+            QTransform transform = transformBetween(lockedOrientation, statusBarOrientation, m_geometry).inverted();
+
+            m_geometry = transform.mapRect(m_geometry);
+            m_availableGeometry = transform.mapRect(m_availableGeometry);
+        }
     }
 
-    bool inPortrait = UIInterfaceOrientationIsPortrait(uiWindow.rootViewController.interfaceOrientation);
-    QRect geometry = inPortrait ? fromCGRect(m_uiScreen.bounds).toRect()
-        : QRect(m_uiScreen.bounds.origin.x, m_uiScreen.bounds.origin.y,
-            m_uiScreen.bounds.size.height, m_uiScreen.bounds.size.width);
-
-    if (geometry != m_geometry) {
-        m_geometry = geometry;
-
+    if (m_geometry != previousGeometry) {
         const qreal millimetersPerInch = 25.4;
         m_physicalSize = QSizeF(m_geometry.size()) / m_unscaledDpi * millimetersPerInch;
-
-        QWindowSystemInterface::handleScreenGeometryChange(screen(), m_geometry);
     }
 
-    QRect availableGeometry = geometry;
-
-    CGSize applicationFrameSize = m_uiScreen.applicationFrame.size;
-    int statusBarHeight = geometry.height() - (inPortrait ? applicationFrameSize.height : applicationFrameSize.width);
-
-    availableGeometry.adjust(0, statusBarHeight, 0, 0);
-
-    if (availableGeometry != m_availableGeometry) {
-        m_availableGeometry = availableGeometry;
-        QWindowSystemInterface::handleScreenAvailableGeometryChange(screen(), m_availableGeometry);
-    }
-
-    if (screen())
-        layoutWindows();
-}
-
-void QIOSScreen::updateStatusBarVisibility()
-{
-    if (!isQtApplication())
+    // At construction time, we don't yet have an associated QScreen, but we still want
+    // to compute the properties above so they are ready for when the QScreen attaches.
+    // Also, at destruction time the QScreen has already been torn down, so notifying
+    // Qt about changes to the screen will cause asserts in the event delivery system.
+    if (!screen())
         return;
 
-    QWindow *focusWindow = QGuiApplication::focusWindow();
+    if (screen()->orientation() != orientation())
+        QWindowSystemInterface::handleScreenOrientationChange(screen(), orientation());
 
-    // If we don't have a focus window we leave the status
-    // bar as is, so that the user can activate a new window
-    // with the same window state without the status bar jumping
-    // back and forth.
-    if (!focusWindow)
-        return;
+    // Note: The screen orientation change and the geometry changes are not atomic, so when
+    // the former is emitted, the latter has not been reported and reflected in the QScreen
+    // API yet. But conceptually it makes sense that the orientation update happens first,
+    // and the geometry updates caused by auto-rotation happen after that.
 
-    UIView *view = reinterpret_cast<UIView *>(focusWindow->handle()->winId());
-    QIOSViewController *viewController = static_cast<QIOSViewController *>(view.viewController);
-
-    bool currentStatusBarVisibility = [UIApplication sharedApplication].statusBarHidden;
-    if (viewController.prefersStatusBarHidden == currentStatusBarVisibility)
-        return;
-
-#if QT_IOS_PLATFORM_SDK_EQUAL_OR_ABOVE(__IPHONE_7_0)
-    if (QSysInfo::MacintoshVersion >= QSysInfo::MV_IOS_7_0) {
-        [viewController setNeedsStatusBarAppearanceUpdate];
-        dispatch_async(dispatch_get_main_queue(), ^{
-            updateProperties();
-        });
-    } else
-#endif
-    {
-        [[UIApplication sharedApplication]
-            setStatusBarHidden:[viewController prefersStatusBarHidden]
-            withAnimation:UIStatusBarAnimationNone];
-
-        updateProperties();
-    }
-}
-
-void QIOSScreen::layoutWindows()
-{
-    QList<QWindow*> windows = QGuiApplication::topLevelWindows();
-
-    const QRect oldGeometry = screen()->geometry();
-    const QRect oldAvailableGeometry = screen()->availableGeometry();
-    const QRect newGeometry = geometry();
-    const QRect newAvailableGeometry = availableGeometry();
-
-    for (int i = 0; i < windows.size(); ++i) {
-        QWindow *window = windows.at(i);
-
-        if (platformScreenForWindow(window) != this)
-            continue;
-
-        QIOSWindow *platformWindow = static_cast<QIOSWindow *>(window->handle());
-        if (!platformWindow)
-            continue;
-
-        // FIXME: Handle more complex cases of no-state and/or child windows when rotating
-
-        if (window->windowState() & Qt::WindowFullScreen
-                || (window->windowState() & Qt::WindowNoState && window->geometry() == oldGeometry))
-            platformWindow->applyGeometry(newGeometry);
-        else if (window->windowState() & Qt::WindowMaximized
-                || (window->windowState() & Qt::WindowNoState && window->geometry() == oldAvailableGeometry))
-            platformWindow->applyGeometry(newAvailableGeometry);
-    }
+    if (m_geometry != previousGeometry || m_availableGeometry != previousAvailableGeometry)
+        QWindowSystemInterface::handleScreenGeometryChange(screen(), m_geometry, m_availableGeometry);
 }
 
 QRect QIOSScreen::geometry() const
@@ -294,14 +308,44 @@ qreal QIOSScreen::devicePixelRatio() const
 
 Qt::ScreenOrientation QIOSScreen::nativeOrientation() const
 {
-    // A UIScreen stays in the native orientation, regardless of rotation
-    return m_uiScreen.bounds.size.width >= m_uiScreen.bounds.size.height ?
+    CGRect nativeBounds =
+#if QT_IOS_PLATFORM_SDK_EQUAL_OR_ABOVE(__IPHONE_8_0)
+        QSysInfo::MacintoshVersion >= QSysInfo::MV_IOS_8_0 ? m_uiScreen.nativeBounds :
+#endif
+        m_uiScreen.bounds;
+
+    // All known iOS devices have a native orientation of portrait, but to
+    // be on the safe side we compare the width and height of the bounds.
+    return nativeBounds.size.width >= nativeBounds.size.height ?
         Qt::LandscapeOrientation : Qt::PortraitOrientation;
 }
 
 Qt::ScreenOrientation QIOSScreen::orientation() const
 {
-    return toQtScreenOrientation([UIDevice currentDevice].orientation);
+    // Auxiliary screens are always the same orientation as their primary orientation
+    if (m_uiScreen != [UIScreen mainScreen])
+        return Qt::PrimaryOrientation;
+
+    UIDeviceOrientation deviceOrientation = [UIDevice currentDevice].orientation;
+
+    // At startup, iOS will report an unknown orientation for the device, even
+    // if we've asked it to begin generating device orientation notifications.
+    // In this case we fall back to the status bar orientation, which reflects
+    // the orientation the application was started up in (which may not match
+    // the physical orientation of the device, but typically does unless the
+    // application has been locked to a subset of the available orientations).
+    if (deviceOrientation == UIDeviceOrientationUnknown)
+        deviceOrientation = UIDeviceOrientation([UIApplication sharedApplication].statusBarOrientation);
+
+    // If the device reports face up or face down orientations, we can't map
+    // them to Qt orientations, so we pretend we're in the same orientation
+    // as before.
+    if (deviceOrientation == UIDeviceOrientationFaceUp || deviceOrientation == UIDeviceOrientationFaceDown) {
+        Q_ASSERT(screen());
+        return screen()->orientation();
+    }
+
+    return toQtScreenOrientation(deviceOrientation);
 }
 
 void QIOSScreen::setOrientationUpdateMask(Qt::ScreenOrientations mask)
@@ -311,12 +355,18 @@ void QIOSScreen::setOrientationUpdateMask(Qt::ScreenOrientations mask)
         m_orientationListener = 0;
     } else if (!m_orientationListener) {
         m_orientationListener = [[QIOSOrientationListener alloc] initWithQIOSScreen:this];
+        updateProperties();
     }
 }
 
 UIScreen *QIOSScreen::uiScreen() const
 {
     return m_uiScreen;
+}
+
+UIWindow *QIOSScreen::uiWindow() const
+{
+    return m_uiWindow;
 }
 
 #include "moc_qiosscreen.cpp"

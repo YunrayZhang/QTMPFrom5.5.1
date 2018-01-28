@@ -1,39 +1,31 @@
 /****************************************************************************
 **
-** Copyright (C) 2013 Digia Plc and/or its subsidiary(-ies).
-** Contact: http://www.qt-project.org/legal
+** Copyright (C) 2015 The Qt Company Ltd.
+** Contact: http://www.qt.io/licensing/
 **
 ** This file is part of the QtGui module of the Qt Toolkit.
 **
-** $QT_BEGIN_LICENSE:LGPL$
+** $QT_BEGIN_LICENSE:LGPL21$
 ** Commercial License Usage
 ** Licensees holding valid commercial Qt licenses may use this file in
 ** accordance with the commercial license agreement provided with the
 ** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and Digia.  For licensing terms and
-** conditions see http://qt.digia.com/licensing.  For further information
-** use the contact form at http://qt.digia.com/contact-us.
+** a written agreement between you and The Qt Company. For licensing terms
+** and conditions see http://www.qt.io/terms-conditions. For further
+** information use the contact form at http://www.qt.io/contact-us.
 **
 ** GNU Lesser General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 2.1 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU Lesser General Public License version 2.1 requirements
-** will be met: http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
+** General Public License version 2.1 or version 3 as published by the Free
+** Software Foundation and appearing in the file LICENSE.LGPLv21 and
+** LICENSE.LGPLv3 included in the packaging of this file. Please review the
+** following information to ensure the GNU Lesser General Public License
+** requirements will be met: https://www.gnu.org/licenses/lgpl.html and
+** http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
 **
-** In addition, as a special exception, Digia gives you certain additional
-** rights.  These rights are described in the Digia Qt LGPL Exception
+** As a special exception, The Qt Company gives you certain additional
+** rights. These rights are described in The Qt Company LGPL Exception
 ** version 1.1, included in the file LGPL_EXCEPTION.txt in this package.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3.0 as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU General Public License version 3.0 requirements will be
-** met: http://www.gnu.org/copyleft/gpl.html.
-**
 **
 ** $QT_END_LICENSE$
 **
@@ -59,8 +51,8 @@ static NSButton *macCreateButton(const char *text, NSView *superview)
     NSButton *button = [[NSButton alloc] initWithFrame:buttonFrameRect];
     [button setButtonType:NSMomentaryLightButton];
     [button setBezelStyle:NSRoundedBezelStyle];
-    [button setTitle:(NSString*)(CFStringRef)QCFString(QCoreApplication::translate("QDialogButtonBox", text)
-                                                       .remove(QLatin1Char('&')))];
+    [button setTitle:(NSString*)(CFStringRef)QCFString(
+            qt_mac_removeMnemonics(QCoreApplication::translate("QDialogButtonBox", text)))];
     [[button cell] setFont:[NSFont systemFontOfSize:
             [NSFont systemFontSizeForControlSize:NSRegularControlSize]]];
     [superview addSubview:button];
@@ -81,6 +73,7 @@ static NSButton *macCreateButton(const char *text, NSView *superview)
     NSInteger mResultCode;
     BOOL mDialogIsExecuting;
     BOOL mResultSet;
+    BOOL mClosingDueToKnownButton;
 };
 - (void)restoreOriginalContentView;
 - (void)relayout;
@@ -103,16 +96,19 @@ QT_NAMESPACE_ALIAS_OBJC_CLASS(QNSColorPanelDelegate);
     mResultCode = NSCancelButton;
     mDialogIsExecuting = false;
     mResultSet = false;
+    mClosingDueToKnownButton = false;
 
-#if MAC_OS_X_VERSION_MAX_ALLOWED >= MAC_OS_X_VERSION_10_7
-    if (QSysInfo::MacintoshVersion >= QSysInfo::MV_10_7)
-        [mColorPanel setRestorable:NO];
-#endif
+    [mColorPanel setRestorable:NO];
 
     [[NSNotificationCenter defaultCenter] addObserver:self
         selector:@selector(colorChanged:)
         name:NSColorPanelColorDidChangeNotification
         object:mColorPanel];
+
+    [[NSNotificationCenter defaultCenter] addObserver:self
+      selector:@selector(windowWillClose:)
+      name:NSWindowWillCloseNotification
+      object:mColorPanel];
 
     [mColorPanel retain];
     return self;
@@ -177,6 +173,15 @@ QT_NAMESPACE_ALIAS_OBJC_CLASS(QNSColorPanelDelegate);
     [self updateQtColor];
     if (mHelper)
         emit mHelper->colorSelected(mQtColor);
+}
+
+- (void)windowWillClose:(NSNotification *)notification
+{
+    Q_UNUSED(notification);
+    if (mCancelButton && mHelper && !mClosingDueToKnownButton) {
+        mClosingDueToKnownButton = true; // prevent repeating emit
+        emit mHelper->reject();
+    }
 }
 
 - (void)restoreOriginalContentView
@@ -246,6 +251,7 @@ QT_NAMESPACE_ALIAS_OBJC_CLASS(QNSColorPanelDelegate);
 
 - (void)onOkClicked
 {
+    mClosingDueToKnownButton = true;
     [mColorPanel close];
     [self updateQtColor];
     [self finishOffWithCode:NSOKButton];
@@ -254,6 +260,7 @@ QT_NAMESPACE_ALIAS_OBJC_CLASS(QNSColorPanelDelegate);
 - (void)onCancelClicked
 {
     if (mOkButton) {
+        mClosingDueToKnownButton = true;
         [mColorPanel close];
         mQtColor = QColor();
         [self finishOffWithCode:NSCancelButton];
@@ -298,6 +305,7 @@ QT_NAMESPACE_ALIAS_OBJC_CLASS(QNSColorPanelDelegate);
 {
     mDialogIsExecuting = false;
     mResultSet = false;
+    mClosingDueToKnownButton = false;
     [mColorPanel makeKeyAndOrderFront:mColorPanel];
 }
 

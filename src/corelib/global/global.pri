@@ -16,15 +16,18 @@ HEADERS +=  \
         global/qsysinfo.h \
         global/qisenum.h \
         global/qtypetraits.h \
-        global/qflags.h
+        global/qflags.h \
+        global/qhooks_p.h
 
 SOURCES += \
+        global/archdetect.cpp \
 	global/qglobal.cpp \
         global/qglobalstatic.cpp \
         global/qlibraryinfo.cpp \
 	global/qmalloc.cpp \
         global/qnumeric.cpp \
-        global/qlogging.cpp
+        global/qlogging.cpp \
+        global/qhooks.cpp
 
 # qlibraryinfo.cpp includes qconfig.cpp
 INCLUDEPATH += $$QT_BUILD_TREE/src/corelib/global
@@ -32,10 +35,13 @@ INCLUDEPATH += $$QT_BUILD_TREE/src/corelib/global
 # Only used on platforms with CONFIG += precompile_header
 PRECOMPILED_HEADER = global/qt_pch.h
 
-linux*:!cross_compile:!static:!*-armcc* {
+# qlogging.cpp uses backtrace(3), which is in a separate library on the BSDs.
+LIBS_PRIVATE += $$QMAKE_LIBS_EXECINFO
+
+if(linux*|hurd*):!cross_compile:!static:!*-armcc* {
    QMAKE_LFLAGS += -Wl,-e,qt_core_boilerplate
    prog=$$quote(if (/program interpreter: (.*)]/) { print $1; })
-   DEFINES += ELF_INTERPRETER=\\\"$$system(readelf -l /bin/ls | perl -n -e \'$$prog\')\\\"
+   DEFINES += ELF_INTERPRETER=\\\"$$system(LC_ALL=C readelf -l /bin/ls | perl -n -e \'$$prog\')\\\"
 }
 
 slog2 {

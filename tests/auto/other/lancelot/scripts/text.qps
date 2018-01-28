@@ -11,7 +11,7 @@ save
   setFont "sansserif" 12 normal
   drawText 0 40 "sansserif 12pt, normal"
 
-  setFont "sansserif" 10 bold
+  setFont "sansserif" 12 bold
   drawText 0 60 "sansserif 12pt, bold"
 
   setFont "sansserif" 10 bold italic
@@ -27,7 +27,7 @@ save
   setFont "sansserif" 12 normal
   drawText 0 40 "alpha sansserif 12pt, normal"
 
-  setFont "sansserif" 10 bold
+  setFont "sansserif" 12 bold
   drawText 0 60 "alpha sansserif 12pt, bold"
 
   setFont "sansserif" 10 bold italic
@@ -45,7 +45,7 @@ save
     setFont "sansserif" 12 normal
     drawText 0 40 "scaled sansserif 12pt, normal"
 
-    setFont "sansserif" 10 bold
+    setFont "sansserif" 12 bold
     drawText 0 60 "scaled sansserif 12pt, bold"
 
     setFont "sansserif" 10 bold italic
@@ -63,7 +63,7 @@ save
     setFont "sansserif" 12 normal
     drawStaticText 0 40 "flipped sansserif 12pt, normal"
 
-    setFont "sansserif" 10 bold
+    setFont "sansserif" 12 bold
     drawStaticText 0 60 "flipped sansserif 12pt, bold"
 
     setFont "sansserif" 10 bold italic
@@ -82,7 +82,7 @@ save
     setFont "sansserif" 12 normal
     drawText 0 40 "scaled sansserif 12pt, normal"
 
-    setFont "sansserif" 10 bold
+    setFont "sansserif" 12 bold
     drawText 0 60 "scaled sansserif 12pt, bold"
 
     setFont "sansserif" 10 bold italic
@@ -102,7 +102,7 @@ save
   setFont "sansserif" 12 normal
   drawText 0 20 "gradient sansserif 12pt, normal"
 
-  setFont "sansserif" 10 bold
+  setFont "sansserif" 12 bold
   drawText 0 40 "gradient sansserif 12pt, bold"
 
   setFont "sansserif" 10 bold italic
@@ -139,4 +139,31 @@ save
   setClipPath clip
   setPen black
   repeat_block text_drawing
+restore
+
+translate 150 0
+save
+  setPen black
+  setFont "sansserif" 10 normal
+  drawText 0 20 "testing glyph cache textures"
+
+  # Important that this gradient doesn't match any earlier
+  # gradients, so that it's not cached from before.
+  gradient_clearStops
+  gradient_appendStop 0 blue
+  gradient_appendStop 0.5 #00ff00
+  gradient_appendStop 1 red
+  gradient_setLinear 0 0 100 0
+  setPen nopen
+  drawRect 0 30 100 20
+
+  setPen black
+  drawText 0 70 "testing glyph cache textures"
+restore
+
+translate 0 75
+save
+  setPen black
+  setFont "sansserif" 16 normal
+  drawText 0 40 "e😃m😇o😍j😜i😸!"
 restore

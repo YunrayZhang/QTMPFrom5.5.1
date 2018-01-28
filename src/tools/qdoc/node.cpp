@@ -1,39 +1,31 @@
 /****************************************************************************
 **
-** Copyright (C) 2013 Digia Plc and/or its subsidiary(-ies).
-** Contact: http://www.qt-project.org/legal
+** Copyright (C) 2015 The Qt Company Ltd.
+** Contact: http://www.qt.io/licensing/
 **
 ** This file is part of the tools applications of the Qt Toolkit.
 **
-** $QT_BEGIN_LICENSE:LGPL$
+** $QT_BEGIN_LICENSE:LGPL21$
 ** Commercial License Usage
 ** Licensees holding valid commercial Qt licenses may use this file in
 ** accordance with the commercial license agreement provided with the
 ** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and Digia.  For licensing terms and
-** conditions see http://qt.digia.com/licensing.  For further information
-** use the contact form at http://qt.digia.com/contact-us.
+** a written agreement between you and The Qt Company. For licensing terms
+** and conditions see http://www.qt.io/terms-conditions. For further
+** information use the contact form at http://www.qt.io/contact-us.
 **
 ** GNU Lesser General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 2.1 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU Lesser General Public License version 2.1 requirements
-** will be met: http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
+** General Public License version 2.1 or version 3 as published by the Free
+** Software Foundation and appearing in the file LICENSE.LGPLv21 and
+** LICENSE.LGPLv3 included in the packaging of this file. Please review the
+** following information to ensure the GNU Lesser General Public License
+** requirements will be met: https://www.gnu.org/licenses/lgpl.html and
+** http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
 **
-** In addition, as a special exception, Digia gives you certain additional
-** rights.  These rights are described in the Digia Qt LGPL Exception
+** As a special exception, The Qt Company gives you certain additional
+** rights. These rights are described in The Qt Company LGPL Exception
 ** version 1.1, included in the file LGPL_EXCEPTION.txt in this package.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3.0 as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU General Public License version 3.0 requirements will be
-** met: http://www.gnu.org/copyleft/gpl.html.
-**
 **
 ** $QT_END_LICENSE$
 **
@@ -46,12 +38,44 @@
 #include <quuid.h>
 #include "qdocdatabase.h"
 #include <qdebug.h>
+#include "generator.h"
 
 QT_BEGIN_NAMESPACE
 
 int Node::propertyGroupCount_ = 0;
-ExampleNodeMap ExampleNode::exampleNodeMap;
 QStringMap Node::operators_;
+QMap<QString,Node::Type> Node::goals_;
+
+/*!
+  Initialize the map of search goals. This is called once
+  by QDocDatabase::initializeDB(). The map key is a string
+  representing a value in the enum Node::Type. The map value
+  is the enum value.
+
+  There should be an entry in the map for each value in the
+  Type enum.
+ */
+void Node::initialize()
+{
+    goals_.insert("class", Node::Class);
+    goals_.insert("qmltype", Node::QmlType);
+    goals_.insert("page", Node::Document);
+    goals_.insert("function", Node::Function);
+    goals_.insert("property", Node::Property);
+    goals_.insert("variable", Node::Variable);
+    goals_.insert("group", Node::Group);
+    goals_.insert("module", Node::Module);
+    goals_.insert("qmlmodule", Node::QmlModule);
+    goals_.insert("qmppropertygroup", Node::QmlPropertyGroup);
+    goals_.insert("qmlproperty", Node::QmlProperty);
+    goals_.insert("qmlsignal", Node::QmlSignal);
+    goals_.insert("qmlsignalhandler", Node::QmlSignalHandler);
+    goals_.insert("qmlmethod", Node::QmlMethod);
+    goals_.insert("qmlbasictype", Node::QmlBasicType);
+    goals_.insert("enum", Node::Enum);
+    goals_.insert("typedef", Node::Typedef);
+    goals_.insert("namespace", Node::Namespace);
+}
 
 /*!
   Increment the number of property groups seen in the current
@@ -112,8 +136,7 @@ QString Node::plainFullName(const Node* relative) const
     const Node* node = this;
     while (node) {
         fullName.prepend(node->plainName());
-        if (node->parent() == relative || node->parent()->subType() == Node::Collision ||
-            node->parent()->name().isEmpty())
+        if (node->parent() == relative || node->parent()->name().isEmpty())
             break;
         fullName.prepend(QLatin1String("::"));
         node = node->parent();
@@ -122,24 +145,38 @@ QString Node::plainFullName(const Node* relative) const
 }
 
 /*!
-  Constructs and returns this node's full name. The \a relative
-  node is either null or is a collision node.
+  Constructs and returns this node's full name.
  */
 QString Node::fullName(const Node* relative) const
 {
-    if (type() == Node::Document) {
-        const DocNode* dn = static_cast<const DocNode*>(this);
-        // Only print modulename::type on collision pages.
-        if (!dn->qmlModuleName().isEmpty() && relative != 0 && relative->isCollisionNode())
-            return dn->qmlModuleName() + "::" + dn->title();
-        return dn->title();
-    }
-    else if (type() == Node::Class) {
-        const ClassNode* cn = static_cast<const ClassNode*>(this);
-        if (!cn->serviceName().isEmpty())
-            return cn->serviceName();
-    }
+    if ((isDocumentNode() || isGroup()) && !title().isEmpty())
+        return title();
     return plainFullName(relative);
+}
+
+/*!
+  Try to match this node's type and subtype with one of the
+  pairs in \a types. If a match is found, return true. If no
+  match is found, return false.
+
+  \a types is a list of type/subtype pairs, where the first
+  value in the pair is a Node::Type, and the second value is
+  a Node::SubType. The second value is used in the match if
+  this node's type is Node::Document.
+ */
+bool Node::match(const NodeTypeList& types) const
+{
+    for (int i=0; i<types.size(); ++i) {
+        if (type() == types.at(i).first) {
+            if (type() == Node::Document) {
+                if (subType() == types.at(i).second)
+                    return true;
+            }
+            else
+                return true;
+        }
+    }
+    return false;
 }
 
 /*!
@@ -164,20 +201,19 @@ void Node::setDoc(const Doc& doc, bool replace)
   parent's child list.
  */
 Node::Node(Type type, InnerNode *parent, const QString& name)
-    : nodeType_(type),
-      access_(Public),
-      safeness_(UnspecifiedSafeness),
-      pageType_(NoPageType),
-      status_(Commendable),
+    : nodeType_((unsigned char) type),
+      access_((unsigned char) Public),
+      safeness_((unsigned char) UnspecifiedSafeness),
+      pageType_((unsigned char) NoPageType),
+      status_((unsigned char) Commendable),
       indexNodeFlag_(false),
-      seen_(true),
       parent_(parent),
       relatesTo_(0),
       name_(name)
 {
     if (parent_)
         parent_->addChild(this);
-    outSubDir_ = CodeParser::currentOutputSubdirectory();
+    outSubDir_ = Generator::outputSubdir();
     if (operators_.isEmpty()) {
         operators_.insert("++","inc");
         operators_.insert("--","dec");
@@ -224,21 +260,13 @@ Node::Node(Type type, InnerNode *parent, const QString& name)
     }
 }
 
-/*!
+/*! \fn QString Node::url() const
   Returns the node's URL.
  */
-QString Node::url() const
-{
-    return url_;
-}
 
-/*!
+/*! \fn void Node::setUrl(const QString &url)
   Sets the node's URL to \a url
  */
-void Node::setUrl(const QString &url)
-{
-    url_ = url;
-}
 
 /*!
   Returns this node's page type as a string, for use as an
@@ -246,14 +274,14 @@ void Node::setUrl(const QString &url)
  */
 QString Node::pageTypeString() const
 {
-    return pageTypeString(pageType_);
+    return pageTypeString((PageType) pageType_);
 }
 
 /*!
   Returns the page type \a t as a string, for use as an
   attribute value in XML or HTML.
  */
-QString Node::pageTypeString(unsigned t)
+QString Node::pageTypeString(unsigned char t)
 {
     switch ((PageType)t) {
     case Node::ApiPage:
@@ -290,7 +318,7 @@ QString Node::nodeTypeString() const
   Returns the node type \a t as a string for use as an
   attribute value in XML or HTML.
  */
-QString Node::nodeTypeString(unsigned t)
+QString Node::nodeTypeString(unsigned char t)
 {
     switch ((Type)t) {
     case Namespace:
@@ -309,6 +337,16 @@ QString Node::nodeTypeString(unsigned t)
         return "property";
     case Variable:
         return "variable";
+    case Group:
+        return "group";
+    case Module:
+        return "module";
+    case QmlType:
+        return "QML type";
+    case QmlBasicType:
+        return "QML basic type";
+    case QmlModule:
+        return "QML module";
     case QmlProperty:
         return "QML property";
     case QmlPropertyGroup:
@@ -340,7 +378,7 @@ QString Node::nodeSubtypeString() const
   attribute value in XML or HTML. This is only useful
   in the case where the node type is Document.
  */
-QString Node::nodeSubtypeString(unsigned t)
+QString Node::nodeSubtypeString(unsigned char t)
 {
     switch ((SubType)t) {
     case Example:
@@ -351,24 +389,12 @@ QString Node::nodeSubtypeString(unsigned t)
         return "file";
     case Image:
         return "image";
-    case Group:
-        return "group";
-    case Module:
-        return "module";
     case Page:
         return "page";
     case ExternalPage:
         return "external page";
-    case QmlClass:
-        return "QML type";
-    case QmlBasicType:
-        return "QML basic type";
-    case QmlModule:
-        return "QML module";
     case DitaMap:
         return "ditamap";
-    case Collision:
-        return "collision";
     case NoSubType:
     default:
         break;
@@ -382,21 +408,21 @@ QString Node::nodeSubtypeString(unsigned t)
 void Node::setPageType(const QString& t)
 {
     if ((t == "API") || (t == "api"))
-        pageType_ = ApiPage;
+        pageType_ = (unsigned char) ApiPage;
     else if (t == "howto")
-        pageType_ = HowToPage;
+        pageType_ = (unsigned char) HowToPage;
     else if (t == "overview")
-        pageType_ = OverviewPage;
+        pageType_ = (unsigned char) OverviewPage;
     else if (t == "tutorial")
-        pageType_ = TutorialPage;
-    else if (t == "howto")
-        pageType_ = HowToPage;
+        pageType_ = (unsigned char) TutorialPage;
+    else if (t == "faq")
+        pageType_ = (unsigned char) FAQPage;
     else if (t == "article")
-        pageType_ = ArticlePage;
+        pageType_ = (unsigned char) ArticlePage;
     else if (t == "example")
-        pageType_ = ExamplePage;
+        pageType_ = (unsigned char) ExamplePage;
     else if (t == "ditamap")
-        pageType_ = DitaMapPage;
+        pageType_ = (unsigned char) DitaMapPage;
 }
 
 /*! Converts the boolean value \a b to an enum representation
@@ -471,7 +497,7 @@ void Node::setSince(const QString &since)
  */
 QString Node::accessString() const
 {
-    switch (access_) {
+    switch ((Access) access_) {
     case Protected:
         return "protected";
     case Private:
@@ -515,7 +541,7 @@ QString Node::extractClassName(const QString &string) const
  */
 QString RelatedClass::accessString() const
 {
-    switch (access) {
+    switch (access_) {
     case Node::Protected:
         return "protected";
     case Node::Private:
@@ -547,9 +573,9 @@ Node::Status Node::inheritedStatus() const
  */
 Node::ThreadSafeness Node::threadSafeness() const
 {
-    if (parent_ && safeness_ == parent_->inheritedThreadSafeness())
+    if (parent_ && (ThreadSafeness) safeness_ == parent_->inheritedThreadSafeness())
         return UnspecifiedSafeness;
-    return safeness_;
+    return (ThreadSafeness) safeness_;
 }
 
 /*!
@@ -559,9 +585,9 @@ Node::ThreadSafeness Node::threadSafeness() const
  */
 Node::ThreadSafeness Node::inheritedThreadSafeness() const
 {
-    if (parent_ && safeness_ == UnspecifiedSafeness)
+    if (parent_ && (ThreadSafeness) safeness_ == UnspecifiedSafeness)
         return parent_->inheritedThreadSafeness();
-    return safeness_;
+    return (ThreadSafeness) safeness_;
 }
 
 #if 0
@@ -593,18 +619,19 @@ QString Node::guid() const
 }
 
 /*!
-  If this node is a QML class node, return a pointer to it.
-  If it is a child of a QML class node, return a pointer to
-  the QML class node. Otherwise, return 0;
+  If this node is a QML or JS type node, return a pointer to
+  it. If it is a child of a QML or JS type node, return the
+  pointer to its parent QMLor JS type node. Otherwise return
+  0;
  */
-QmlClassNode* Node::qmlClassNode()
+QmlTypeNode* Node::qmlTypeNode()
 {
-    if (isQmlNode()) {
+    if (isQmlNode() || isJsNode()) {
         Node* n = this;
-        while (n && n->subType() != Node::QmlClass)
+        while (n && !(n->isQmlType() || n->isJsType()))
             n = n->parent();
-        if (n && n->subType() == Node::QmlClass)
-            return static_cast<QmlClassNode*>(n);
+        if (n && (n->isQmlType() || n->isJsType()))
+            return static_cast<QmlTypeNode*>(n);
     }
     return 0;
 }
@@ -618,7 +645,7 @@ QmlClassNode* Node::qmlClassNode()
  */
 ClassNode* Node::declarativeCppNode()
 {
-    QmlClassNode* qcn = qmlClassNode();
+    QmlTypeNode* qcn = qmlTypeNode();
     if (qcn)
         return qcn->classNode();
     return 0;
@@ -640,6 +667,22 @@ bool Node::isInternal() const
 }
 
 /*!
+  Returns a pointer to the Tree this node is in.
+ */
+Tree* Node::tree() const
+{
+    return (parent() ? parent()->tree() : 0);
+}
+
+/*!
+  Returns a pointer to the root of the Tree this node is in.
+ */
+const Node* Node::root() const
+{
+    return (parent() ? parent()->root() : this);
+}
+
+/*!
   \class InnerNode
  */
 
@@ -654,191 +697,38 @@ InnerNode::~InnerNode()
 }
 
 /*!
-  Returns \c true if this node's members coolection is not empty.
- */
-bool InnerNode::hasMembers() const
-{
-    return !members_.isEmpty();
-}
+  If \a genus is \c{Node::DontCare}, find the first node in
+  this node's child list that has the given \a name. If this
+  node is a QML type, be sure to also look in the children
+  of its property group nodes. Return the matching node or 0.
 
-/*!
-  Appends \a node to the members list, if and only if it
-  isn't already in the members list.
+  If \a genus is either \c{Node::CPP} or \c {Node::QML}, then
+  find all this node's children that have the given \a name,
+  and return the one that satisfies the \a genus requirement.
  */
-void InnerNode::addMember(Node* node)
+Node *InnerNode::findChildNode(const QString& name, Node::Genus genus) const
 {
-    if (!members_.contains(node))
-        members_.append(node);
-}
-
-/*!
-  Returns \c true if this node's members collection contains at
-  least one namespace node.
- */
-bool InnerNode::hasNamespaces() const
-{
-    if (!members_.isEmpty()) {
-        NodeList::const_iterator i = members_.begin();
-        while (i != members_.end()) {
-            if ((*i)->isNamespace())
-                return true;
-            ++i;
-        }
-    }
-    return false;
-}
-
-/*!
-  Returns \c true if this node's members collection contains at
-  least one class node.
- */
-bool InnerNode::hasClasses() const
-{
-    if (!members_.isEmpty()) {
-        NodeList::const_iterator i = members_.begin();
-        while (i != members_.end()) {
-            if ((*i)->isClass())
-                return true;
-            ++i;
-        }
-    }
-    return false;
-}
-
-/*!
-  Loads \a out with all this node's member nodes that are namespace nodes.
- */
-void InnerNode::getMemberNamespaces(NodeMap& out)
-{
-    out.clear();
-    NodeList::const_iterator i = members_.begin();
-    while (i != members_.end()) {
-        if ((*i)->isNamespace())
-            out.insert((*i)->name(),(*i));
-        ++i;
-    }
-}
-
-/*!
-  Loads \a out with all this node's member nodes that are class nodes.
- */
-void InnerNode::getMemberClasses(NodeMap& out)
-{
-    out.clear();
-    NodeList::const_iterator i = members_.begin();
-    while (i != members_.end()) {
-        if ((*i)->isClass())
-            out.insert((*i)->name(),(*i));
-        ++i;
-    }
-}
-
-/*!
-  Find the node in this node's children that has the
-  given \a name. If this node is a QML class node, be
-  sure to also look in the children of its property
-  group nodes. Return the matching node or 0.
- */
-Node *InnerNode::findChildNodeByName(const QString& name)
-{
-    Node *node = childMap.value(name);
-    if (node && node->type() != QmlPropertyGroup)
-        return node;
-    if ((type() == Document) && (subType() == QmlClass)) {
-        for (int i=0; i<children_.size(); ++i) {
-            Node* n = children_.at(i);
-            if (n->type() == QmlPropertyGroup) {
-                node = static_cast<InnerNode*>(n)->findChildNodeByName(name);
-                if (node)
-                    return node;
-            }
-        }
-    }
-    return primaryFunctionMap.value(name);
-}
-void InnerNode::findNodes(const QString& name, QList<Node*>& n)
-{
-    n.clear();
-    Node* node = 0;
-    QList<Node*> nodes = childMap.values(name);
-    /*
-      <sigh> If this node's child map contains no nodes named
-      name, then if this node is a QML class, seach each of its
-      property group nodes for a node named name. If a match is
-      found, append it to the output list and return immediately.
-     */
-    if (nodes.isEmpty()) {
-        if ((type() == Document) && (subType() == QmlClass)) {
+    if (genus == Node::DontCare) {
+        Node *node = childMap.value(name);
+        if (node && !node->isQmlPropertyGroup()) // mws asks: Why not property group?
+            return node;
+        if (isQmlType() || isJsType()) {
             for (int i=0; i<children_.size(); ++i) {
-                node = children_.at(i);
-                if (node->type() == QmlPropertyGroup) {
-                    node = static_cast<InnerNode*>(node)->findChildNodeByName(name);
-                    if (node) {
-                        n.append(node);
-                        return;
-                    }
+                Node* n = children_.at(i);
+                if (n->isQmlPropertyGroup() || isJsPropertyGroup()) {
+                    node = static_cast<InnerNode*>(n)->findChildNode(name, genus);
+                    if (node)
+                        return node;
                 }
             }
         }
     }
     else {
-        /*
-          If the childMap does contain one or more nodes named
-          name, traverse the list of matching nodes. Append each
-          matching node that is not a property group node to the
-          output list. Search each property group node for a node
-          named name and append that node to the output list.
-          This is overkill, I think, but should produce a useful
-          list.
-         */
-        for (int i=0; i<nodes.size(); ++i) {
-            node = nodes.at(i);
-            if (node->type() != QmlPropertyGroup)
-                n.append(node);
-            else {
-                node = static_cast<InnerNode*>(node)->findChildNodeByName(name);
-                if (node)
-                    n.append(node);
-            }
-        }
-    }
-    if (!n.isEmpty())
-        return;
-    node = primaryFunctionMap.value(name);
-    if (node)
-        n.append(node);
-}
-
-/*!
-  Find the node in this node's children that has the given \a name. If
-  this node is a QML class node, be sure to also look in the children
-  of its property group nodes. Return the matching node or 0. This is
-  not a recearsive search.
-
-  If \a qml is true, only match a node for which node->isQmlNode()
-  returns \c true. If \a qml is false, only match a node for which
-  node->isQmlNode() returns \c false.
- */
-Node* InnerNode::findChildNodeByName(const QString& name, bool qml)
-{
-    QList<Node*> nodes = childMap.values(name);
-    if (!nodes.isEmpty()) {
-        for (int i=0; i<nodes.size(); ++i) {
-            Node* node = nodes.at(i);
-            if (!qml) {
-                if (!node->isQmlNode())
-                    return node;
-            }
-            else if (node->isQmlNode() && (node->type() != QmlPropertyGroup))
-                return node;
-        }
-    }
-    if (qml && (type() == Document) && (subType() == QmlClass)) {
-        for (int i=0; i<children_.size(); ++i) {
-            Node* node = children_.at(i);
-            if (node->type() == QmlPropertyGroup) {
-                node = static_cast<InnerNode*>(node)->findChildNodeByName(name);
-                if (node)
+        NodeList nodes = childMap.values(name);
+        if (!nodes.isEmpty()) {
+            for (int i=0; i<nodes.size(); ++i) {
+                Node* node = nodes.at(i);
+                if (genus == node->genus())
                     return node;
             }
         }
@@ -847,22 +737,48 @@ Node* InnerNode::findChildNodeByName(const QString& name, bool qml)
 }
 
 /*!
-  This function is like findChildNodeByName(), but if a node
+  Find all the child nodes of this node that are named
+  \a name and return them in \a nodes.
+ */
+void InnerNode::findChildren(const QString& name, NodeList& nodes) const
+{
+    nodes = childMap.values(name);
+    Node* n = primaryFunctionMap.value(name);
+    if (n) {
+        nodes.append(n);
+        NodeList t = secondaryFunctionMap.value(name);
+        if (!t.isEmpty())
+            nodes.append(t);
+    }
+    if (!nodes.isEmpty() || !(isQmlNode() || isJsNode()))
+        return;
+    int i = name.indexOf(QChar('.'));
+    if (i < 0)
+        return;
+    QString qmlPropGroup = name.left(i);
+    NodeList t = childMap.values(qmlPropGroup);
+    if (t.isEmpty())
+        return;
+    foreach (Node* n, t) {
+        if (n->isQmlPropertyGroup() || n->isJsPropertyGroup()) {
+            n->findChildren(name, nodes);
+            if (!nodes.isEmpty())
+                break;
+        }
+    }
+}
+
+/*!
+  This function is like findChildNode(), but if a node
   with the specified \a name is found but it is not of the
   specified \a type, 0 is returned.
-
-  This function is not recursive and therefore can't handle
-  collisions. If it finds a collision node named \a name, it
-  will return that node. But it might not find the collision
-  node because it looks up \a name in the child map, not the
-  list.
  */
-Node* InnerNode::findChildNodeByNameAndType(const QString& name, Type type)
+Node* InnerNode::findChildNode(const QString& name, Type type)
 {
     if (type == Function)
         return primaryFunctionMap.value(name);
     else {
-        QList<Node*> nodes = childMap.values(name);
+        NodeList nodes = childMap.values(name);
         for (int i=0; i<nodes.size(); ++i) {
             Node* node = nodes.at(i);
             if (node->type() == type)
@@ -876,7 +792,7 @@ Node* InnerNode::findChildNodeByNameAndType(const QString& name, Type type)
   Find a function node that is a child of this nose, such
   that the function node has the specified \a name.
  */
-FunctionNode *InnerNode::findFunctionNode(const QString& name)
+FunctionNode *InnerNode::findFunctionNode(const QString& name) const
 {
     return static_cast<FunctionNode *>(primaryFunctionMap.value(name));
 }
@@ -886,7 +802,7 @@ FunctionNode *InnerNode::findFunctionNode(const QString& name)
   that the function has the same name and signature as the
   \a clone node.
  */
-FunctionNode *InnerNode::findFunctionNode(const FunctionNode *clone)
+FunctionNode *InnerNode::findFunctionNode(const FunctionNode *clone) const
 {
     QMap<QString,Node*>::ConstIterator c = primaryFunctionMap.constFind(clone->name());
     if (c != primaryFunctionMap.constEnd()) {
@@ -936,7 +852,7 @@ QStringList InnerNode::secondaryKeys()
 
 /*!
  */
-void InnerNode::setOverload(const FunctionNode *func, bool overlode)
+void InnerNode::setOverload(FunctionNode *func, bool overlode)
 {
     Node *node = (Node *) func;
     Node *&primary = primaryFunctionMap[func->name()];
@@ -967,32 +883,16 @@ void InnerNode::setOverload(const FunctionNode *func, bool overlode)
 /*!
   Mark all child nodes that have no documentation as having
   private access and internal status. qdoc will then ignore
-  them for documentation purposes.
-
-  \note Exception: Name collision nodes are not marked
-  private/internal.
+  them for documentation purposes. Some nodes have an
+  Intermediate status, meaning that they should be ignored,
+  but not their children.
  */
 void InnerNode::makeUndocumentedChildrenInternal()
 {
     foreach (Node *child, childNodes()) {
-        if (child->doc().isEmpty()) {
-            if (child->subType() != Node::Collision) {
-                child->setAccess(Node::Private);
-                child->setStatus(Node::Internal);
-            }
-        }
-    }
-}
-
-/*!
-  In each child node that is a collision node,
-  clear the current child pointer.
- */
-void InnerNode::clearCurrentChildPointers()
-{
-    foreach (Node* child, childNodes()) {
-        if (child->subType() == Collision) {
-            child->clearCurrentChild();
+        if (child->doc().isEmpty() && child->status() != Node::Intermediate) {
+            child->setAccess(Node::Private);
+            child->setStatus(Node::Internal);
         }
     }
 }
@@ -1092,64 +992,17 @@ bool Node::isWrapper() const
 }
 
 /*!
- */
-const Node *InnerNode::findChildNodeByName(const QString& name) const
-{
-    InnerNode *that = (InnerNode *) this;
-    return that->findChildNodeByName(name);
-}
-
-/*!
-  If \a qml is true, only match a node for which node->isQmlNode()
-  returns \c true. If \a qml is false, only match a node for which
-  node->isQmlNode() returns \c false.
- */
-const Node* InnerNode::findChildNodeByName(const QString& name, bool qml) const
-{
-    InnerNode*that = (InnerNode*) this;
-    return that->findChildNodeByName(name, qml);
-}
-
-/*!
-  Searches this node's children for a child named \a name
-  with the specified node \a type.
- */
-const Node* InnerNode::findChildNodeByNameAndType(const QString& name, Type type) const
-{
-    InnerNode *that = (InnerNode *) this;
-    return that->findChildNodeByNameAndType(name, type);
-}
-
-/*!
-  Find a function node that is a child of this nose, such
-  that the function node has the specified \a name. This
-  function calls the non-const version of itself.
- */
-const FunctionNode *InnerNode::findFunctionNode(const QString& name) const
-{
-    InnerNode *that = (InnerNode *) this;
-    return that->findFunctionNode(name);
-}
-
-/*!
-  Find the function node that is a child of this node, such
-  that the function has the same name and signature as the
-  \a clone node. This function calls the non-const version.
- */
-const FunctionNode *InnerNode::findFunctionNode(const FunctionNode *clone) const
-{
-    InnerNode *that = (InnerNode *) this;
-    return that->findFunctionNode(clone);
-}
-
-/*!
+  Finds the enum type node that has \a enumValue as one of
+  its enum values and returns a pointer to it. Returns 0 if
+  no enum type node is found that has \a enumValue as one
+  of its values.
  */
 const EnumNode *InnerNode::findEnumNodeForValue(const QString &enumValue) const
 {
     foreach (const Node *node, enumChildren_) {
-        const EnumNode *enume = static_cast<const EnumNode *>(node);
-        if (enume->hasItem(enumValue))
-            return enume;
+        const EnumNode *en = static_cast<const EnumNode *>(node);
+        if (en->hasItem(enumValue))
+            return en;
     }
     return 0;
 }
@@ -1161,7 +1014,7 @@ const EnumNode *InnerNode::findEnumNodeForValue(const QString &enumValue) const
  */
 int InnerNode::overloadNumber(const FunctionNode *func) const
 {
-    Node *node = (Node *) func;
+    Node *node = const_cast<FunctionNode *>(func);
     if (primaryFunctionMap[func->name()] == node) {
         return 1;
     }
@@ -1194,6 +1047,7 @@ InnerNode::InnerNode(Type type, InnerNode *parent, const QString& name)
 {
     switch (type) {
     case Class:
+    case QmlType:
     case Namespace:
         setPageType(ApiPage);
         break;
@@ -1255,7 +1109,9 @@ bool InnerNode::isSameSignature(const FunctionNode *f1, const FunctionNode *f2)
 }
 
 /*!
-  Adds the \a child to this node's child list.
+  Adds the \a child to this node's child list. It might also
+  be necessary to update this node's internal collections and
+  the child's parent pointer and output subdirectory.
  */
 void InnerNode::addChild(Node *child)
 {
@@ -1275,9 +1131,28 @@ void InnerNode::addChild(Node *child)
             enumChildren_.append(child);
         childMap.insertMulti(child->name(), child);
     }
+    if (child->parent() == 0) {
+        child->setParent(this);
+        child->setOutputSubdirectory(this->outputSubdirectory());
+    }
 }
 
 /*!
+  Adds the \a child to this node's child map using \a title
+  as the key. The \a child is not added to the child list
+  again, because it is presumed to already be there. We just
+  want to be able to find the child by its \a title.
+ */
+void InnerNode::addChild(Node* child, const QString& title)
+{
+    childMap.insertMulti(title, child);
+}
+
+/*!
+  The \a child is removed from this node's child list and
+  from this node's internal collections. The child's parent
+  pointer is set to 0, but its output subdirectory is not
+  changed.
  */
 void InnerNode::removeChild(Node *child)
 {
@@ -1307,6 +1182,27 @@ void InnerNode::removeChild(Node *child)
         }
         ++ent;
     }
+    if (child->title().isEmpty())
+        return;
+    ent = childMap.find(child->title());
+    while (ent != childMap.end() && ent.key() == child->title()) {
+        if (*ent == child) {
+            childMap.erase(ent);
+            break;
+        }
+        ++ent;
+    }
+    child->setParent(0);
+}
+
+/*!
+ Recursively sets the output subdirectory for children
+ */
+void InnerNode::setOutputSubdirectory(const QString &t)
+{
+    Node::setOutputSubdirectory(t);
+    for (int i = 0; i < childNodes().size(); ++i)
+        childNodes().at(i)->setOutputSubdirectory(t);
 }
 
 /*!
@@ -1319,10 +1215,10 @@ void InnerNode::removeChild(Node *child)
   been defined in the header file with a QT_MODULE macro or with an
   \inmodule command in the documentation.
 */
-QString Node::moduleName() const
+QString Node::physicalModuleName() const
 {
-    if (!moduleName_.isEmpty())
-        return moduleName_;
+    if (!physicalModuleName_.isEmpty())
+        return physicalModuleName_;
 
     QString path = location().filePath();
     QString pattern = QString("src") + QDir::separator();
@@ -1337,27 +1233,27 @@ QString Node::moduleName() const
     if (finish == -1)
         return QString();
 
-    QString moduleName = moduleDir.left(finish);
+    QString physicalModuleName = moduleDir.left(finish);
 
-    if (moduleName == "corelib")
+    if (physicalModuleName == "corelib")
         return "QtCore";
-    else if (moduleName == "uitools")
+    else if (physicalModuleName == "uitools")
         return "QtUiTools";
-    else if (moduleName == "gui")
+    else if (physicalModuleName == "gui")
         return "QtGui";
-    else if (moduleName == "network")
+    else if (physicalModuleName == "network")
         return "QtNetwork";
-    else if (moduleName == "opengl")
+    else if (physicalModuleName == "opengl")
         return "QtOpenGL";
-    else if (moduleName == "svg")
+    else if (physicalModuleName == "svg")
         return "QtSvg";
-    else if (moduleName == "sql")
+    else if (physicalModuleName == "sql")
         return "QtSql";
-    else if (moduleName == "qtestlib")
+    else if (physicalModuleName == "qtestlib")
         return "QtTest";
     else if (moduleDir.contains("webkit"))
         return "QtWebKit";
-    else if (moduleName == "xml")
+    else if (physicalModuleName == "xml")
         return "QtXml";
     else
         return QString();
@@ -1381,8 +1277,29 @@ QmlPropertyNode* InnerNode::hasQmlProperty(const QString& n) const
             if (child->name() == n)
                 return static_cast<QmlPropertyNode*>(child);
         }
-        else if (child->type() == Node::QmlPropertyGroup) {
+        else if (child->isQmlPropertyGroup()) {
             QmlPropertyNode* t = child->hasQmlProperty(n);
+            if (t)
+                return t;
+        }
+    }
+    return 0;
+}
+
+/*!
+  If this node has a child that is a QML property named \a n
+  whose type (attached or normal property) matches \a attached,
+  return the pointer to that child.
+ */
+QmlPropertyNode* InnerNode::hasQmlProperty(const QString& n, bool attached) const
+{
+    foreach (Node* child, childNodes()) {
+        if (child->type() == Node::QmlProperty) {
+            if (child->name() == n && child->isAttached() == attached)
+                return static_cast<QmlPropertyNode*>(child);
+        }
+        else if (child->isQmlPropertyGroup()) {
+            QmlPropertyNode* t = child->hasQmlProperty(n, attached);
             if (t)
                 return t;
         }
@@ -1414,6 +1331,7 @@ LeafNode::LeafNode(Type type, InnerNode *parent, const QString& name)
     case QmlSignal:
     case QmlSignalHandler:
     case QmlMethod:
+    case QmlBasicType:
         setPageType(ApiPage);
         break;
     default:
@@ -1457,8 +1375,9 @@ LeafNode::LeafNode(InnerNode* parent, Type type, const QString& name)
   Constructs a namespace node.
  */
 NamespaceNode::NamespaceNode(InnerNode *parent, const QString& name)
-    : InnerNode(Namespace, parent, name)
+    : InnerNode(Namespace, parent, name), seen_(false), tree_(0)
 {
+    setGenus(Node::CPP);
     setPageType(ApiPage);
 }
 
@@ -1476,17 +1395,52 @@ ClassNode::ClassNode(InnerNode *parent, const QString& name)
     abstract_ = false;
     wrapper_ = false;
     qmlelement = 0;
+    setGenus(Node::CPP);
     setPageType(ApiPage);
 }
 
 /*!
+  Adds the base class \a node to this class's list of base
+  classes. The base class has the specified \a access. This
+  is a resolved base class.
  */
-void ClassNode::addBaseClass(Access access,
-                             ClassNode *node,
-                             const QString &dataTypeWithTemplateArgs)
+void ClassNode::addResolvedBaseClass(Access access, ClassNode* node)
 {
-    bases.append(RelatedClass(access, node, dataTypeWithTemplateArgs));
-    node->derived.append(RelatedClass(access, this));
+    bases_.append(RelatedClass(access, node));
+    node->derived_.append(RelatedClass(access, this));
+}
+
+/*!
+  Adds the derived class \a node to this class's list of derived
+  classes. The derived class inherits this class with \a access.
+ */
+void ClassNode::addDerivedClass(Access access, ClassNode* node)
+{
+    derived_.append(RelatedClass(access, node));
+}
+
+/*!
+  Add an unresolved base class to this class node's list of
+  base classes. The unresolved base class will be resolved
+  before the generate phase of qdoc. In an unresolved base
+  class, the pointer to the base class node is 0.
+ */
+void ClassNode::addUnresolvedBaseClass(Access access,
+                                       const QStringList& path,
+                                       const QString& signature)
+{
+    bases_.append(RelatedClass(access, path, signature));
+}
+
+/*!
+  Add an unresolved \c using clause to this class node's list
+  of \c using clauses. The unresolved \c using clause will be
+  resolved before the generate phase of qdoc. In an unresolved
+  \c using clause, the pointer to the function node is 0.
+ */
+void ClassNode::addUnresolvedUsingClause(const QString& signature)
+{
+    usingClauses_.append(UsingClause(signature));
 }
 
 /*!
@@ -1498,15 +1452,15 @@ void ClassNode::fixBaseClasses()
     QSet<ClassNode *> found;
 
     // Remove private and duplicate base classes.
-    while (i < bases.size()) {
-        ClassNode* bc = bases.at(i).node;
-        if (bc->access() == Node::Private || found.contains(bc)) {
-            RelatedClass rc = bases.at(i);
-            bases.removeAt(i);
-            ignoredBases.append(rc);
+    while (i < bases_.size()) {
+        ClassNode* bc = bases_.at(i).node_;
+        if (bc && (bc->access() == Node::Private || found.contains(bc))) {
+            RelatedClass rc = bases_.at(i);
+            bases_.removeAt(i);
+            ignoredBases_.append(rc);
             const QList<RelatedClass> &bb = bc->baseClasses();
             for (int j = bb.size() - 1; j >= 0; --j)
-                bases.insert(i, bb.at(j));
+                bases_.insert(i, bb.at(j));
         }
         else {
             ++i;
@@ -1515,17 +1469,39 @@ void ClassNode::fixBaseClasses()
     }
 
     i = 0;
-    while (i < derived.size()) {
-        ClassNode* dc = derived.at(i).node;
-        if (dc->access() == Node::Private) {
-            derived.removeAt(i);
+    while (i < derived_.size()) {
+        ClassNode* dc = derived_.at(i).node_;
+        if (dc && dc->access() == Node::Private) {
+            derived_.removeAt(i);
             const QList<RelatedClass> &dd = dc->derivedClasses();
             for (int j = dd.size() - 1; j >= 0; --j)
-                derived.insert(i, dd.at(j));
+                derived_.insert(i, dd.at(j));
         }
         else {
             ++i;
         }
+    }
+}
+
+/*!
+  Not sure why this is needed.
+ */
+void ClassNode::fixPropertyUsingBaseClasses(PropertyNode* pn)
+{
+    QList<RelatedClass>::const_iterator bc = baseClasses().constBegin();
+    while (bc != baseClasses().constEnd()) {
+        ClassNode* cn = bc->node_;
+        if (cn) {
+            Node* n = cn->findChildNode(pn->name(), Node::Property);
+            if (n) {
+                PropertyNode* baseProperty = static_cast<PropertyNode*>(n);
+                cn->fixPropertyUsingBaseClasses(baseProperty);
+                pn->setOverriddenFrom(baseProperty);
+            }
+            else
+                cn->fixPropertyUsingBaseClasses(pn);
+        }
+        ++bc;
     }
 }
 
@@ -1535,7 +1511,7 @@ void ClassNode::fixBaseClasses()
  */
 PropertyNode* ClassNode::findPropertyNode(const QString& name)
 {
-    Node* n = findChildNodeByNameAndType(name, Node::Property);
+    Node* n = findChildNode(name, Node::Property);
 
     if (n)
         return static_cast<PropertyNode*>(n);
@@ -1545,19 +1521,23 @@ PropertyNode* ClassNode::findPropertyNode(const QString& name)
     const QList<RelatedClass> &bases = baseClasses();
     if (!bases.isEmpty()) {
         for (int i = 0; i < bases.size(); ++i) {
-            ClassNode* cn = bases[i].node;
-            pn = cn->findPropertyNode(name);
-            if (pn)
-                break;
+            ClassNode* cn = bases[i].node_;
+            if (cn) {
+                pn = cn->findPropertyNode(name);
+                if (pn)
+                    break;
+            }
         }
     }
     const QList<RelatedClass>& ignoredBases = ignoredBaseClasses();
     if (!ignoredBases.isEmpty()) {
         for (int i = 0; i < ignoredBases.size(); ++i) {
-            ClassNode* cn = ignoredBases[i].node;
-            pn = cn->findPropertyNode(name);
-            if (pn)
-                break;
+            ClassNode* cn = ignoredBases[i].node_;
+            if (cn) {
+                pn = cn->findPropertyNode(name);
+                if (pn)
+                    break;
+            }
         }
     }
 
@@ -1570,20 +1550,20 @@ PropertyNode* ClassNode::findPropertyNode(const QString& name)
   finds one, it returns the pointer to that QML element. If
   it doesn't find one, it returns null.
  */
-QmlClassNode* ClassNode::findQmlBaseNode()
+QmlTypeNode* ClassNode::findQmlBaseNode()
 {
-    QmlClassNode* result = 0;
+    QmlTypeNode* result = 0;
     const QList<RelatedClass>& bases = baseClasses();
 
     if (!bases.isEmpty()) {
         for (int i = 0; i < bases.size(); ++i) {
-            ClassNode* cn = bases[i].node;
+            ClassNode* cn = bases[i].node_;
             if (cn && cn->qmlElement()) {
                 return cn->qmlElement();
             }
         }
         for (int i = 0; i < bases.size(); ++i) {
-            ClassNode* cn = bases[i].node;
+            ClassNode* cn = bases[i].node_;
             if (cn) {
                 result = cn->findQmlBaseNode();
                 if (result != 0) {
@@ -1596,17 +1576,18 @@ QmlClassNode* ClassNode::findQmlBaseNode()
 }
 
 /*!
-  \class DocNode
+  \class DocumentNode
  */
 
 /*!
-  The type of a DocNode is Document, and it has a \a subtype,
-  which specifies the type of DocNode. The page type for
+  The type of a DocumentNode is Document, and it has a \a subtype,
+  which specifies the type of DocumentNode. The page type for
   the page index is set here.
  */
-DocNode::DocNode(InnerNode* parent, const QString& name, SubType subtype, Node::PageType ptype)
+DocumentNode::DocumentNode(InnerNode* parent, const QString& name, SubType subtype, Node::PageType ptype)
     : InnerNode(Document, parent, name), nodeSubtype_(subtype)
 {
+    setGenus(Node::DOC);
     switch (subtype) {
     case Page:
         setPageType(ptype);
@@ -1614,34 +1595,25 @@ DocNode::DocNode(InnerNode* parent, const QString& name, SubType subtype, Node::
     case DitaMap:
         setPageType(ptype);
         break;
-    case Module:
-    case Group:
-        setPageType(OverviewPage);
-        break;
-    case QmlModule:
-        setPageType(OverviewPage);
-        break;
-    case QmlClass:
-    case QmlBasicType:
-        setPageType(ApiPage);
-        break;
     case Example:
         setPageType(ExamplePage);
-        break;
-    case Collision:
-        setPageType(ptype);
         break;
     default:
         break;
     }
 }
 
-/*!
+/*! \fn QString DocumentNode::title() const
   Returns the document node's title. This is used for the page title.
 */
-QString DocNode::title() const
+
+/*!
+  Sets the document node's \a title. This is used for the page title.
+ */
+void DocumentNode::setTitle(const QString &title)
 {
-    return title_;
+    title_ = title;
+    parent()->addChild(this, title);
 }
 
 /*!
@@ -1649,7 +1621,7 @@ QString DocNode::title() const
   just title(), but for some SubType values is different
   from title()
  */
-QString DocNode::fullTitle() const
+QString DocumentNode::fullTitle() const
 {
     if (nodeSubtype_ == File) {
         if (title().isEmpty())
@@ -1669,9 +1641,6 @@ QString DocNode::fullTitle() const
         else
             return name() + " - " + title();
     }
-    else if (nodeSubtype_ == Collision) {
-        return title();
-    }
     else {
         return title();
     }
@@ -1680,7 +1649,7 @@ QString DocNode::fullTitle() const
 /*!
   Returns the subtitle.
  */
-QString DocNode::subTitle() const
+QString DocumentNode::subTitle() const
 {
     if (!subtitle_.isEmpty())
         return subtitle_;
@@ -1690,16 +1659,6 @@ QString DocNode::subTitle() const
             return name();
     }
     return QString();
-}
-
-/*!
-  The constructor calls the DocNode constructor with
-  \a parent, \a name, and Node::Example.
- */
-ExampleNode::ExampleNode(InnerNode* parent, const QString& name)
-    : DocNode(parent, name, Node::Example, Node::ExamplePage)
-{
-    // nothing
 }
 
 /*!
@@ -1713,7 +1672,7 @@ ExampleNode::ExampleNode(InnerNode* parent, const QString& name)
 EnumNode::EnumNode(InnerNode *parent, const QString& name)
     : LeafNode(Enum, parent, name), ft(0)
 {
-    // nothing.
+    setGenus(Node::CPP);
 }
 
 /*!
@@ -1758,6 +1717,7 @@ QString EnumNode::itemValue(const QString &name) const
 TypedefNode::TypedefNode(InnerNode *parent, const QString& name)
     : LeafNode(Typedef, parent, name), ae(0)
 {
+    setGenus(Node::CPP);
 }
 
 /*!
@@ -1844,10 +1804,11 @@ FunctionNode::FunctionNode(InnerNode *parent, const QString& name)
       ove(false),
       reimp(false),
       attached_(false),
+      privateSignal_(false),
       rf(0),
       ap(0)
 {
-    // nothing.
+    setGenus(Node::CPP);
 }
 
 /*!
@@ -1864,13 +1825,17 @@ FunctionNode::FunctionNode(Type type, InnerNode *parent, const QString& name, bo
       ove(false),
       reimp(false),
       attached_(attached),
+      privateSignal_(false),
       rf(0),
       ap(0)
 {
+    setGenus(Node::QML);
     if (type == QmlMethod || type == QmlSignal) {
         if (name.startsWith("__"))
             setStatus(Internal);
     }
+    else if (type == Function)
+        setGenus(Node::CPP);
 }
 
 /*!
@@ -1907,6 +1872,7 @@ void FunctionNode::setReimp(bool r)
 }
 
 /*!
+  Append \a parameter to the parameter list.
  */
 void FunctionNode::addParameter(const Parameter& parameter)
 {
@@ -2057,7 +2023,7 @@ PropertyNode::PropertyNode(InnerNode *parent, const QString& name)
       rev(-1),
       overrides(0)
 {
-    // nothing.
+    setGenus(Node::CPP);
 }
 
 /*!
@@ -2111,22 +2077,21 @@ QString PropertyNode::qualifiedDataType() const
     }
 }
 
-bool QmlClassNode::qmlOnly = false;
-QMultiMap<QString,Node*> QmlClassNode::inheritedBy;
+bool QmlTypeNode::qmlOnly = false;
+QMultiMap<QString,Node*> QmlTypeNode::inheritedBy;
 
 /*!
-  Constructs a Qml class node (i.e. a Document node with the
-  subtype QmlClass. The new node has the given \a parent
-  and \a name.
+  Constructs a Qml class node. The new node has the given
+  \a parent and \a name.
  */
-QmlClassNode::QmlClassNode(InnerNode *parent, const QString& name)
-    : DocNode(parent, name, QmlClass, Node::ApiPage),
+QmlTypeNode::QmlTypeNode(InnerNode *parent, const QString& name)
+    : InnerNode(QmlType, parent, name),
       abstract_(false),
       cnodeRequired_(false),
       wrapper_(false),
       cnode_(0),
-      qmlModule_(0),
-      baseNode_(0)
+      logicalModule_(0),
+      qmlBaseNode_(0)
 {
     int i = 0;
     if (name.startsWith("QML:")) {
@@ -2134,12 +2099,14 @@ QmlClassNode::QmlClassNode(InnerNode *parent, const QString& name)
         i = 4;
     }
     setTitle(name.mid(i));
+    setPageType(Node::ApiPage);
+    setGenus(Node::QML);
 }
 
 /*!
   Needed for printing a debug messages.
  */
-QmlClassNode::~QmlClassNode()
+QmlTypeNode::~QmlTypeNode()
 {
     // nothing.
 }
@@ -2148,7 +2115,7 @@ QmlClassNode::~QmlClassNode()
   Clear the static maps so that subsequent runs don't try to use
   contents from a previous run.
  */
-void QmlClassNode::terminate()
+void QmlTypeNode::terminate()
 {
     inheritedBy.clear();
 }
@@ -2157,17 +2124,18 @@ void QmlClassNode::terminate()
   Record the fact that QML class \a base is inherited by
   QML class \a sub.
  */
-void QmlClassNode::addInheritedBy(const QString& base, Node* sub)
+void QmlTypeNode::addInheritedBy(const QString& base, Node* sub)
 {
-    if (inheritedBy.constFind(base,sub) == inheritedBy.constEnd()) {
+    if (sub->isInternal())
+        return;
+    if (inheritedBy.constFind(base,sub) == inheritedBy.constEnd())
         inheritedBy.insert(base,sub);
-    }
 }
 
 /*!
   Loads the list \a subs with the nodes of all the subclasses of \a base.
  */
-void QmlClassNode::subclasses(const QString& base, NodeList& subs)
+void QmlTypeNode::subclasses(const QString& base, NodeList& subs)
 {
     subs.clear();
     if (inheritedBy.count(base) > 0) {
@@ -2175,27 +2143,12 @@ void QmlClassNode::subclasses(const QString& base, NodeList& subs)
     }
 }
 
-/*!
-  This function splits \a arg on the blank character to get a
-  QML module name and version number. If the version number is
-  present, it spilts the version number on the '.' character to
-  get a major version number and a minor vrsion number. If the
-  version number is present, both the major and minor version
-  numbers should be there, but the minor version number is not
-  absolutely necessary.
- */
-void QmlModuleNode::setQmlModuleInfo(const QString& arg)
+QmlTypeNode* QmlTypeNode::qmlBaseNode()
 {
-    QStringList blankSplit = arg.split(QLatin1Char(' '));
-    qmlModuleName_ = blankSplit[0];
-    if (blankSplit.size() > 1) {
-        QStringList dotSplit = blankSplit[1].split(QLatin1Char('.'));
-        qmlModuleVersionMajor_ = dotSplit[0];
-        if (dotSplit.size() > 1)
-            qmlModuleVersionMinor_ = dotSplit[1];
-        else
-            qmlModuleVersionMinor_ = "0";
+    if (!qmlBaseNode_ && !qmlBaseName_.isEmpty()) {
+        qmlBaseNode_ = QDocDatabase::qdocDB()->findQmlType(qmlBaseName_);
     }
+    return qmlBaseNode_;
 }
 
 /*!
@@ -2203,45 +2156,13 @@ void QmlModuleNode::setQmlModuleInfo(const QString& arg)
   return the fully qualified name of that QML
   type, i.e. <QML-module-name>::<QML-type-name>.
  */
-QString QmlClassNode::qmlFullBaseName() const
+QString QmlTypeNode::qmlFullBaseName() const
 {
     QString result;
-    if (baseNode_) {
-        result = baseNode_->qmlModuleName() + "::" + baseNode_->name();
+    if (qmlBaseNode_) {
+        result = qmlBaseNode_->logicalModuleName() + "::" + qmlBaseNode_->name();
     }
     return result;
-}
-
-/*!
-  The name of this QML class node might be the same as the
-  name of some other QML class node. If so, then this node's
-  parent will be a NameCollisionNode.This function sets the
-  NameCollisionNode's current child to this node. This is
-  important when outputting the documentation for this node,
-  when, for example, the documentation contains a link to
-  the page being output. We don't want to generate a link
-  to the disambiguation page if we can avoid it, and to be
-  able to avoid it, the NameCollisionNode must maintain the
-  current child pointer. That's the purpose of this function.
- */
-void QmlClassNode::setCurrentChild()
-{
-    if (parent()) {
-        InnerNode* n = parent();
-        if (n->subType() == Node::Collision)
-            n->setCurrentChild(this);
-    }
-}
-
-/*!
- */
-void QmlClassNode::clearCurrentChild()
-{
-    if (parent()) {
-        InnerNode* n = parent();
-        if (n->subType() == Node::Collision)
-            n->clearCurrentChild();
-    }
 }
 
 /*!
@@ -2249,9 +2170,9 @@ void QmlClassNode::clearCurrentChild()
   module name from the QML module node. Otherwise, return the
   empty string.
  */
-QString QmlClassNode::qmlModuleName() const
+QString QmlTypeNode::logicalModuleName() const
 {
-    return (qmlModule_ ? qmlModule_->qmlModuleName() : QString());
+    return (logicalModule_ ? logicalModule_->logicalModuleName() : QString());
 }
 
 /*!
@@ -2259,9 +2180,9 @@ QString QmlClassNode::qmlModuleName() const
   module version from the QML module node. Otherwise, return
   the empty string.
  */
-QString QmlClassNode::qmlModuleVersion() const
+QString QmlTypeNode::logicalModuleVersion() const
 {
-    return (qmlModule_ ? qmlModule_->qmlModuleVersion() : QString());
+    return (logicalModule_ ? logicalModule_->logicalModuleVersion() : QString());
 }
 
 /*!
@@ -2269,31 +2190,32 @@ QString QmlClassNode::qmlModuleVersion() const
   module identifier from the QML module node. Otherwise, return
   the empty string.
  */
-QString QmlClassNode::qmlModuleIdentifier() const
+QString QmlTypeNode::logicalModuleIdentifier() const
 {
-    return (qmlModule_ ? qmlModule_->qmlModuleIdentifier() : QString());
+    return (logicalModule_ ? logicalModule_->logicalModuleIdentifier() : QString());
 }
 
 /*!
-  Constructs a Qml basic type node (i.e. a Document node with
-  the subtype QmlBasicType. The new node has the given
+  Constructs a Qml basic type node. The new node has the given
   \a parent and \a name.
  */
 QmlBasicTypeNode::QmlBasicTypeNode(InnerNode *parent,
                                    const QString& name)
-    : DocNode(parent, name, QmlBasicType, Node::ApiPage)
+    : InnerNode(QmlBasicType, parent, name)
 {
     setTitle(name);
+    setGenus(Node::QML);
 }
 
 /*!
   Constructor for the Qml property group node. \a parent is
-  always a QmlClassNode.
+  always a QmlTypeNode.
  */
-QmlPropertyGroupNode::QmlPropertyGroupNode(QmlClassNode* parent, const QString& name)
+QmlPropertyGroupNode::QmlPropertyGroupNode(QmlTypeNode* parent, const QString& name)
     : InnerNode(QmlPropertyGroup, parent, name)
 {
     idNumber_ = -1;
+    setGenus(Node::QML);
 }
 
 /*!
@@ -2331,6 +2253,7 @@ QmlPropertyNode::QmlPropertyNode(InnerNode* parent,
         isAlias_ = true;
     if (name.startsWith("__"))
         setStatus(Internal);
+    setGenus(Node::QML);
 }
 
 /*!
@@ -2345,29 +2268,29 @@ QmlPropertyNode::QmlPropertyNode(InnerNode* parent,
 
   ...because the tokenizer gets confused on \e{explicit}.
  */
-bool QmlPropertyNode::isWritable(QDocDatabase* qdb)
+bool QmlPropertyNode::isWritable()
 {
     if (readOnly_ != FlagValueDefault)
         return !fromFlagValue(readOnly_, false);
 
-    QmlClassNode* qcn = qmlClassNode();
+    QmlTypeNode* qcn = qmlTypeNode();
     if (qcn) {
         if (qcn->cppClassRequired()) {
             if (qcn->classNode()) {
-                PropertyNode* pn = correspondingProperty(qdb);
+                PropertyNode* pn = findCorrespondingCppProperty();
                 if (pn)
                     return pn->isWritable();
                 else
                     location().warning(tr("No Q_PROPERTY for QML property %1::%2::%3 "
                                           "in C++ class documented as QML type: "
                                           "(property not found in the C++ class or its base classes)")
-                                       .arg(qmlModuleName()).arg(qmlTypeName()).arg(name()));
+                                       .arg(logicalModuleName()).arg(qmlTypeName()).arg(name()));
             }
             else
                 location().warning(tr("No Q_PROPERTY for QML property %1::%2::%3 "
                                       "in C++ class documented as QML type: "
                                       "(C++ class not specified or not found).")
-                                   .arg(qmlModuleName()).arg(qmlTypeName()).arg(name()));
+                                   .arg(logicalModuleName()).arg(qmlTypeName()).arg(name()));
         }
     }
     return true;
@@ -2377,157 +2300,61 @@ bool QmlPropertyNode::isWritable(QDocDatabase* qdb)
   Returns a pointer this QML property's corresponding C++
   property, if it has one.
  */
-PropertyNode* QmlPropertyNode::correspondingProperty(QDocDatabase* qdb)
+PropertyNode* QmlPropertyNode::findCorrespondingCppProperty()
 {
     PropertyNode* pn;
-
     Node* n = parent();
-    while (n && n->subType() != Node::QmlClass)
+    while (n && !(n->isQmlType() || n->isJsType()))
         n = n->parent();
     if (n) {
-        QmlClassNode* qcn = static_cast<QmlClassNode*>(n);
+        QmlTypeNode* qcn = static_cast<QmlTypeNode*>(n);
         ClassNode* cn = qcn->classNode();
         if (cn) {
+            /*
+              If there is a dot in the property name, first
+              find the C++ property corresponding to the QML
+              property group.
+             */
             QStringList dotSplit = name().split(QChar('.'));
             pn = cn->findPropertyNode(dotSplit[0]);
             if (pn) {
+                /*
+                  Now find the C++ property corresponding to
+                  the QML property in the QML property group,
+                  <group>.<property>.
+                */
                 if (dotSplit.size() > 1) {
-                    // Find the C++ property corresponding to the QML property in
-                    // the property group, <group>.<property>.
-
                     QStringList path(extractClassName(pn->qualifiedDataType()));
-                    Node* nn = qdb->findClassNode(path);
+                    Node* nn = QDocDatabase::qdocDB()->findClassNode(path);
                     if (nn) {
                         ClassNode* cn = static_cast<ClassNode*>(nn);
                         PropertyNode *pn2 = cn->findPropertyNode(dotSplit[1]);
-                        if (pn2)
-                            return pn2; // Return the property for the QML property.
-                        else
-                            return pn;  // Return the property for the QML group.
+                        /*
+                          If found, return the C++ property
+                          corresponding to the QML property.
+                          Otherwise, return the C++ property
+                          corresponding to the QML property
+                          group.
+                        */
+                        return (pn2 ? pn2 : pn);
                     }
                 }
                 else
                     return pn;
             }
-            else {
-                pn = cn->findPropertyNode(dotSplit[0]);
-                if (pn)
-                    return pn;
-            }
         }
-    }
-
-    return 0;
-}
-
-/*! \class NameCollisionNode
-
-  An instance of this node is inserted in the tree
-  whenever qdoc discovers that two nodes have the
-  same name.
- */
-
-/*!
-  Constructs a name collision node containing \a child
-  as its first child. The parent of \a child becomes
-  this node's parent.
- */
-NameCollisionNode::NameCollisionNode(InnerNode* child)
-    : DocNode(child->parent(), child->name(), Collision, Node::NoPageType)
-{
-    setTitle("Name Collision: " + child->name());
-    addCollision(child);
-    current = 0;
-}
-
-/*!
-  Add a collision to this collision node. \a child has
-  the same name as the other children in this collision
-  node. \a child becomes the current child.
- */
-void NameCollisionNode::addCollision(InnerNode* child)
-{
-    if (child) {
-        if (child->parent())
-            child->parent()->removeChild(child);
-        child->setParent((InnerNode*)this);
-        children_.append(child);
-    }
-}
-
-/*!
-  The destructor does nothing.
- */
-NameCollisionNode::~NameCollisionNode()
-{
-    // nothing.
-}
-
-/*! \fn const InnerNode* NameCollisionNode::currentChild() const
-  Returns a pointer to the current child, which may be 0.
- */
-
-/*! \fn void NameCollisionNode::setCurrentChild(InnerNode* child)
-  Sets the current child to \a child. The current child is
-  valid only within the file where it is defined.
- */
-
-/*! \fn void NameCollisionNode::clearCurrentChild()
-  Sets the current child to 0. This should be called at the
-  end of each file, because the current child is only valid
-  within the file where the child is defined.
- */
-
-/*!
-  Returns \c true if this collision node's current node is a QML node.
- */
-bool NameCollisionNode::isQmlNode() const
-{
-    if (current)
-        return current->isQmlNode();
-    return false;
-}
-
-/*!
-  Find any of this collision node's children that has type \a t
-  and subtype \a st and return a pointer to it.
-*/
-InnerNode* NameCollisionNode::findAny(Node::Type t, Node::SubType st)
-{
-    if (current) {
-        if (current->type() == t && current->subType() == st)
-            return current;
-    }
-    const NodeList& cn = childNodes();
-    NodeList::ConstIterator i = cn.constBegin();
-    while (i != cn.constEnd()) {
-        if ((*i)->type() == t && (*i)->subType() == st)
-            return static_cast<InnerNode*>(*i);
-        ++i;
     }
     return 0;
 }
 
 /*!
-  This node is a name collision node. Find a child of this node
-  such that the child's QML module name matches origin's QML module
-  Name. Return the matching node, or return this node if there is
-  no matching node.
+  This returns the name of the owning QML type.
  */
-const Node* NameCollisionNode::applyModuleName(const Node* origin) const
+QString QmlPropertyNode::element() const
 {
-    if (origin && !origin->qmlModuleName().isEmpty()) {
-        const NodeList& cn = childNodes();
-        NodeList::ConstIterator i = cn.constBegin();
-        while (i != cn.constEnd()) {
-            if ((*i)->type() == Node::Document && (*i)->subType() == Node::QmlClass) {
-                if (origin->qmlModuleName() == (*i)->qmlModuleName())
-                    return (*i);
-            }
-            ++i;
-        }
-    }
-    return this;
+    if (parent()->isQmlPropertyGroup())
+        return parent()->element();
+    return parent()->name();
 }
 
 /*!
@@ -2539,14 +2366,16 @@ QString Node::fullDocumentName() const
     const Node* n = this;
 
     do {
-        if (!n->name().isEmpty() && n->type() != Node::QmlPropertyGroup)
+        if (!n->name().isEmpty() && !n->isQmlPropertyGroup())
             pieces.insert(0, n->name());
 
-        if (n->type() == Node::Document) {
-            if ((n->subType() == Node::QmlClass) && !n->qmlModuleName().isEmpty())
-                pieces.insert(0, n->qmlModuleName());
+        if ((n->isQmlType() || n->isJsType()) && !n->logicalModuleName().isEmpty()) {
+            pieces.insert(0, n->logicalModuleName());
             break;
         }
+
+        if (n->isDocumentNode())
+            break;
 
         // Examine the parent node if one exists.
         if (n->parent())
@@ -2557,7 +2386,10 @@ QString Node::fullDocumentName() const
 
     // Create a name based on the type of the ancestor node.
     QString concatenator = "::";
-    if ((n->type() == Node::Document) && (n->subType() != Node::QmlClass))
+    if (n->isQmlType() || n->isJsType())
+        concatenator = QLatin1Char('.');
+
+    if (n->isDocumentNode())
         concatenator = QLatin1Char('#');
 
     return pieces.join(concatenator);
@@ -2568,7 +2400,7 @@ QString Node::fullDocumentName() const
   be used as the value of an \e id attribute. Search for NCName
   on the internet for details of what can be an NCName.
  */
-QString Node::cleanId(QString str)
+QString Node::cleanId(const QString &str)
 {
     QString clean;
     QString name = str.simplified();
@@ -2732,16 +2564,17 @@ QString Node::idForNode() const
                 }
             }
             else if (parent_) {
-                if (parent_->type() == Class)
+                if (parent_->isClass())
                     str = "class-member-" + func->name();
-                else if (parent_->type() == Namespace)
+                else if (parent_->isNamespace())
                     str = "namespace-member-" + func->name();
+                else if (parent_->isQmlType())
+                    str = "qml-method-" + parent_->name().toLower() + "-" + func->name();
+                else if (parent_->isJsType())
+                    str = "js-method-" + parent_->name().toLower() + "-" + func->name();
                 else if (parent_->type() == Document) {
-                    if (parent_->subType() == QmlClass)
-                        str = "qml-method-" + parent_->name().toLower() + "-" + func->name();
-                    else
-                        qDebug() << "qdoc internal error: Node subtype not handled:"
-                                 << parent_->subType() << func->name();
+                    qDebug() << "qdoc internal error: Node subtype not handled:"
+                             << parent_->subType() << func->name();
                 }
                 else
                     qDebug() << "qdoc internal error: Node type not handled:"
@@ -2752,15 +2585,22 @@ QString Node::idForNode() const
                 str += QLatin1Char('-') + QString::number(func->overloadNumber());
         }
         break;
+    case Node::QmlType:
+        if (genus() == QML)
+            str = "qml-class-" + name();
+        else
+            str = "js-type-" + name();
+        break;
+    case Node::QmlBasicType:
+        if (genus() == QML)
+            str = "qml-basic-type-" + name();
+        else
+            str = "js-basic-type-" + name();
+        break;
     case Node::Document:
         {
             switch (subType()) {
-            case Node::QmlClass:
-                str = "qml-class-" + name();
-                break;
             case Node::Page:
-            case Node::Group:
-            case Node::Module:
             case Node::HeaderFile:
                 str = title();
                 if (str.isEmpty()) {
@@ -2778,16 +2618,6 @@ QString Node::idForNode() const
                 str = name();
                 str.replace(QLatin1Char('/'), QLatin1Char('-'));
                 break;
-            case Node::QmlBasicType:
-                str = "qml-basic-type-" + name();
-                break;
-            case Node::QmlModule:
-                str = "qml-module-" + name();
-                break;
-            case Node::Collision:
-                str = title();
-                str.replace(": ","-");
-                break;
             default:
                 qDebug() << "ERROR: A case was not handled in Node::idForNode():"
                          << "subType():" << subType() << "type():" << type();
@@ -2795,27 +2625,63 @@ QString Node::idForNode() const
             }
         }
         break;
+    case Node::Group:
+    case Node::Module:
+        str = title();
+        if (str.isEmpty()) {
+            str = name();
+            if (str.endsWith(".html"))
+                str.remove(str.size()-5,5);
+        }
+        str.replace(QLatin1Char('/'), QLatin1Char('-'));
+        break;
+    case Node::QmlModule:
+        if (genus() == QML)
+            str = "qml-module-" + name();
+        else
+            str = "js-module-" + name();
+        break;
     case Node::QmlProperty:
-        str = "qml-property-" + name();
+        if (genus() == QML)
+            str = "qml-";
+        else
+            str = "js-";
+        if (isAttached())
+            str += "attached-property-" + name();
+        else
+            str += "property-" + name();
         break;
     case Node::QmlPropertyGroup:
         {
             Node* n = const_cast<Node*>(this);
-            str = "qml-propertygroup-" + n->name();
+            if (genus() == QML)
+                str = "qml-propertygroup-" + n->name();
+            else
+                str = "js-propertygroup-" + n->name();
         }
         break;
     case Node::Property:
         str = "property-" + name();
         break;
     case Node::QmlSignal:
-        str = "qml-signal-" + name();
+        if (genus() == QML)
+            str = "qml-signal-" + name();
+        else
+            str = "js-signal-" + name();
         break;
     case Node::QmlSignalHandler:
-        str = "qml-signal-handler-" + name();
+        if (genus() == QML)
+            str = "qml-signal-handler-" + name();
+        else
+            str = "js-signal-handler-" + name();
         break;
     case Node::QmlMethod:
         func = static_cast<const FunctionNode*>(this);
-        str = "qml-method-" + parent_->name().toLower() + "-" + func->name();
+        if (genus() == QML)
+            str = "qml-method-";
+        else
+            str = "js-method-";
+        str += parent_->name().toLower() + "-" + func->name();
         if (func->overloadNumber() != 1)
             str += QLatin1Char('-') + QString::number(func->overloadNumber());
         break;
@@ -2855,10 +2721,93 @@ void InnerNode::printChildren(const QString& title)
 }
 
 /*!
-  Prints the inner node's list of members.
+  Returns \c true if the collection node's member list is
+  not empty.
+ */
+bool CollectionNode::hasMembers() const
+{
+    return !members_.isEmpty();
+}
+
+/*!
+  Appends \a node to the collection node's member list, if
+  and only if it isn't already in the member list.
+ */
+void CollectionNode::addMember(Node* node)
+{
+    if (!members_.contains(node))
+        members_.append(node);
+}
+
+/*!
+  Returns \c true if this collection node contains at least
+  one namespace node.
+ */
+bool CollectionNode::hasNamespaces() const
+{
+    if (!members_.isEmpty()) {
+        NodeList::const_iterator i = members_.begin();
+        while (i != members_.end()) {
+            if ((*i)->isNamespace())
+                return true;
+            ++i;
+        }
+    }
+    return false;
+}
+
+/*!
+  Returns \c true if this collection node contains at least
+  one class node.
+ */
+bool CollectionNode::hasClasses() const
+{
+    if (!members_.isEmpty()) {
+        NodeList::const_iterator i = members_.cbegin();
+        while (i != members_.cend()) {
+            if ((*i)->isClass())
+                return true;
+            ++i;
+        }
+    }
+    return false;
+}
+
+/*!
+  Loads \a out with all this collection node's members that
+  are namespace nodes.
+ */
+void CollectionNode::getMemberNamespaces(NodeMap& out)
+{
+    out.clear();
+    NodeList::const_iterator i = members_.cbegin();
+    while (i != members_.cend()) {
+        if ((*i)->isNamespace())
+            out.insert((*i)->name(),(*i));
+        ++i;
+    }
+}
+
+/*!
+  Loads \a out with all this collection node's members that
+  are class nodes.
+ */
+void CollectionNode::getMemberClasses(NodeMap& out)
+{
+    out.clear();
+    NodeList::const_iterator i = members_.cbegin();
+    while (i != members_.cend()) {
+        if ((*i)->isClass())
+            out.insert((*i)->name(),(*i));
+        ++i;
+    }
+}
+
+/*!
+  Prints the collection node's list of members.
   For debugging only.
  */
-void InnerNode::printMembers(const QString& title)
+void CollectionNode::printMembers(const QString& title)
 {
     qDebug() << title << name() << members_.size();
     if (members_.size() > 0) {
@@ -2866,6 +2815,59 @@ void InnerNode::printMembers(const QString& title)
             Node* n = members_.at(i);
             qDebug() << "  MEMBER:" << n->name() << n->nodeTypeString() << n->nodeSubtypeString();
         }
+    }
+}
+
+/*!
+  Sets the document node's \a title. This is used for the page title.
+ */
+void CollectionNode::setTitle(const QString& title)
+{
+    title_ = title;
+    parent()->addChild(this, title);
+}
+
+/*!
+  This function splits \a arg on the blank character to get a
+  logical module name and version number. If the version number
+  is present, it spilts the version number on the '.' character
+  to get a major version number and a minor vrsion number. If
+  the version number is present, both the major and minor version
+  numbers should be there, but the minor version number is not
+  absolutely necessary.
+ */
+void CollectionNode::setLogicalModuleInfo(const QString& arg)
+{
+    QStringList blankSplit = arg.split(QLatin1Char(' '));
+    logicalModuleName_ = blankSplit[0];
+    if (blankSplit.size() > 1) {
+        QStringList dotSplit = blankSplit[1].split(QLatin1Char('.'));
+        logicalModuleVersionMajor_ = dotSplit[0];
+        if (dotSplit.size() > 1)
+            logicalModuleVersionMinor_ = dotSplit[1];
+        else
+            logicalModuleVersionMinor_ = "0";
+    }
+}
+
+/*!
+  This function accepts the logical module \a info as a string
+  list. If the logical module info contains the version number,
+  it spilts the version number on the '.' character to get the
+  major and minor vrsion numbers. Both major and minor version
+  numbers should be provided, but the minor version number is
+  not strictly necessary.
+ */
+void CollectionNode::setLogicalModuleInfo(const QStringList& info)
+{
+    logicalModuleName_ = info[0];
+    if (info.size() > 1) {
+        QStringList dotSplit = info[1].split(QLatin1Char('.'));
+        logicalModuleVersionMajor_ = dotSplit[0];
+        if (dotSplit.size() > 1)
+            logicalModuleVersionMinor_ = dotSplit[1];
+        else
+            logicalModuleVersionMinor_ = "0";
     }
 }
 

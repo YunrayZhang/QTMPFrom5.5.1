@@ -1,7 +1,7 @@
 /****************************************************************************
 **
-** Copyright (C) 2013 Digia Plc and/or its subsidiary(-ies).
-** Contact: http://www.qt-project.org/legal
+** Copyright (C) 2015 The Qt Company Ltd.
+** Contact: http://www.qt.io/licensing/
 **
 ** This file is part of the examples of the Qt Toolkit.
 **
@@ -17,8 +17,8 @@
 **     notice, this list of conditions and the following disclaimer in
 **     the documentation and/or other materials provided with the
 **     distribution.
-**   * Neither the name of Digia Plc and its Subsidiary(-ies) nor the names
-**     of its contributors may be used to endorse or promote products derived
+**   * Neither the name of The Qt Company Ltd nor the names of its
+**     contributors may be used to endorse or promote products derived
 **     from this software without specific prior written permission.
 **
 **
@@ -41,7 +41,6 @@
 #include "hellowindow.h"
 
 #include <qpa/qplatformintegration.h>
-#include <private/qguiapplication_p.h>
 
 #include <QGuiApplication>
 #include <QScreen>
@@ -51,10 +50,9 @@ int main(int argc, char *argv[])
 {
     QGuiApplication app(argc, argv);
 
-    QPlatformIntegration *integ = QGuiApplicationPrivate::platformIntegration();
-    const bool multipleWindows = integ->hasCapability(QPlatformIntegration::ThreadedOpenGL)
-        && integ->hasCapability(QPlatformIntegration::WindowManagement)
-        && !QGuiApplication::arguments().contains(QStringLiteral("--single"));
+    // Some platforms can only have one window per screen. Therefore we need to differentiate.
+    const bool multipleWindows = QGuiApplication::arguments().contains(QStringLiteral("--multiple"));
+    const bool multipleScreens = QGuiApplication::arguments().contains(QStringLiteral("--multiscreen"));
 
     QScreen *screen = QGuiApplication::primaryScreen();
 
@@ -97,12 +95,13 @@ int main(int argc, char *argv[])
         windowC->setTitle(QStringLiteral("Thread B - Context B"));
         windowC->setVisible(true);
         windows.prepend(windowC);
-
+    }
+    if (multipleScreens) {
         for (int i = 1; i < QGuiApplication::screens().size(); ++i) {
             QScreen *screen = QGuiApplication::screens().at(i);
             QSharedPointer<Renderer> renderer(new Renderer(format, rendererA.data(), screen));
 
-            renderThread = new QThread;
+            QThread *renderThread = new QThread;
             renderer->moveToThread(renderThread);
             renderThreads.prepend(renderThread);
 
@@ -111,8 +110,7 @@ int main(int argc, char *argv[])
 
             QSize windowSize = screenGeometry.size() * 0.8;
 
-            HelloWindow *window = new HelloWindow(renderer);
-            window->setScreen(screen);
+            HelloWindow *window = new HelloWindow(renderer, screen);
             window->setGeometry(QRect(center, windowSize).translated(-windowSize.width() / 2, -windowSize.height() / 2));
 
             QChar id = QChar('B' + i);
@@ -127,10 +125,16 @@ int main(int argc, char *argv[])
         renderThreads.at(i)->start();
     }
 
+    // Quit after 10 seconds. For platforms that do not have windows that are closeable.
+    if (QCoreApplication::arguments().contains(QStringLiteral("--timeout")))
+        QTimer::singleShot(10000, qGuiApp, SLOT(quit()));
+
     const int exitValue = app.exec();
 
-    for (int i = 0; i < renderThreads.size(); ++i)
+    for (int i = 0; i < renderThreads.size(); ++i) {
+        renderThreads.at(i)->quit(); // some platforms may not have windows to close so ensure quit()
         renderThreads.at(i)->wait();
+    }
 
     qDeleteAll(windows);
     qDeleteAll(renderThreads);

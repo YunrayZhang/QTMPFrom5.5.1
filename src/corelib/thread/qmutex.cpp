@@ -1,41 +1,33 @@
 /****************************************************************************
 **
-** Copyright (C) 2013 Digia Plc and/or its subsidiary(-ies).
+** Copyright (C) 2015 The Qt Company Ltd.
 ** Copyright (C) 2012 Intel Corporation
 ** Copyright (C) 2012 Olivier Goffart <ogoffart@woboq.com>
-** Contact: http://www.qt-project.org/legal
+** Contact: http://www.qt.io/licensing/
 **
 ** This file is part of the QtCore module of the Qt Toolkit.
 **
-** $QT_BEGIN_LICENSE:LGPL$
+** $QT_BEGIN_LICENSE:LGPL21$
 ** Commercial License Usage
 ** Licensees holding valid commercial Qt licenses may use this file in
 ** accordance with the commercial license agreement provided with the
 ** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and Digia.  For licensing terms and
-** conditions see http://qt.digia.com/licensing.  For further information
-** use the contact form at http://qt.digia.com/contact-us.
+** a written agreement between you and The Qt Company. For licensing terms
+** and conditions see http://www.qt.io/terms-conditions. For further
+** information use the contact form at http://www.qt.io/contact-us.
 **
 ** GNU Lesser General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 2.1 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU Lesser General Public License version 2.1 requirements
-** will be met: http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
+** General Public License version 2.1 or version 3 as published by the Free
+** Software Foundation and appearing in the file LICENSE.LGPLv21 and
+** LICENSE.LGPLv3 included in the packaging of this file. Please review the
+** following information to ensure the GNU Lesser General Public License
+** requirements will be met: https://www.gnu.org/licenses/lgpl.html and
+** http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
 **
-** In addition, as a special exception, Digia gives you certain additional
-** rights.  These rights are described in the Digia Qt LGPL Exception
+** As a special exception, The Qt Company gives you certain additional
+** rights. These rights are described in The Qt Company LGPL Exception
 ** version 1.1, included in the file LGPL_EXCEPTION.txt in this package.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3.0 as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU General Public License version 3.0 requirements will be
-** met: http://www.gnu.org/copyleft/gpl.html.
-**
 **
 ** $QT_END_LICENSE$
 **
@@ -571,7 +563,35 @@ const int FreeListConstants::Sizes[FreeListConstants::BlockCount] = {
 };
 
 typedef QFreeList<QMutexPrivate, FreeListConstants> FreeList;
-Q_GLOBAL_STATIC(FreeList, freelist);
+// We cannot use Q_GLOBAL_STATIC because it uses QMutex
+#if defined(Q_COMPILER_THREADSAFE_STATICS)
+FreeList *freelist()
+{
+    static FreeList list;
+    return &list;
+}
+#else
+static QBasicAtomicPointer<FreeList> freeListPtr;
+
+FreeList *freelist()
+{
+    FreeList *local = freeListPtr.loadAcquire();
+    if (!local) {
+        local = new FreeList;
+        if (!freeListPtr.testAndSetRelease(0, local)) {
+            delete local;
+            local = freeListPtr.loadAcquire();
+        }
+    }
+    return local;
+}
+
+static void qFreeListDeleter()
+{
+    delete freeListPtr.load();
+}
+Q_DESTRUCTOR_FUNCTION(qFreeListDeleter)
+#endif
 }
 
 QMutexPrivate *QMutexPrivate::allocate()

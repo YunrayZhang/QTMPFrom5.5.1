@@ -1,39 +1,31 @@
 /****************************************************************************
 **
-** Copyright (C) 2013 Digia Plc and/or its subsidiary(-ies).
-** Contact: http://www.qt-project.org/legal
+** Copyright (C) 2015 The Qt Company Ltd.
+** Contact: http://www.qt.io/licensing/
 **
 ** This file is part of the QtNetwork module of the Qt Toolkit.
 **
-** $QT_BEGIN_LICENSE:LGPL$
+** $QT_BEGIN_LICENSE:LGPL21$
 ** Commercial License Usage
 ** Licensees holding valid commercial Qt licenses may use this file in
 ** accordance with the commercial license agreement provided with the
 ** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and Digia.  For licensing terms and
-** conditions see http://qt.digia.com/licensing.  For further information
-** use the contact form at http://qt.digia.com/contact-us.
+** a written agreement between you and The Qt Company. For licensing terms
+** and conditions see http://www.qt.io/terms-conditions. For further
+** information use the contact form at http://www.qt.io/contact-us.
 **
 ** GNU Lesser General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 2.1 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU Lesser General Public License version 2.1 requirements
-** will be met: http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
+** General Public License version 2.1 or version 3 as published by the Free
+** Software Foundation and appearing in the file LICENSE.LGPLv21 and
+** LICENSE.LGPLv3 included in the packaging of this file. Please review the
+** following information to ensure the GNU Lesser General Public License
+** requirements will be met: https://www.gnu.org/licenses/lgpl.html and
+** http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
 **
-** In addition, as a special exception, Digia gives you certain additional
-** rights.  These rights are described in the Digia Qt LGPL Exception
+** As a special exception, The Qt Company gives you certain additional
+** rights. These rights are described in The Qt Company LGPL Exception
 ** version 1.1, included in the file LGPL_EXCEPTION.txt in this package.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3.0 as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU General Public License version 3.0 requirements will be
-** met: http://www.gnu.org/copyleft/gpl.html.
-**
 **
 ** $QT_END_LICENSE$
 **
@@ -188,14 +180,14 @@ public:
                                        QHttpNetworkConnection::ConnectionType connectionType,
                                        QSharedPointer<QNetworkSession> networkSession)
         : QHttpNetworkConnection(hostName, port, encrypt, connectionType, /*parent=*/0,
-                                 networkSession)
+                                 qMove(networkSession))
 #endif
     {
         setExpires(true);
         setShareable(true);
     }
 
-    virtual void dispose()
+    virtual void dispose() Q_DECL_OVERRIDE
     {
 #if 0  // sample code; do this right with the API
         Q_ASSERT(!isWorking());
@@ -336,6 +328,16 @@ void QHttpThreadDelegate::startRequest()
 
         // cache the QHttpNetworkConnection corresponding to this cache key
         connections.localData()->addEntry(cacheKey, httpConnection);
+    } else {
+        if (httpRequest.withCredentials()) {
+            QNetworkAuthenticationCredential credential = authenticationManager->fetchCachedCredentials(httpRequest.url(), 0);
+            if (!credential.user.isEmpty() && !credential.password.isEmpty()) {
+                QAuthenticator auth;
+                auth.setUser(credential.user);
+                auth.setPassword(credential.password);
+                httpConnection->d_func()->copyCredentials(-1, &auth, false);
+            }
+        }
     }
 
 
@@ -369,6 +371,8 @@ void QHttpThreadDelegate::startRequest()
 #ifndef QT_NO_SSL
         connect(httpReply,SIGNAL(encrypted()), this, SLOT(encryptedSlot()));
         connect(httpReply,SIGNAL(sslErrors(QList<QSslError>)), this, SLOT(sslErrorsSlot(QList<QSslError>)));
+        connect(httpReply,SIGNAL(preSharedKeyAuthenticationRequired(QSslPreSharedKeyAuthenticator*)),
+                this, SLOT(preSharedKeyAuthenticationRequiredSlot(QSslPreSharedKeyAuthenticator*)));
 #endif
 
         // In the asynchronous HTTP case we can just forward those signals
@@ -392,6 +396,7 @@ void QHttpThreadDelegate::abortRequest()
     qDebug() << "QHttpThreadDelegate::abortRequest() thread=" << QThread::currentThreadId() << "sync=" << synchronous;
 #endif
     if (httpReply) {
+        httpReply->abort();
         delete httpReply;
         httpReply = 0;
     }
@@ -556,6 +561,8 @@ void QHttpThreadDelegate::synchronousFinishedWithErrorSlot(QNetworkReply::Networ
     incomingErrorCode = errorCode;
     incomingErrorDetail = detail;
 
+    synchronousDownloadData = httpReply->readAll();
+
     QMetaObject::invokeMethod(httpReply, "deleteLater", Qt::QueuedConnection);
     QMetaObject::invokeMethod(synchronousRequestLoop, "quit", Qt::QueuedConnection);
     httpReply = 0;
@@ -652,6 +659,7 @@ void QHttpThreadDelegate::encryptedSlot()
     if (!httpReply)
         return;
 
+    emit sslConfigurationChanged(httpReply->sslConfiguration());
     emit encrypted();
 }
 
@@ -669,6 +677,14 @@ void QHttpThreadDelegate::sslErrorsSlot(const QList<QSslError> &errors)
         httpReply->ignoreSslErrors();
     if (!specificErrors.isEmpty())
         httpReply->ignoreSslErrors(specificErrors);
+}
+
+void QHttpThreadDelegate::preSharedKeyAuthenticationRequiredSlot(QSslPreSharedKeyAuthenticator *authenticator)
+{
+    if (!httpReply)
+        return;
+
+    emit preSharedKeyAuthenticationRequired(authenticator);
 }
 #endif
 

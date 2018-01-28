@@ -1,7 +1,7 @@
 /****************************************************************************
 **
-** Copyright (C) 2013 Digia Plc and/or its subsidiary(-ies).
-** Contact: http://www.qt-project.org/legal
+** Copyright (C) 2015 The Qt Company Ltd.
+** Contact: http://www.qt.io/licensing/
 **
 ** This file is part of the documentation of the Qt Toolkit.
 **
@@ -17,8 +17,8 @@
 **     notice, this list of conditions and the following disclaimer in
 **     the documentation and/or other materials provided with the
 **     distribution.
-**   * Neither the name of Digia Plc and its Subsidiary(-ies) nor the names
-**     of its contributors may be used to endorse or promote products derived
+**   * Neither the name of The Qt Company Ltd nor the names of its
+**     contributors may be used to endorse or promote products derived
 **     from this software without specific prior written permission.
 **
 **
@@ -61,7 +61,7 @@ Q_DECLARE_OPERATORS_FOR_FLAGS(MyClass::Options)
 //! [1]
 
 //! [meta-object flags]
-Q_FLAGS(Options)
+Q_FLAG(Options)
 //! [meta-object flags]
 
 //! [2]
@@ -136,9 +136,9 @@ int roundedValueB = qRound(valueB);
 qreal valueA = 42949672960.3;
 qreal valueB = 42949672960.7;
 
-int roundedValueA = qRound(valueA);
+qint64 roundedValueA = qRound64(valueA);
 // roundedValueA = 42949672960
-int roundedValueB = qRound(valueB);
+qint64 roundedValueB = qRound64(valueB);
 // roundedValueB = 42949672961
 //! [12]
 
@@ -253,6 +253,9 @@ void myMessageOutput(QtMsgType type, const QMessageLogContext &context, const QS
     case QtDebugMsg:
         fprintf(stderr, "Debug: %s (%s:%u, %s)\n", localMsg.constData(), context.file, context.line, context.function);
         break;
+    case QtInfoMsg:
+        fprintf(stderr, "Info: %s (%s:%u, %s)\n", localMsg.constData(), context.file, context.line, context.function);
+        break;
     case QtWarningMsg:
         fprintf(stderr, "Warning: %s (%s:%u, %s)\n", localMsg.constData(), context.file, context.line, context.function);
         break;
@@ -285,6 +288,14 @@ qDebug() << "Brush:" << myQBrush << "Other value:" << i;
 //! [25]
 
 
+//! [qInfo_printf]
+qInfo("Items in list: %d", myList.size());
+//! [qInfo_printf]
+
+//! [qInfo_stream]
+qInfo() << "Brush:" << myQBrush << "Other value:" << i;
+//! [qInfo_stream]
+
 //! [26]
 void f(int c)
 {
@@ -305,7 +316,7 @@ void load(const QString &fileName)
 {
     QFile file(fileName);
     if (!file.exists())
-        qCritical("File '%s' does not exist!", qPrintable(fileName));
+        qCritical("File '%s' does not exist!", qUtf8Printable(fileName));
 }
 //! [28]
 
@@ -424,7 +435,7 @@ void TheClass::addLabels()
 
 
 //! [37]
-qWarning("%s: %s", qPrintable(key), qPrintable(value));
+qWarning("%s: %s", qUtf8Printable(key), qUtf8Printable(value));
 //! [37]
 
 

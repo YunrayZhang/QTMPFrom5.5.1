@@ -1,39 +1,31 @@
 /****************************************************************************
 **
-** Copyright (C) 2013 Digia Plc and/or its subsidiary(-ies).
-** Contact: http://www.qt-project.org/legal
+** Copyright (C) 2015 The Qt Company Ltd.
+** Contact: http://www.qt.io/licensing/
 **
 ** This file is part of the QtDBus module of the Qt Toolkit.
 **
-** $QT_BEGIN_LICENSE:LGPL$
+** $QT_BEGIN_LICENSE:LGPL21$
 ** Commercial License Usage
 ** Licensees holding valid commercial Qt licenses may use this file in
 ** accordance with the commercial license agreement provided with the
 ** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and Digia.  For licensing terms and
-** conditions see http://qt.digia.com/licensing.  For further information
-** use the contact form at http://qt.digia.com/contact-us.
+** a written agreement between you and The Qt Company. For licensing terms
+** and conditions see http://www.qt.io/terms-conditions. For further
+** information use the contact form at http://www.qt.io/contact-us.
 **
 ** GNU Lesser General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 2.1 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU Lesser General Public License version 2.1 requirements
-** will be met: http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
+** General Public License version 2.1 or version 3 as published by the Free
+** Software Foundation and appearing in the file LICENSE.LGPLv21 and
+** LICENSE.LGPLv3 included in the packaging of this file. Please review the
+** following information to ensure the GNU Lesser General Public License
+** requirements will be met: https://www.gnu.org/licenses/lgpl.html and
+** http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
 **
-** In addition, as a special exception, Digia gives you certain additional
-** rights.  These rights are described in the Digia Qt LGPL Exception
+** As a special exception, The Qt Company gives you certain additional
+** rights. These rights are described in The Qt Company LGPL Exception
 ** version 1.1, included in the file LGPL_EXCEPTION.txt in this package.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3.0 as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU General Public License version 3.0 requirements will be
-** met: http://www.gnu.org/copyleft/gpl.html.
-**
 **
 ** $QT_END_LICENSE$
 **
@@ -57,14 +49,20 @@
 
 QT_BEGIN_NAMESPACE
 
+Q_STATIC_ASSERT(QDBusMessage::InvalidMessage == DBUS_MESSAGE_TYPE_INVALID);
+Q_STATIC_ASSERT(QDBusMessage::MethodCallMessage == DBUS_MESSAGE_TYPE_METHOD_CALL);
+Q_STATIC_ASSERT(QDBusMessage::ReplyMessage == DBUS_MESSAGE_TYPE_METHOD_RETURN);
+Q_STATIC_ASSERT(QDBusMessage::ErrorMessage == DBUS_MESSAGE_TYPE_ERROR);
+Q_STATIC_ASSERT(QDBusMessage::SignalMessage == DBUS_MESSAGE_TYPE_SIGNAL);
+
 static inline const char *data(const QByteArray &arr)
 {
     return arr.isEmpty() ? 0 : arr.constData();
 }
 
 QDBusMessagePrivate::QDBusMessagePrivate()
-    : msg(0), reply(0), type(DBUS_MESSAGE_TYPE_INVALID),
-      timeout(-1), localReply(0), ref(1), delayedReply(false), localMessage(false),
+    : msg(0), reply(0), localReply(0), ref(1), type(QDBusMessage::InvalidMessage),
+      delayedReply(false), localMessage(false),
       parametersValidated(false), autoStartService(true)
 {
 }
@@ -114,10 +112,10 @@ DBusMessage *QDBusMessagePrivate::toDBusMessage(const QDBusMessage &message, QDB
     const QDBusMessagePrivate *d_ptr = message.d_ptr;
 
     switch (d_ptr->type) {
-    case DBUS_MESSAGE_TYPE_INVALID:
+    case QDBusMessage::InvalidMessage:
         //qDebug() << "QDBusMessagePrivate::toDBusMessage" <<  "message is invalid";
         break;
-    case DBUS_MESSAGE_TYPE_METHOD_CALL:
+    case QDBusMessage::MethodCallMessage:
         // only service and interface can be empty -> path and name must not be empty
         if (!d_ptr->parametersValidated) {
             if (!QDBusUtil::checkBusName(d_ptr->service, QDBusUtil::EmptyAllowed, error))
@@ -134,14 +132,14 @@ DBusMessage *QDBusMessagePrivate::toDBusMessage(const QDBusMessage &message, QDB
                                              data(d_ptr->interface.toUtf8()), d_ptr->name.toUtf8());
         q_dbus_message_set_auto_start( msg, d_ptr->autoStartService );
         break;
-    case DBUS_MESSAGE_TYPE_METHOD_RETURN:
+    case QDBusMessage::ReplyMessage:
         msg = q_dbus_message_new(DBUS_MESSAGE_TYPE_METHOD_RETURN);
         if (!d_ptr->localMessage) {
             q_dbus_message_set_destination(msg, q_dbus_message_get_sender(d_ptr->reply));
             q_dbus_message_set_reply_serial(msg, q_dbus_message_get_serial(d_ptr->reply));
         }
         break;
-    case DBUS_MESSAGE_TYPE_ERROR:
+    case QDBusMessage::ErrorMessage:
         // error name can't be empty
         if (!d_ptr->parametersValidated
             && !QDBusUtil::checkErrorName(d_ptr->name, QDBusUtil::EmptyNotAllowed, error))
@@ -154,7 +152,7 @@ DBusMessage *QDBusMessagePrivate::toDBusMessage(const QDBusMessage &message, QDB
             q_dbus_message_set_reply_serial(msg, q_dbus_message_get_serial(d_ptr->reply));
         }
         break;
-    case DBUS_MESSAGE_TYPE_SIGNAL:
+    case QDBusMessage::SignalMessage:
         // nothing can be empty here
         if (!d_ptr->parametersValidated) {
             if (!QDBusUtil::checkObjectPath(d_ptr->path, QDBusUtil::EmptyNotAllowed, error))
@@ -167,9 +165,6 @@ DBusMessage *QDBusMessagePrivate::toDBusMessage(const QDBusMessage &message, QDB
 
         msg = q_dbus_message_new_signal(d_ptr->path.toUtf8(), d_ptr->interface.toUtf8(),
                                         d_ptr->name.toUtf8());
-        break;
-    default:
-        Q_ASSERT(false);
         break;
     }
 
@@ -229,7 +224,7 @@ QDBusMessage QDBusMessagePrivate::fromDBusMessage(DBusMessage *dmsg, QDBusConnec
     if (!dmsg)
         return message;
 
-    message.d_ptr->type = q_dbus_message_get_type(dmsg);
+    message.d_ptr->type = QDBusMessage::MessageType(q_dbus_message_get_type(dmsg));
     message.d_ptr->path = QString::fromUtf8(q_dbus_message_get_path(dmsg));
     message.d_ptr->interface = QString::fromUtf8(q_dbus_message_get_interface(dmsg));
     message.d_ptr->name = message.d_ptr->type == DBUS_MESSAGE_TYPE_ERROR ?
@@ -368,7 +363,7 @@ QDBusMessage QDBusMessage::createSignal(const QString &path, const QString &inte
                                         const QString &name)
 {
     QDBusMessage message;
-    message.d_ptr->type = DBUS_MESSAGE_TYPE_SIGNAL;
+    message.d_ptr->type = SignalMessage;
     message.d_ptr->path = path;
     message.d_ptr->interface = interface;
     message.d_ptr->name = name;
@@ -399,7 +394,7 @@ QDBusMessage QDBusMessage::createMethodCall(const QString &service, const QStrin
                                             const QString &interface, const QString &method)
 {
     QDBusMessage message;
-    message.d_ptr->type = DBUS_MESSAGE_TYPE_METHOD_CALL;
+    message.d_ptr->type = MethodCallMessage;
     message.d_ptr->service = service;
     message.d_ptr->path = path;
     message.d_ptr->interface = interface;
@@ -415,7 +410,7 @@ QDBusMessage QDBusMessage::createMethodCall(const QString &service, const QStrin
 QDBusMessage QDBusMessage::createError(const QString &name, const QString &msg)
 {
     QDBusMessage error;
-    error.d_ptr->type = DBUS_MESSAGE_TYPE_ERROR;
+    error.d_ptr->type = ErrorMessage;
     error.d_ptr->name = name;
     error.d_ptr->message = msg;
 
@@ -445,7 +440,7 @@ QDBusMessage QDBusMessage::createReply(const QVariantList &arguments) const
 {
     QDBusMessage reply;
     reply.setArguments(arguments);
-    reply.d_ptr->type = DBUS_MESSAGE_TYPE_METHOD_RETURN;
+    reply.d_ptr->type = ReplyMessage;
     if (d_ptr->msg)
         reply.d_ptr->reply = q_dbus_message_ref(d_ptr->msg);
     if (d_ptr->localMessage) {
@@ -462,7 +457,11 @@ QDBusMessage QDBusMessage::createReply(const QVariantList &arguments) const
     Constructs a new DBus message representing an error reply message,
     with the given \a name and \a msg.
 */
+#if QT_VERSION >= QT_VERSION_CHECK(6,0,0)
+QDBusMessage QDBusMessage::createErrorReply(const QString &name, const QString &msg) const
+#else
 QDBusMessage QDBusMessage::createErrorReply(const QString name, const QString &msg) const
+#endif
 {
     QDBusMessage reply = QDBusMessage::createError(name, msg);
     if (d_ptr->msg)
@@ -613,6 +612,10 @@ QString QDBusMessage::signature() const
 */
 bool QDBusMessage::isReplyRequired() const
 {
+    // Only method calls can have replies
+    if (d_ptr->type != QDBusMessage::MethodCallMessage)
+        return false;
+
     if (!d_ptr->msg)
         return d_ptr->localMessage; // if it's a local message, reply is required
     return !q_dbus_message_get_no_reply(d_ptr->msg);
@@ -782,6 +785,7 @@ static void debugVariantList(QDebug dbg, const QVariantList &list)
 
 QDebug operator<<(QDebug dbg, const QDBusMessage &msg)
 {
+    QDebugStateSaver saver(dbg);
     dbg.nospace() << "QDBusMessage(type=" << msg.type()
                   << ", service=" << msg.service();
     if (msg.type() == QDBusMessage::MethodCallMessage ||
@@ -796,7 +800,7 @@ QDebug operator<<(QDebug dbg, const QDBusMessage &msg)
                   << ", contents=(";
     debugVariantList(dbg, msg.arguments());
     dbg.nospace() << ") )";
-    return dbg.space();
+    return dbg;
 }
 #endif
 

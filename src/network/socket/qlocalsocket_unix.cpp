@@ -1,39 +1,31 @@
 /****************************************************************************
 **
-** Copyright (C) 2013 Digia Plc and/or its subsidiary(-ies).
-** Contact: http://www.qt-project.org/legal
+** Copyright (C) 2015 The Qt Company Ltd.
+** Contact: http://www.qt.io/licensing/
 **
 ** This file is part of the QtNetwork module of the Qt Toolkit.
 **
-** $QT_BEGIN_LICENSE:LGPL$
+** $QT_BEGIN_LICENSE:LGPL21$
 ** Commercial License Usage
 ** Licensees holding valid commercial Qt licenses may use this file in
 ** accordance with the commercial license agreement provided with the
 ** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and Digia.  For licensing terms and
-** conditions see http://qt.digia.com/licensing.  For further information
-** use the contact form at http://qt.digia.com/contact-us.
+** a written agreement between you and The Qt Company. For licensing terms
+** and conditions see http://www.qt.io/terms-conditions. For further
+** information use the contact form at http://www.qt.io/contact-us.
 **
 ** GNU Lesser General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 2.1 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU Lesser General Public License version 2.1 requirements
-** will be met: http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
+** General Public License version 2.1 or version 3 as published by the Free
+** Software Foundation and appearing in the file LICENSE.LGPLv21 and
+** LICENSE.LGPLv3 included in the packaging of this file. Please review the
+** following information to ensure the GNU Lesser General Public License
+** requirements will be met: https://www.gnu.org/licenses/lgpl.html and
+** http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
 **
-** In addition, as a special exception, Digia gives you certain additional
-** rights.  These rights are described in the Digia Qt LGPL Exception
+** As a special exception, The Qt Company gives you certain additional
+** rights. These rights are described in The Qt Company LGPL Exception
 ** version 1.1, included in the file LGPL_EXCEPTION.txt in this package.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3.0 as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU General Public License version 3.0 requirements will be
-** met: http://www.gnu.org/copyleft/gpl.html.
-**
 **
 ** $QT_END_LICENSE$
 **
@@ -243,17 +235,9 @@ void QLocalSocket::connectToServer(OpenMode openMode)
     }
 
     // create the socket
-    if (-1 == (d->connectingSocket = qt_safe_socket(PF_UNIX, SOCK_STREAM, 0))) {
+    if (-1 == (d->connectingSocket = qt_safe_socket(PF_UNIX, SOCK_STREAM, 0, O_NONBLOCK))) {
         d->errorOccurred(UnsupportedSocketOperationError,
                         QLatin1String("QLocalSocket::connectToServer"));
-        return;
-    }
-    // set non blocking so we can try to connect and it won't wait
-    int flags = fcntl(d->connectingSocket, F_GETFL, 0);
-    if (-1 == flags
-        || -1 == (fcntl(d->connectingSocket, F_SETFL, flags | O_NONBLOCK))) {
-        d->errorOccurred(UnknownSocketError,
-                QLatin1String("QLocalSocket::connectToServer"));
         return;
     }
 
@@ -284,15 +268,16 @@ void QLocalSocketPrivate::_q_connectToSocket()
         connectingPathName += QLatin1Char('/') + connectingName;
     }
 
+    const QByteArray encodedConnectingPathName = QFile::encodeName(connectingPathName);
     struct sockaddr_un name;
     name.sun_family = PF_UNIX;
-    if (sizeof(name.sun_path) < (uint)connectingPathName.toLatin1().size() + 1) {
+    if (sizeof(name.sun_path) < (uint)encodedConnectingPathName.size() + 1) {
         QString function = QLatin1String("QLocalSocket::connectToServer");
         errorOccurred(QLocalSocket::ServerNotFoundError, function);
         return;
     }
-    ::memcpy(name.sun_path, connectingPathName.toLatin1().data(),
-             connectingPathName.toLatin1().size() + 1);
+    ::memcpy(name.sun_path, encodedConnectingPathName.constData(),
+             encodedConnectingPathName.size() + 1);
     if (-1 == qt_safe_connect(connectingSocket, (struct sockaddr *)&name, sizeof(name))) {
         QString function = QLatin1String("QLocalSocket::connectToServer");
         switch (errno)

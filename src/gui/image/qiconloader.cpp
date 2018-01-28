@@ -1,39 +1,31 @@
 /****************************************************************************
 **
-** Copyright (C) 2013 Digia Plc and/or its subsidiary(-ies).
-** Contact: http://www.qt-project.org/legal
+** Copyright (C) 2015 The Qt Company Ltd.
+** Contact: http://www.qt.io/licensing/
 **
 ** This file is part of the QtGui module of the Qt Toolkit.
 **
-** $QT_BEGIN_LICENSE:LGPL$
+** $QT_BEGIN_LICENSE:LGPL21$
 ** Commercial License Usage
 ** Licensees holding valid commercial Qt licenses may use this file in
 ** accordance with the commercial license agreement provided with the
 ** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and Digia.  For licensing terms and
-** conditions see http://qt.digia.com/licensing.  For further information
-** use the contact form at http://qt.digia.com/contact-us.
+** a written agreement between you and The Qt Company. For licensing terms
+** and conditions see http://www.qt.io/terms-conditions. For further
+** information use the contact form at http://www.qt.io/contact-us.
 **
 ** GNU Lesser General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 2.1 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU Lesser General Public License version 2.1 requirements
-** will be met: http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
+** General Public License version 2.1 or version 3 as published by the Free
+** Software Foundation and appearing in the file LICENSE.LGPLv21 and
+** LICENSE.LGPLv3 included in the packaging of this file. Please review the
+** following information to ensure the GNU Lesser General Public License
+** requirements will be met: https://www.gnu.org/licenses/lgpl.html and
+** http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
 **
-** In addition, as a special exception, Digia gives you certain additional
-** rights.  These rights are described in the Digia Qt LGPL Exception
+** As a special exception, The Qt Company gives you certain additional
+** rights. These rights are described in The Qt Company LGPL Exception
 ** version 1.1, included in the file LGPL_EXCEPTION.txt in this package.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3.0 as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU General Public License version 3.0 requirements will be
-** met: http://www.gnu.org/copyleft/gpl.html.
-**
 **
 ** $QT_END_LICENSE$
 **
@@ -55,7 +47,7 @@
 #include <QtCore/QSettings>
 #include <QtGui/QPainter>
 
-#ifdef Q_WS_MAC
+#ifdef Q_DEAD_CODE_FROM_QT4_MAC
 #include <private/qt_cocoa_helpers_mac_p.h>
 #endif
 
@@ -69,7 +61,7 @@ Q_GLOBAL_STATIC(QIconLoader, iconLoaderInstance)
 static QString fallbackTheme()
 {
     if (const QPlatformTheme *theme = QGuiApplicationPrivate::platformTheme()) {
-        const QVariant themeHint = theme->themeHint(QPlatformTheme::SystemIconThemeName);
+        const QVariant themeHint = theme->themeHint(QPlatformTheme::SystemIconFallbackThemeName);
         if (themeHint.isValid())
             return themeHint.toString();
     }
@@ -176,16 +168,19 @@ QIconTheme::QIconTheme(const QString &themeName)
 {
     QFile themeIndex;
 
-    QList <QIconDirInfo> keyList;
     QStringList iconDirs = QIcon::themeSearchPaths();
     for ( int i = 0 ; i < iconDirs.size() ; ++i) {
         QDir iconDir(iconDirs[i]);
         QString themeDir = iconDir.path() + QLatin1Char('/') + themeName;
-        themeIndex.setFileName(themeDir + QLatin1String("/index.theme"));
-        if (themeIndex.exists()) {
-            m_contentDir = themeDir;
-            m_valid = true;
-            break;
+        QFileInfo themeDirInfo(themeDir);
+
+        if (themeDirInfo.isDir())
+            m_contentDirs << themeDir;
+
+        if (!m_valid) {
+            themeIndex.setFileName(themeDir + QLatin1String("/index.theme"));
+            if (themeIndex.exists())
+                m_valid = true;
         }
     }
 #ifndef QT_NO_SETTINGS
@@ -232,6 +227,7 @@ QIconTheme::QIconTheme(const QString &themeName)
         // Parent themes provide fallbacks for missing icons
         m_parents = indexReader.value(
                 QLatin1String("Icon Theme/Inherits")).toStringList();
+        m_parents.removeAll(QString());
 
         // Ensure a default platform fallback for all themes
         if (m_parents.isEmpty()) {
@@ -247,11 +243,11 @@ QIconTheme::QIconTheme(const QString &themeName)
 #endif //QT_NO_SETTINGS
 }
 
-QThemeIconEntries QIconLoader::findIconHelper(const QString &themeName,
-                                 const QString &iconName,
-                                 QStringList &visited) const
+QThemeIconInfo QIconLoader::findIconHelper(const QString &themeName,
+                                           const QString &iconName,
+                                           QStringList &visited) const
 {
-    QThemeIconEntries entries;
+    QThemeIconInfo info;
     Q_ASSERT(!themeName.isEmpty());
 
     QPixmap pixmap;
@@ -268,34 +264,54 @@ QThemeIconEntries QIconLoader::findIconHelper(const QString &themeName,
         themeList.insert(themeName, theme);
     }
 
-    QString contentDir = theme.contentDir() + QLatin1Char('/');
-    QList<QIconDirInfo> subDirs = theme.keyList();
+    const QStringList contentDirs = theme.contentDirs();
+    const QVector<QIconDirInfo> subDirs = theme.keyList();
 
-    const QString svgext(QLatin1String(".svg"));
-    const QString pngext(QLatin1String(".png"));
+    QString iconNameFallback = iconName;
 
-    // Add all relevant files
-    for (int i = 0; i < subDirs.size() ; ++i) {
-        const QIconDirInfo &dirInfo = subDirs.at(i);
-        QString subdir = dirInfo.path;
-        QDir currentDir(contentDir + subdir);
-        if (currentDir.exists(iconName + pngext)) {
-            PixmapEntry *iconEntry = new PixmapEntry;
-            iconEntry->dir = dirInfo;
-            iconEntry->filename = currentDir.filePath(iconName + pngext);
-            // Notice we ensure that pixmap entries always come before
-            // scalable to preserve search order afterwards
-            entries.prepend(iconEntry);
-        } else if (m_supportsSvg &&
-            currentDir.exists(iconName + svgext)) {
-            ScalableEntry *iconEntry = new ScalableEntry;
-            iconEntry->dir = dirInfo;
-            iconEntry->filename = currentDir.filePath(iconName + svgext);
-            entries.append(iconEntry);
+    // Iterate through all icon's fallbacks in current theme
+    while (info.entries.isEmpty()) {
+        const QString svgIconName = iconNameFallback + QLatin1String(".svg");
+        const QString pngIconName = iconNameFallback + QLatin1String(".png");
+
+        // Add all relevant files
+        for (int i = 0; i < contentDirs.size(); ++i) {
+            QString contentDir = contentDirs.at(i) + QLatin1Char('/');
+            for (int j = 0; j < subDirs.size() ; ++j) {
+                const QIconDirInfo &dirInfo = subDirs.at(j);
+                QString subdir = dirInfo.path;
+                QDir currentDir(contentDir + subdir);
+                if (currentDir.exists(pngIconName)) {
+                    PixmapEntry *iconEntry = new PixmapEntry;
+                    iconEntry->dir = dirInfo;
+                    iconEntry->filename = currentDir.filePath(pngIconName);
+                    // Notice we ensure that pixmap entries always come before
+                    // scalable to preserve search order afterwards
+                    info.entries.prepend(iconEntry);
+                } else if (m_supportsSvg &&
+                    currentDir.exists(svgIconName)) {
+                    ScalableEntry *iconEntry = new ScalableEntry;
+                    iconEntry->dir = dirInfo;
+                    iconEntry->filename = currentDir.filePath(svgIconName);
+                    info.entries.append(iconEntry);
+                }
+            }
         }
+
+        if (!info.entries.isEmpty()) {
+            info.iconName = iconNameFallback;
+            break;
+        }
+
+        // If it's possible - find next fallback for the icon
+        const int indexOfDash = iconNameFallback.lastIndexOf(QLatin1Char('-'));
+        if (indexOfDash == -1)
+            break;
+
+        iconNameFallback.truncate(indexOfDash);
     }
 
-    if (entries.isEmpty()) {
+    if (info.entries.isEmpty()) {
         const QStringList parents = theme.parents();
         // Search recursively through inherited themes
         for (int i = 0 ; i < parents.size() ; ++i) {
@@ -303,23 +319,23 @@ QThemeIconEntries QIconLoader::findIconHelper(const QString &themeName,
             const QString parentTheme = parents.at(i).trimmed();
 
             if (!visited.contains(parentTheme)) // guard against recursion
-                entries = findIconHelper(parentTheme, iconName, visited);
+                info = findIconHelper(parentTheme, iconName, visited);
 
-            if (!entries.isEmpty()) // success
+            if (!info.entries.isEmpty()) // success
                 break;
         }
     }
-    return entries;
+    return info;
 }
 
-QThemeIconEntries QIconLoader::loadIcon(const QString &name) const
+QThemeIconInfo QIconLoader::loadIcon(const QString &name) const
 {
     if (!themeName().isEmpty()) {
         QStringList visited;
         return findIconHelper(themeName(), name, visited);
     }
 
-    return QThemeIconEntries();
+    return QThemeIconInfo();
 }
 
 
@@ -333,9 +349,7 @@ QIconLoaderEngine::QIconLoaderEngine(const QString& iconName)
 
 QIconLoaderEngine::~QIconLoaderEngine()
 {
-    while (!m_entries.isEmpty())
-        delete m_entries.takeLast();
-    Q_ASSERT(m_entries.size() == 0);
+    qDeleteAll(m_info.entries);
 }
 
 QIconLoaderEngine::QIconLoaderEngine(const QIconLoaderEngine &other)
@@ -363,19 +377,19 @@ bool QIconLoaderEngine::write(QDataStream &out) const
 
 bool QIconLoaderEngine::hasIcon() const
 {
-    return !(m_entries.isEmpty());
+    return !(m_info.entries.isEmpty());
 }
 
 // Lazily load the icon
 void QIconLoaderEngine::ensureLoaded()
 {
     if (!(QIconLoader::instance()->themeKey() == m_key)) {
+        qDeleteAll(m_info.entries);
+        m_info.entries.clear();
+        m_info.iconName.clear();
 
-        while (!m_entries.isEmpty())
-            delete m_entries.takeLast();
-
-        Q_ASSERT(m_entries.size() == 0);
-        m_entries = QIconLoader::instance()->loadIcon(m_iconName);
+        Q_ASSERT(m_info.entries.size() == 0);
+        m_info = QIconLoader::instance()->loadIcon(m_iconName);
         m_key = QIconLoader::instance()->themeKey();
     }
 }
@@ -384,7 +398,7 @@ void QIconLoaderEngine::paint(QPainter *painter, const QRect &rect,
                              QIcon::Mode mode, QIcon::State state)
 {
     QSize pixmapSize = rect.size();
-#if defined(Q_WS_MAC)
+#if defined(Q_DEAD_CODE_FROM_QT4_MAC)
     pixmapSize *= qt_mac_get_scalefactor();
 #endif
     painter->drawPixmap(rect, pixmap(pixmapSize, mode, state));
@@ -445,12 +459,14 @@ QIconLoaderEngineEntry *QIconLoaderEngine::entryForSize(const QSize &size)
 {
     int iconsize = qMin(size.width(), size.height());
 
-    // Note that m_entries are sorted so that png-files
+    // Note that m_info.entries are sorted so that png-files
     // come first
 
+    const int numEntries = m_info.entries.size();
+
     // Search for exact matches first
-    for (int i = 0; i < m_entries.count(); ++i) {
-        QIconLoaderEngineEntry *entry = m_entries.at(i);
+    for (int i = 0; i < numEntries; ++i) {
+        QIconLoaderEngineEntry *entry = m_info.entries.at(i);
         if (directoryMatchesSize(entry->dir, iconsize)) {
             return entry;
         }
@@ -459,8 +475,8 @@ QIconLoaderEngineEntry *QIconLoaderEngine::entryForSize(const QSize &size)
     // Find the minimum distance icon
     int minimalSize = INT_MAX;
     QIconLoaderEngineEntry *closestMatch = 0;
-    for (int i = 0; i < m_entries.count(); ++i) {
-        QIconLoaderEngineEntry *entry = m_entries.at(i);
+    for (int i = 0; i < numEntries; ++i) {
+        QIconLoaderEngineEntry *entry = m_info.entries.at(i);
         int distance = directorySizeDistance(entry->dir, iconsize);
         if (distance < minimalSize) {
             minimalSize  = distance;
@@ -564,20 +580,22 @@ void QIconLoaderEngine::virtual_hook(int id, void *data)
         {
             QIconEngine::AvailableSizesArgument &arg
                     = *reinterpret_cast<QIconEngine::AvailableSizesArgument*>(data);
-            const QList<QIconDirInfo> directoryKey = QIconLoader::instance()->theme().keyList();
-            arg.sizes.clear();
+            const int N = m_info.entries.size();
+            QList<QSize> sizes;
+            sizes.reserve(N);
 
             // Gets all sizes from the DirectoryInfo entries
-            for (int i = 0 ; i < m_entries.size() ; ++i) {
-                int size = m_entries.at(i)->dir.size;
-                arg.sizes.append(QSize(size, size));
+            for (int i = 0; i < N; ++i) {
+                int size = m_info.entries.at(i)->dir.size;
+                sizes.append(QSize(size, size));
             }
+            arg.sizes.swap(sizes); // commit
         }
         break;
     case QIconEngine::IconNameHook:
         {
             QString &name = *reinterpret_cast<QString*>(data);
-            name = m_iconName;
+            name = m_info.iconName;
         }
         break;
     default:

@@ -1,39 +1,31 @@
 /****************************************************************************
 **
-** Copyright (C) 2013 Digia Plc and/or its subsidiary(-ies).
-** Contact: http://www.qt-project.org/legal
+** Copyright (C) 2015 The Qt Company Ltd.
+** Contact: http://www.qt.io/licensing/
 **
 ** This file is part of the QtGui module of the Qt Toolkit.
 **
-** $QT_BEGIN_LICENSE:LGPL$
+** $QT_BEGIN_LICENSE:LGPL21$
 ** Commercial License Usage
 ** Licensees holding valid commercial Qt licenses may use this file in
 ** accordance with the commercial license agreement provided with the
 ** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and Digia.  For licensing terms and
-** conditions see http://qt.digia.com/licensing.  For further information
-** use the contact form at http://qt.digia.com/contact-us.
+** a written agreement between you and The Qt Company. For licensing terms
+** and conditions see http://www.qt.io/terms-conditions. For further
+** information use the contact form at http://www.qt.io/contact-us.
 **
 ** GNU Lesser General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 2.1 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU Lesser General Public License version 2.1 requirements
-** will be met: http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
+** General Public License version 2.1 or version 3 as published by the Free
+** Software Foundation and appearing in the file LICENSE.LGPLv21 and
+** LICENSE.LGPLv3 included in the packaging of this file. Please review the
+** following information to ensure the GNU Lesser General Public License
+** requirements will be met: https://www.gnu.org/licenses/lgpl.html and
+** http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
 **
-** In addition, as a special exception, Digia gives you certain additional
-** rights.  These rights are described in the Digia Qt LGPL Exception
+** As a special exception, The Qt Company gives you certain additional
+** rights. These rights are described in The Qt Company LGPL Exception
 ** version 1.1, included in the file LGPL_EXCEPTION.txt in this package.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3.0 as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU General Public License version 3.0 requirements will be
-** met: http://www.gnu.org/copyleft/gpl.html.
-**
 **
 ** $QT_END_LICENSE$
 **
@@ -101,11 +93,20 @@ public:
 
     class WindowSystemEvent {
     public:
+        enum {
+            Synthetic = 0x1,
+            NullWindow = 0x2
+        };
+
         explicit WindowSystemEvent(EventType t)
-            : type(t), synthetic(false) { }
+            : type(t), flags(0) { }
         virtual ~WindowSystemEvent() { }
+
+        bool synthetic() const  { return flags & Synthetic; }
+        bool nullWindow() const { return flags & NullWindow; }
+
         EventType type;
-        bool synthetic;
+        int flags;
     };
 
     class CloseEvent : public WindowSystemEvent {
@@ -176,26 +177,32 @@ public:
 
     class ApplicationStateChangedEvent : public WindowSystemEvent {
     public:
-        ApplicationStateChangedEvent(Qt::ApplicationState newState)
-            : WindowSystemEvent(ApplicationStateChanged), newState(newState)
+        ApplicationStateChangedEvent(Qt::ApplicationState newState, bool forcePropagate = false)
+            : WindowSystemEvent(ApplicationStateChanged), newState(newState), forcePropagate(forcePropagate)
         { }
 
         Qt::ApplicationState newState;
+        bool forcePropagate;
     };
 
     class FlushEventsEvent : public WindowSystemEvent {
     public:
-        FlushEventsEvent()
+        FlushEventsEvent(QEventLoop::ProcessEventsFlags f = QEventLoop::AllEvents)
             : WindowSystemEvent(FlushEvents)
+            , flags(f)
         { }
+        QEventLoop::ProcessEventsFlags flags;
     };
 
     class UserEvent : public WindowSystemEvent {
     public:
         UserEvent(QWindow * w, ulong time, EventType t)
-            : WindowSystemEvent(t), window(w), nullWindow(w == 0), timestamp(time) { }
+            : WindowSystemEvent(t), window(w), timestamp(time)
+        {
+            if (!w)
+                flags |= NullWindow;
+        }
         QPointer<QWindow> window;
-        bool nullWindow;
         unsigned long timestamp;
     };
 
@@ -225,8 +232,8 @@ public:
     class WheelEvent : public InputEvent {
     public:
         WheelEvent(QWindow *w, ulong time, const QPointF & local, const QPointF & global, QPoint pixelD, QPoint angleD, int qt4D, Qt::Orientation qt4O,
-                   Qt::KeyboardModifiers mods, Qt::ScrollPhase phase = Qt::ScrollUpdate)
-            : InputEvent(w, time, Wheel, mods), pixelDelta(pixelD), angleDelta(angleD), qt4Delta(qt4D), qt4Orientation(qt4O), localPos(local), globalPos(global), phase(phase) { }
+                   Qt::KeyboardModifiers mods, Qt::ScrollPhase phase = Qt::ScrollUpdate, Qt::MouseEventSource src = Qt::MouseEventNotSynthesized)
+            : InputEvent(w, time, Wheel, mods), pixelDelta(pixelD), angleDelta(angleD), qt4Delta(qt4D), qt4Orientation(qt4O), localPos(local), globalPos(global), phase(phase), source(src) { }
         QPoint pixelDelta;
         QPoint angleDelta;
         int qt4Delta;
@@ -234,6 +241,7 @@ public:
         QPointF localPos;
         QPointF globalPos;
         Qt::ScrollPhase phase;
+        Qt::MouseEventSource source;
     };
 
     class KeyEvent : public InputEvent {
@@ -278,17 +286,10 @@ public:
 
     class ScreenGeometryEvent : public WindowSystemEvent {
     public:
-        ScreenGeometryEvent(QScreen *s, const QRect &g)
-            : WindowSystemEvent(ScreenGeometry), screen(s), geometry(g) { }
+        ScreenGeometryEvent(QScreen *s, const QRect &g, const QRect &ag)
+            : WindowSystemEvent(ScreenGeometry), screen(s), geometry(g), availableGeometry(ag) { }
         QPointer<QScreen> screen;
         QRect geometry;
-    };
-
-    class ScreenAvailableGeometryEvent : public WindowSystemEvent {
-    public:
-        ScreenAvailableGeometryEvent(QScreen *s, const QRect &g)
-            : WindowSystemEvent(ScreenAvailableGeometry), screen(s), availableGeometry(g) { }
-        QPointer<QScreen> screen;
         QRect availableGeometry;
     };
 
@@ -337,19 +338,19 @@ public:
 
     class TabletEvent : public InputEvent {
     public:
-        static void handleTabletEvent(QWindow *w, bool down, const QPointF &local, const QPointF &global,
-                                      int device, int pointerType, qreal pressure, int xTilt, int yTilt,
+        static void handleTabletEvent(QWindow *w, const QPointF &local, const QPointF &global,
+                                      int device, int pointerType, Qt::MouseButtons buttons, qreal pressure, int xTilt, int yTilt,
                                       qreal tangentialPressure, qreal rotation, int z, qint64 uid,
                                       Qt::KeyboardModifiers modifiers = Qt::NoModifier);
 
-        TabletEvent(QWindow *w, ulong time, bool down, const QPointF &local, const QPointF &global,
-                    int device, int pointerType, qreal pressure, int xTilt, int yTilt, qreal tpressure,
+        TabletEvent(QWindow *w, ulong time, const QPointF &local, const QPointF &global,
+                    int device, int pointerType, Qt::MouseButtons b, qreal pressure, int xTilt, int yTilt, qreal tpressure,
                     qreal rotation, int z, qint64 uid, Qt::KeyboardModifiers mods)
             : InputEvent(w, time, Tablet, mods),
-              down(down), local(local), global(global), device(device), pointerType(pointerType),
+              buttons(b), local(local), global(global), device(device), pointerType(pointerType),
               pressure(pressure), xTilt(xTilt), yTilt(yTilt), tangentialPressure(tpressure),
               rotation(rotation), z(z), uid(uid) { }
-        bool down;
+        Qt::MouseButtons buttons;
         QPointF local;
         QPointF global;
         int device;

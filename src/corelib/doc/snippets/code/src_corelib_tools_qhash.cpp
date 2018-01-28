@@ -1,7 +1,7 @@
 /****************************************************************************
 **
-** Copyright (C) 2013 Digia Plc and/or its subsidiary(-ies).
-** Contact: http://www.qt-project.org/legal
+** Copyright (C) 2015 The Qt Company Ltd.
+** Contact: http://www.qt.io/licensing/
 **
 ** This file is part of the documentation of the Qt Toolkit.
 **
@@ -17,8 +17,8 @@
 **     notice, this list of conditions and the following disclaimer in
 **     the documentation and/or other materials provided with the
 **     distribution.
-**   * Neither the name of Digia Plc and its Subsidiary(-ies) nor the names
-**     of its contributors may be used to endorse or promote products derived
+**   * Neither the name of The Qt Company Ltd nor the names of its
+**     contributors may be used to endorse or promote products derived
 **     from this software without specific prior written permission.
 **
 **
@@ -297,3 +297,27 @@ while (i != hash.end() && i.key() == "plenty") {
     ++i;
 }
 //! [26]
+
+//! [qhashbits]
+inline uint qHash(const std::vector<int> &key, uint seed = 0)
+{
+    if (key.empty())
+        return seed;
+    else
+        return qHashBits(&key.front(), key.size() * sizeof(int), seed);
+}
+//! [qhashbits]
+
+//! [qhashrange]
+inline uint qHash(const std::vector<int> &key, uint seed = 0)
+{
+    return qHashRange(key.begin(), key.end(), seed);
+}
+//! [qhashrange]
+
+//! [qhashrangecommutative]
+inline uint qHash(const std::unordered_set<int> &key, uint seed = 0)
+{
+    return qHashRangeCommutative(key.begin(), key.end(), seed);
+}
+//! [qhashrangecommutative]

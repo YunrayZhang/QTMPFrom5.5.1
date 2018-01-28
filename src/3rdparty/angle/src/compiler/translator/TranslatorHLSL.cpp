@@ -6,19 +6,49 @@
 
 #include "compiler/translator/TranslatorHLSL.h"
 
-#include "compiler/translator/InitializeParseContext.h"
 #include "compiler/translator/OutputHLSL.h"
+#include "compiler/translator/SimplifyArrayAssignment.h"
 
-TranslatorHLSL::TranslatorHLSL(ShShaderType type, ShShaderSpec spec, ShShaderOutput output)
-    : TCompiler(type, spec), mOutputType(output)
+TranslatorHLSL::TranslatorHLSL(sh::GLenum type, ShShaderSpec spec, ShShaderOutput output)
+    : TCompiler(type, spec, output)
 {
 }
 
-void TranslatorHLSL::translate(TIntermNode *root)
+void TranslatorHLSL::translate(TIntermNode *root, int compileOptions)
 {
-    TParseContext& parseContext = *GetGlobalParseContext();
-    sh::OutputHLSL outputHLSL(parseContext, getResources(), mOutputType);
+    const ShBuiltInResources &resources = getResources();
+    int numRenderTargets = resources.EXT_draw_buffers ? resources.MaxDrawBuffers : 1;
 
-    outputHLSL.output();
-    mActiveUniforms = outputHLSL.getUniforms();
+    SimplifyArrayAssignment simplify;
+    root->traverse(&simplify);
+
+    sh::OutputHLSL outputHLSL(getShaderType(), getShaderVersion(), getExtensionBehavior(),
+        getSourcePath(), getOutputType(), numRenderTargets, getUniforms(), compileOptions);
+
+    outputHLSL.output(root, getInfoSink().obj);
+
+    mInterfaceBlockRegisterMap = outputHLSL.getInterfaceBlockRegisterMap();
+    mUniformRegisterMap = outputHLSL.getUniformRegisterMap();
+}
+
+bool TranslatorHLSL::hasInterfaceBlock(const std::string &interfaceBlockName) const
+{
+    return (mInterfaceBlockRegisterMap.count(interfaceBlockName) > 0);
+}
+
+unsigned int TranslatorHLSL::getInterfaceBlockRegister(const std::string &interfaceBlockName) const
+{
+    ASSERT(hasInterfaceBlock(interfaceBlockName));
+    return mInterfaceBlockRegisterMap.find(interfaceBlockName)->second;
+}
+
+bool TranslatorHLSL::hasUniform(const std::string &uniformName) const
+{
+    return (mUniformRegisterMap.count(uniformName) > 0);
+}
+
+unsigned int TranslatorHLSL::getUniformRegister(const std::string &uniformName) const
+{
+    ASSERT(hasUniform(uniformName));
+    return mUniformRegisterMap.find(uniformName)->second;
 }

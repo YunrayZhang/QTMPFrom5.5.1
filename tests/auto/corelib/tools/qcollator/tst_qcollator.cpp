@@ -1,39 +1,31 @@
 /****************************************************************************
 **
-** Copyright (C) 2013 Digia Plc and/or its subsidiary(-ies).
-** Contact: http://www.qt-project.org/legal
+** Copyright (C) 2015 The Qt Company Ltd.
+** Contact: http://www.qt.io/licensing/
 **
 ** This file is part of the test suite of the Qt Toolkit.
 **
-** $QT_BEGIN_LICENSE:LGPL$
+** $QT_BEGIN_LICENSE:LGPL21$
 ** Commercial License Usage
 ** Licensees holding valid commercial Qt licenses may use this file in
 ** accordance with the commercial license agreement provided with the
 ** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and Digia.  For licensing terms and
-** conditions see http://qt.digia.com/licensing.  For further information
-** use the contact form at http://qt.digia.com/contact-us.
+** a written agreement between you and The Qt Company. For licensing terms
+** and conditions see http://www.qt.io/terms-conditions. For further
+** information use the contact form at http://www.qt.io/contact-us.
 **
 ** GNU Lesser General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 2.1 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU Lesser General Public License version 2.1 requirements
-** will be met: http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
+** General Public License version 2.1 or version 3 as published by the Free
+** Software Foundation and appearing in the file LICENSE.LGPLv21 and
+** LICENSE.LGPLv3 included in the packaging of this file. Please review the
+** following information to ensure the GNU Lesser General Public License
+** requirements will be met: https://www.gnu.org/licenses/lgpl.html and
+** http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
 **
-** In addition, as a special exception, Digia gives you certain additional
-** rights.  These rights are described in the Digia Qt LGPL Exception
+** As a special exception, The Qt Company gives you certain additional
+** rights. These rights are described in The Qt Company LGPL Exception
 ** version 1.1, included in the file LGPL_EXCEPTION.txt in this package.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3.0 as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU General Public License version 3.0 requirements will be
-** met: http://www.gnu.org/copyleft/gpl.html.
-**
 **
 ** $QT_END_LICENSE$
 **
@@ -55,6 +47,8 @@ private Q_SLOTS:
 
     void compare_data();
     void compare();
+
+    void state();
 };
 
 #ifdef Q_COMPILER_RVALUE_REFS
@@ -109,7 +103,7 @@ void tst_QCollator::compare_data()
         It's hard to test English, because it's treated differently
         on different platforms. For example, on Linux, it uses the
         iso14651_t1 template file, which happens to provide good
-        defaults for Swedish. Mac OS X seems to do a pure bytewise
+        defaults for Swedish. OS X seems to do a pure bytewise
         comparison of Latin-1 values, although I'm not sure. So I
         just test digits to make sure that it's not totally broken.
     */
@@ -124,14 +118,10 @@ void tst_QCollator::compare_data()
         diaresis (E4), which comes before o diaresis (F6), which
         all come after z.
     */
-#if !defined(Q_OS_WIN) || defined(QT_USE_ICU)
     QTest::newRow("swedish1") << QString("sv_SE") << QString::fromLatin1("\xe5") << QString::fromLatin1("\xe4") << -1 << -1 << false;
-#endif
     QTest::newRow("swedish2") << QString("sv_SE") << QString::fromLatin1("\xe4") << QString::fromLatin1("\xf6") << -1 << -1 << false;
     QTest::newRow("swedish3") << QString("sv_SE") << QString::fromLatin1("\xe5") << QString::fromLatin1("\xf6") << -1 << -1 << false;
-#if !defined(Q_OS_OSX) && (!defined(Q_OS_WIN) || defined(QT_USE_ICU))
     QTest::newRow("swedish4") << QString("sv_SE") << QString::fromLatin1("z") << QString::fromLatin1("\xe5") << -1 << -1 << false;
-#endif
     QTest::newRow("swedish5") << QString("sv_SE") << QString("9") << QString("19") << -1 << -1 << true;
 
     /*
@@ -139,12 +129,8 @@ void tst_QCollator::compare_data()
         comes before a with ring above (E5).
     */
     QTest::newRow("norwegian1") << QString("no_NO") << QString::fromLatin1("\xe6") << QString::fromLatin1("\xd8") << -1 << -1 << false;
-#if !defined(Q_OS_WIN) || defined(QT_USE_ICU)
-#  ifndef Q_OS_OSX
     QTest::newRow("norwegian2") << QString("no_NO") << QString::fromLatin1("\xd8") << QString::fromLatin1("\xe5") << -1 << -1 << false;
-#  endif
     QTest::newRow("norwegian3") << QString("no_NO") << QString::fromLatin1("\xe6") << QString::fromLatin1("\xe5") << -1 << -1 << false;
-#endif // !Q_OS_WIN || QT_USE_ICU
     QTest::newRow("norwegian4") << QString("no_NO") << QString("9") << QString("19") << -1 << -1 << true;
 
     /*
@@ -184,12 +170,41 @@ void tst_QCollator::compare()
 
     QCollator collator(locale);
 
+#if defined(Q_OS_ANDROID) && !defined(Q_OS_ANDROID_NO_SDK)
+    if (collator.locale() != QLocale())
+        QSKIP("Posix implementation of collation only supports default locale");
+#endif
+
     if (numericMode)
         collator.setNumericMode(true);
 
     QCOMPARE(collator.compare(s1, s2), result);
     collator.setCaseSensitivity(Qt::CaseInsensitive);
     QCOMPARE(collator.compare(s1, s2), caseInsensitiveResult);
+}
+
+
+void tst_QCollator::state()
+{
+    QCollator c;
+    c.setCaseSensitivity(Qt::CaseInsensitive);
+    c.setLocale(QLocale::German);
+
+    c.compare(QString("a"), QString("b"));
+
+    QCOMPARE(c.caseSensitivity(), Qt::CaseInsensitive);
+    QCOMPARE(c.locale(), QLocale(QLocale::German));
+
+    c.setLocale(QLocale::French);
+    c.setNumericMode(true);
+    c.setIgnorePunctuation(true);
+    c.setLocale(QLocale::Norwegian);
+
+    QCOMPARE(c.caseSensitivity(), Qt::CaseInsensitive);
+    QCOMPARE(c.numericMode(), true);
+    QCOMPARE(c.ignorePunctuation(), true);
+    QCOMPARE(c.locale(), QLocale(QLocale::Norwegian));
+
 }
 
 QTEST_APPLESS_MAIN(tst_QCollator)

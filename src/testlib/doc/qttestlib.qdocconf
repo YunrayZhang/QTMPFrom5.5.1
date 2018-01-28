@@ -2,7 +2,6 @@ include($QT_INSTALL_DOCS/global/qt-module-defaults.qdocconf)
 
 project                 = QtTestLib
 description             = Qt Test Reference Documentation
-url                     = http://qt-project.org/doc/qt-$QT_VER
 version                 = $QT_VERSION
 
 examplesinstallpath     = testlib
@@ -40,6 +39,9 @@ exampledirs += ../../../examples/qtestlib \
 excludedirs += ../../../examples/widgets/doc
 
 imagedirs   += images
+
+# Add a thumbnail for examples that do not have images
+manifestmeta.thumbnail.names = "QtTestLib/Chapter *"
 
 navigation.landingpage = "Qt Test"
 navigation.cppclassespage = "Qt Test C++ Classes"

@@ -1,39 +1,31 @@
 /****************************************************************************
 **
-** Copyright (C) 2013 Digia Plc and/or its subsidiary(-ies).
-** Contact: http://www.qt-project.org/legal
+** Copyright (C) 2015 The Qt Company Ltd.
+** Contact: http://www.qt.io/licensing/
 **
 ** This file is part of the plugins of the Qt Toolkit.
 **
-** $QT_BEGIN_LICENSE:LGPL$
+** $QT_BEGIN_LICENSE:LGPL21$
 ** Commercial License Usage
 ** Licensees holding valid commercial Qt licenses may use this file in
 ** accordance with the commercial license agreement provided with the
 ** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and Digia.  For licensing terms and
-** conditions see http://qt.digia.com/licensing.  For further information
-** use the contact form at http://qt.digia.com/contact-us.
+** a written agreement between you and The Qt Company. For licensing terms
+** and conditions see http://www.qt.io/terms-conditions. For further
+** information use the contact form at http://www.qt.io/contact-us.
 **
 ** GNU Lesser General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 2.1 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU Lesser General Public License version 2.1 requirements
-** will be met: http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
+** General Public License version 2.1 or version 3 as published by the Free
+** Software Foundation and appearing in the file LICENSE.LGPLv21 and
+** LICENSE.LGPLv3 included in the packaging of this file. Please review the
+** following information to ensure the GNU Lesser General Public License
+** requirements will be met: https://www.gnu.org/licenses/lgpl.html and
+** http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
 **
-** In addition, as a special exception, Digia gives you certain additional
-** rights.  These rights are described in the Digia Qt LGPL Exception
+** As a special exception, The Qt Company gives you certain additional
+** rights. These rights are described in The Qt Company LGPL Exception
 ** version 1.1, included in the file LGPL_EXCEPTION.txt in this package.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3.0 as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU General Public License version 3.0 requirements will be
-** met: http://www.gnu.org/copyleft/gpl.html.
-**
 **
 ** $QT_END_LICENSE$
 **
@@ -97,13 +89,10 @@ CGImageRef qt_mac_toCGImage(const QImage &inImage)
     if (inImage.isNull())
         return 0;
 
-    QImage image = (inImage.depth() == 32) ? inImage : inImage.convertToFormat(QImage::Format_ARGB32_Premultiplied);
+    QImage image = inImage;
 
     uint cgflags = kCGImageAlphaNone;
     switch (image.format()) {
-    case QImage::Format_ARGB32_Premultiplied:
-        cgflags = kCGImageAlphaPremultipliedFirst | kCGBitmapByteOrder32Host;
-        break;
     case QImage::Format_ARGB32:
         cgflags = kCGImageAlphaFirst | kCGBitmapByteOrder32Host;
         break;
@@ -123,7 +112,11 @@ CGImageRef qt_mac_toCGImage(const QImage &inImage)
         cgflags = kCGImageAlphaNoneSkipLast | kCGBitmapByteOrder32Big;
         break;
     default:
-        Q_ASSERT(false); // Should never be reached.
+        // Everything not recognized explicitly is converted to ARGB32_Premultiplied.
+        image = inImage.convertToFormat(QImage::Format_ARGB32_Premultiplied);
+        // no break;
+    case QImage::Format_ARGB32_Premultiplied:
+        cgflags = kCGImageAlphaPremultipliedFirst | kCGBitmapByteOrder32Host;
         break;
     }
 
@@ -225,6 +218,24 @@ QColor qt_mac_toQColor(const NSColor *color)
     return qtColor;
 }
 
+QColor qt_mac_toQColor(CGColorRef color)
+{
+    QColor qtColor;
+    CGColorSpaceModel model = CGColorSpaceGetModel(CGColorGetColorSpace(color));
+    const CGFloat *components = CGColorGetComponents(color);
+    if (model == kCGColorSpaceModelRGB) {
+        qtColor.setRgbF(components[0], components[1], components[2], components[3]);
+    } else if (model == kCGColorSpaceModelCMYK) {
+        qtColor.setCmykF(components[0], components[1], components[2], components[3]);
+    } else if (model == kCGColorSpaceModelMonochrome) {
+        qtColor.setRgbF(components[0], components[0], components[0], components[1]);
+    } else {
+        // Colorspace we can't deal with.
+        qWarning("Qt: qt_mac_toQColor: cannot convert from colorspace model: %d", model);
+        Q_ASSERT(false);
+    }
+    return qtColor;
+}
 
 // Use this method to keep all the information in the TextSegment. As long as it is ordered
 // we are in OK shape, and we can influence that ourselves.
@@ -485,6 +496,18 @@ QString qt_mac_removeMnemonics(const QString &original)
             --l;
             if (l == 0)
                 break;
+        } else if (original.at(currPos) == QLatin1Char('(') && l >= 4 &&
+                   original.at(currPos + 1) == QLatin1Char('&') &&
+                   original.at(currPos + 2) != QLatin1Char('&') &&
+                   original.at(currPos + 3) == QLatin1Char(')')) {
+            /* remove mnemonics its format is "\s*(&X)" */
+            int n = 0;
+            while (finalDest > n && returnText.at(finalDest - n - 1).isSpace())
+                ++n;
+            finalDest -= n;
+            currPos += 4;
+            l -= 4;
+            continue;
         }
         returnText[finalDest] = original.at(currPos);
         ++currPos;
@@ -607,6 +630,7 @@ QString qt_mac_applicationName()
 
 int qt_mac_mainScreenHeight()
 {
+    QCocoaAutoReleasePool pool;
     // The first screen in the screens array is documented
     // to have the (0,0) origin.
     NSRect screenFrame = [[[NSScreen screens] firstObject] frame];
@@ -743,16 +767,7 @@ bool qt_mac_execute_apple_script(const QString &script, AEDesc *ret)
 
 QString qt_mac_removeAmpersandEscapes(QString s)
 {
-    int i = 0;
-    while (i < s.size()) {
-        ++i;
-        if (s.at(i-1) != QLatin1Char('&'))
-            continue;
-        if (i < s.size() && s.at(i) == QLatin1Char('&'))
-            ++i;
-        s.remove(i-1,1);
-    }
-    return s.trimmed();
+    return qt_mac_removeMnemonics(s).trimmed();
 }
 
 /*! \internal
@@ -761,7 +776,7 @@ QString qt_mac_removeAmpersandEscapes(QString s)
  returned if it can't be obtained. It is the caller's responsibility to
  CGContextRelease the context when finished using it.
 
- \warning This function is only available on Mac OS X.
+ \warning This function is only available on OS X.
  \warning This function is duplicated in qmacstyle_mac.mm
  */
 CGContextRef qt_mac_cg_context(QPaintDevice *pdev)

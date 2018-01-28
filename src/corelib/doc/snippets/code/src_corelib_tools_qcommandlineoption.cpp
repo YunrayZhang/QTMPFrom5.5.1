@@ -1,7 +1,7 @@
 /****************************************************************************
 **
 ** Copyright (C) 2013 David Faure <faure@kde.org>
-** Contact: http://www.qt-project.org/legal
+** Contact: http://www.qt.io/licensing/
 **
 ** This file is part of the documentation of the Qt Toolkit.
 **
@@ -17,8 +17,8 @@
 **     notice, this list of conditions and the following disclaimer in
 **     the documentation and/or other materials provided with the
 **     distribution.
-**   * Neither the name of Digia Plc and its Subsidiary(-ies) nor the names
-**     of its contributors may be used to endorse or promote products derived
+**   * Neither the name of The Qt Company Ltd nor the names of its
+**     contributors may be used to endorse or promote products derived
 **     from this software without specific prior written permission.
 **
 **
@@ -39,6 +39,7 @@
 ****************************************************************************/
 
 #include <QCommandLineOption>
+#include <QCommandLineParser>
 
 int main()
 {
@@ -47,5 +48,15 @@ int main()
 QCommandLineOption verboseOption("verbose", "Verbose mode. Prints out more information.");
 QCommandLineOption outputOption(QStringList() << "o" << "output", "Write generated data into <file>.", "file");
 //! [0]
+
+//! [cxx11-init]
+QCommandLineParser parser;
+parser.addOption({"verbose", "Verbose mode. Prints out more information."});
+//! [cxx11-init]
+
+//! [cxx11-init-list]
+QCommandLineParser parser;
+parser.addOption({{"o", "output"}, "Write generated data into <file>.", "file"});
+//! [cxx11-init-list]
 
 }

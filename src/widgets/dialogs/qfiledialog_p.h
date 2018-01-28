@@ -1,39 +1,31 @@
 /****************************************************************************
 **
-** Copyright (C) 2013 Digia Plc and/or its subsidiary(-ies).
-** Contact: http://www.qt-project.org/legal
+** Copyright (C) 2015 The Qt Company Ltd.
+** Contact: http://www.qt.io/licensing/
 **
 ** This file is part of the QtWidgets module of the Qt Toolkit.
 **
-** $QT_BEGIN_LICENSE:LGPL$
+** $QT_BEGIN_LICENSE:LGPL21$
 ** Commercial License Usage
 ** Licensees holding valid commercial Qt licenses may use this file in
 ** accordance with the commercial license agreement provided with the
 ** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and Digia.  For licensing terms and
-** conditions see http://qt.digia.com/licensing.  For further information
-** use the contact form at http://qt.digia.com/contact-us.
+** a written agreement between you and The Qt Company. For licensing terms
+** and conditions see http://www.qt.io/terms-conditions. For further
+** information use the contact form at http://www.qt.io/contact-us.
 **
 ** GNU Lesser General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 2.1 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU Lesser General Public License version 2.1 requirements
-** will be met: http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
+** General Public License version 2.1 or version 3 as published by the Free
+** Software Foundation and appearing in the file LICENSE.LGPLv21 and
+** LICENSE.LGPLv3 included in the packaging of this file. Please review the
+** following information to ensure the GNU Lesser General Public License
+** requirements will be met: https://www.gnu.org/licenses/lgpl.html and
+** http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
 **
-** In addition, as a special exception, Digia gives you certain additional
-** rights.  These rights are described in the Digia Qt LGPL Exception
+** As a special exception, The Qt Company gives you certain additional
+** rights. These rights are described in The Qt Company LGPL Exception
 ** version 1.1, included in the file LGPL_EXCEPTION.txt in this package.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3.0 as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU General Public License version 3.0 requirements will be
-** met: http://www.gnu.org/copyleft/gpl.html.
-**
 **
 ** $QT_END_LICENSE$
 **
@@ -100,7 +92,7 @@ struct QFileDialogArgs
 
     QWidget *parent;
     QString caption;
-    QString directory;
+    QUrl directory;
     QString selection;
     QString filter;
     QFileDialog::FileMode mode;
@@ -123,15 +115,15 @@ public:
     void createMenuActions();
     void createWidgets();
 
-    void init(const QString &directory = QString(), const QString &nameFilter = QString(),
+    void init(const QUrl &directory = QUrl(), const QString &nameFilter = QString(),
               const QString &caption = QString());
     bool itemViewKeyboardEvent(QKeyEvent *event);
     QString getEnvironmentVariable(const QString &string);
-    static QString workingDirectory(const QString &path);
-    static QString initialSelection(const QString &path);
+    static QUrl workingDirectory(const QUrl &path);
+    static QString initialSelection(const QUrl &path);
     QStringList typedFiles() const;
     QList<QUrl> userSelectedFiles() const;
-    QStringList addDefaultSuffixToFiles(const QStringList filesToFix) const;
+    QStringList addDefaultSuffixToFiles(const QStringList &filesToFix) const;
     QList<QUrl> addDefaultSuffixToUrls(const QList<QUrl> &urlsToFix) const;
     bool removeDirectory(const QString &path);
     void setLabelTextControl(QFileDialog::DialogLabel label, const QString &text);
@@ -189,7 +181,13 @@ public:
 #endif
     }
 
-    void setLastVisitedDirectory(const QString &dir);
+#ifndef QT_NO_SETTINGS
+    void saveSettings();
+    bool restoreFromSettings();
+#endif
+
+    bool restoreWidgetState(QStringList &history, int splitterPosition);
+    static void setLastVisitedDirectory(const QUrl &dir);
     void retranslateWindowTitle();
     void retranslateStrings();
     void emitFilesSelected(const QStringList &files);
@@ -210,8 +208,8 @@ public:
     void _q_updateOkButton();
     void _q_currentChanged(const QModelIndex &index);
     void _q_enterDirectory(const QModelIndex &index);
-    void _q_nativeFileSelected(const QUrl &file);
-    void _q_nativeFilesSelected(const QList<QUrl> &files);
+    void _q_emitUrlSelected(const QUrl &file);
+    void _q_emitUrlsSelected(const QList<QUrl> &files);
     void _q_nativeCurrentChanged(const QUrl &file);
     void _q_nativeEnterDirectory(const QUrl &directory);
     void _q_goToDirectory(const QString &);
@@ -220,7 +218,7 @@ public:
     void _q_goToUrl(const QUrl &url);
     void _q_autoCompleteFileName(const QString &);
     void _q_rowsInserted(const QModelIndex & parent);
-    void _q_fileRenamed(const QString &path, const QString oldName, const QString newName);
+    void _q_fileRenamed(const QString &path, const QString &oldName, const QString &newName);
 
     // layout
 #ifndef QT_NO_PROXYMODEL
@@ -251,7 +249,7 @@ public:
     // setVisible_sys returns true if it ends up showing a native
     // dialog. Returning false means that a non-native dialog must be
     // used instead.
-    bool canBeNativeDialog() const;
+    bool canBeNativeDialog() const Q_DECL_OVERRIDE;
     inline bool usingWidgets() const;
 
     void setDirectory_sys(const QUrl &directory);
@@ -281,9 +279,9 @@ public:
     ~QFileDialogPrivate();
 
 private:
-    virtual void initHelper(QPlatformDialogHelper *);
-    virtual void helperPrepareShow(QPlatformDialogHelper *);
-    virtual void helperDone(QDialog::DialogCode, QPlatformDialogHelper *);
+    virtual void initHelper(QPlatformDialogHelper *) Q_DECL_OVERRIDE;
+    virtual void helperPrepareShow(QPlatformDialogHelper *) Q_DECL_OVERRIDE;
+    virtual void helperDone(QDialog::DialogCode, QPlatformDialogHelper *) Q_DECL_OVERRIDE;
 
     Q_DISABLE_COPY(QFileDialogPrivate)
 };
@@ -293,7 +291,7 @@ class QFileDialogLineEdit : public QLineEdit
 public:
     QFileDialogLineEdit(QWidget *parent = 0) : QLineEdit(parent), d_ptr(0){}
     void setFileDialogPrivate(QFileDialogPrivate *d_pointer) {d_ptr = d_pointer; }
-    void keyPressEvent(QKeyEvent *e);
+    void keyPressEvent(QKeyEvent *e) Q_DECL_OVERRIDE;
     bool hideOnEsc;
 private:
     QFileDialogPrivate *d_ptr;
@@ -304,10 +302,10 @@ class QFileDialogComboBox : public QComboBox
 public:
     QFileDialogComboBox(QWidget *parent = 0) : QComboBox(parent), urlModel(0) {}
     void setFileDialogPrivate(QFileDialogPrivate *d_pointer);
-    void showPopup();
+    void showPopup() Q_DECL_OVERRIDE;
     void setHistory(const QStringList &paths);
     QStringList history() const { return m_history; }
-    void paintEvent(QPaintEvent *);
+    void paintEvent(QPaintEvent *) Q_DECL_OVERRIDE;
 
 private:
     QUrlModel *urlModel;
@@ -320,9 +318,9 @@ class QFileDialogListView : public QListView
 public:
     QFileDialogListView(QWidget *parent = 0);
     void setFileDialogPrivate(QFileDialogPrivate *d_pointer);
-    QSize sizeHint() const;
+    QSize sizeHint() const Q_DECL_OVERRIDE;
 protected:
-    void keyPressEvent(QKeyEvent *e);
+    void keyPressEvent(QKeyEvent *e) Q_DECL_OVERRIDE;
 private:
     QFileDialogPrivate *d_ptr;
 };
@@ -332,10 +330,10 @@ class QFileDialogTreeView : public QTreeView
 public:
     QFileDialogTreeView(QWidget *parent);
     void setFileDialogPrivate(QFileDialogPrivate *d_pointer);
-    QSize sizeHint() const;
+    QSize sizeHint() const Q_DECL_OVERRIDE;
 
 protected:
-    void keyPressEvent(QKeyEvent *e);
+    void keyPressEvent(QKeyEvent *e) Q_DECL_OVERRIDE;
 private:
     QFileDialogPrivate *d_ptr;
 };
@@ -374,7 +372,7 @@ inline QUrl QFileDialogPrivate::directory_sys() const
 {
     if (QPlatformFileDialogHelper *helper = platformFileDialogHelper())
         return helper->directory();
-    return QString();
+    return QUrl();
 }
 
 inline void QFileDialogPrivate::selectFile_sys(const QUrl &filename)

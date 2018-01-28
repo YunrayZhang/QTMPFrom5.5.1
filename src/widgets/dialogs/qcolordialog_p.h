@@ -1,39 +1,31 @@
 /****************************************************************************
 **
-** Copyright (C) 2014 Digia Plc and/or its subsidiary(-ies).
-** Contact: http://www.qt-project.org/legal
+** Copyright (C) 2015 The Qt Company Ltd.
+** Contact: http://www.qt.io/licensing/
 **
 ** This file is part of the QtWidgets module of the Qt Toolkit.
 **
-** $QT_BEGIN_LICENSE:LGPL$
+** $QT_BEGIN_LICENSE:LGPL21$
 ** Commercial License Usage
 ** Licensees holding valid commercial Qt licenses may use this file in
 ** accordance with the commercial license agreement provided with the
 ** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and Digia.  For licensing terms and
-** conditions see http://qt.digia.com/licensing.  For further information
-** use the contact form at http://qt.digia.com/contact-us.
+** a written agreement between you and The Qt Company. For licensing terms
+** and conditions see http://www.qt.io/terms-conditions. For further
+** information use the contact form at http://www.qt.io/contact-us.
 **
 ** GNU Lesser General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 2.1 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU Lesser General Public License version 2.1 requirements
-** will be met: http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
+** General Public License version 2.1 or version 3 as published by the Free
+** Software Foundation and appearing in the file LICENSE.LGPLv21 and
+** LICENSE.LGPLv3 included in the packaging of this file. Please review the
+** following information to ensure the GNU Lesser General Public License
+** requirements will be met: https://www.gnu.org/licenses/lgpl.html and
+** http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
 **
-** In addition, as a special exception, Digia gives you certain additional
-** rights.  These rights are described in the Digia Qt LGPL Exception
+** As a special exception, The Qt Company gives you certain additional
+** rights. These rights are described in The Qt Company LGPL Exception
 ** version 1.1, included in the file LGPL_EXCEPTION.txt in this package.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3.0 as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU General Public License version 3.0 requirements will be
-** met: http://www.gnu.org/copyleft/gpl.html.
-**
 **
 ** $QT_END_LICENSE$
 **
@@ -57,6 +49,7 @@
 #include "private/qdialog_p.h"
 #include "qcolordialog.h"
 #include "qsharedpointer.h"
+#include "qwindow.h"
 
 #ifndef QT_NO_COLORDIALOG
 
@@ -71,6 +64,7 @@ class QVBoxLayout;
 class QPushButton;
 class QWellArray;
 class QColorPickingEventFilter;
+class QTimer;
 
 class QColorDialogPrivate : public QDialogPrivate
 {
@@ -83,7 +77,11 @@ public:
         SetColorAll = ShowColor | SelectColor
     };
 
-    QColorDialogPrivate() : options(new QColorDialogOptions) {}
+    QColorDialogPrivate() : options(new QColorDialogOptions)
+#ifdef Q_OS_WIN32
+        , updateTimer(0)
+#endif
+    {}
 
     QPlatformColorDialogHelper *platformColorDialogHelper() const
         { return static_cast<QPlatformColorDialogHelper *>(platformHelper()); }
@@ -112,12 +110,15 @@ public:
     void _q_newCustom(int, int);
     void _q_newStandard(int, int);
     void _q_pickScreenColor();
+    void _q_updateColorPicking();
+    void updateColorLabelText(const QPoint &);
+    void updateColorPicking(const QPoint &pos);
     void releaseColorPicking();
     bool handleColorPickingMouseMove(QMouseEvent *e);
     bool handleColorPickingMouseButtonRelease(QMouseEvent *e);
     bool handleColorPickingKeyPress(QKeyEvent *e);
 
-    bool canBeNativeDialog() const;
+    bool canBeNativeDialog() const Q_DECL_OVERRIDE;
 
     QWellArray *custom;
     QWellArray *standard;
@@ -144,8 +145,12 @@ public:
 
     QPointer<QObject> receiverToDisconnectOnClose;
     QByteArray memberToDisconnectOnClose;
+#ifdef Q_OS_WIN32
+    QTimer *updateTimer;
+    QWindow dummyTransparentWindow;
+#endif
 
-#ifdef Q_WS_MAC
+#ifdef Q_DEAD_CODE_FROM_QT4_MAC
     void openCocoaColorPanel(const QColor &initial,
             QWidget *parent, const QString &title, QColorDialog::ColorDialogOptions options);
     void closeCocoaColorPanel();
@@ -163,8 +168,8 @@ public:
     void mac_nativeDialogModalHelp();
 #endif
 private:
-    virtual void initHelper(QPlatformDialogHelper *h);
-    virtual void helperPrepareShow(QPlatformDialogHelper *h);
+    virtual void initHelper(QPlatformDialogHelper *h) Q_DECL_OVERRIDE;
+    virtual void helperPrepareShow(QPlatformDialogHelper *h) Q_DECL_OVERRIDE;
 };
 
 #endif // QT_NO_COLORDIALOG

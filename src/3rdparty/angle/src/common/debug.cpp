@@ -7,106 +7,142 @@
 // debug.cpp: Debugging utilities.
 
 #include "common/debug.h"
-#include <stdarg.h>
+#include "common/platform.h"
+#include "common/angleutils.h"
 
-#if defined(ANGLE_ENABLE_PERF)
-#include <d3d9.h>
-#endif
+#include <stdarg.h>
+#include <vector>
+#include <fstream>
+#include <cstdio>
 
 namespace gl
 {
-#if defined(ANGLE_ENABLE_PERF)
-typedef void (WINAPI *PerfOutputFunction)(D3DCOLOR, LPCWSTR);
-#else
-typedef void (*PerfOutputFunction)(unsigned int, const wchar_t*);
+
+namespace
+{
+enum DebugTraceOutputType
+{
+   DebugTraceOutputTypeNone,
+   DebugTraceOutputTypeSetMarker,
+   DebugTraceOutputTypeBeginEvent
+};
+
+DebugAnnotator *g_debugAnnotator = nullptr;
+
+void output(bool traceInDebugOnly, MessageType messageType, DebugTraceOutputType outputType,
+            const char *format, va_list vararg)
+{
+    if (DebugAnnotationsActive())
+    {
+        static std::vector<char> buffer(512);
+        size_t len = FormatStringIntoVector(format, vararg, buffer);
+        std::wstring formattedWideMessage(buffer.begin(), buffer.begin() + len);
+
+        ASSERT(g_debugAnnotator != nullptr);
+        switch (outputType)
+        {
+          case DebugTraceOutputTypeNone:
+            break;
+          case DebugTraceOutputTypeBeginEvent:
+            g_debugAnnotator->beginEvent(formattedWideMessage);
+            break;
+          case DebugTraceOutputTypeSetMarker:
+            g_debugAnnotator->setMarker(formattedWideMessage);
+            break;
+        }
+    }
+
+    std::string formattedMessage;
+    UNUSED_TRACE_VARIABLE(formattedMessage);
+
+#if !defined(NDEBUG) && defined(_MSC_VER)
+    if (messageType == MESSAGE_ERR)
+    {
+        if (formattedMessage.empty())
+        {
+            formattedMessage = FormatString(format, vararg);
+        }
+        OutputDebugStringA(formattedMessage.c_str());
+    }
 #endif
 
-static void output(bool traceFileDebugOnly, PerfOutputFunction perfFunc, const char *format, va_list vararg)
-{
-#if defined(ANGLE_ENABLE_PERF)
-    if (perfActive())
-    {
-        char message[32768];
-        int len = vsprintf_s(message, format, vararg);
-        if (len < 0)
-        {
-            return;
-        }
-
-        // There are no ASCII variants of these D3DPERF functions.
-        wchar_t wideMessage[32768];
-        for (int i = 0; i < len; ++i)
-        {
-            wideMessage[i] = message[i];
-        }
-        wideMessage[len] = 0;
-
-        perfFunc(0, wideMessage);
-    }
-#endif // ANGLE_ENABLE_PERF
-
-#if defined(ANGLE_ENABLE_TRACE)
+#if defined(ANGLE_ENABLE_DEBUG_TRACE)
 #if defined(NDEBUG)
-    if (traceFileDebugOnly)
+    if (traceInDebugOnly)
     {
         return;
     }
 #endif // NDEBUG
+    if (formattedMessage.empty())
+    {
+        formattedMessage = FormatString(format, vararg);
+    }
 
-    FILE* file = fopen(TRACE_OUTPUT_FILE, "a");
+    static std::ofstream file(TRACE_OUTPUT_FILE, std::ofstream::app);
     if (file)
     {
-        vfprintf(file, format, vararg);
-        fclose(file);
+        file.write(formattedMessage.c_str(), formattedMessage.length());
+        file.flush();
     }
-#endif // ANGLE_ENABLE_TRACE
+
+#if defined(ANGLE_ENABLE_DEBUG_TRACE_TO_DEBUGGER)
+    OutputDebugStringA(formattedMessage.c_str());
+#endif // ANGLE_ENABLE_DEBUG_TRACE_TO_DEBUGGER
+
+#endif // ANGLE_ENABLE_DEBUG_TRACE
 }
 
-void trace(bool traceFileDebugOnly, const char *format, ...)
-{
-    va_list vararg;
-    va_start(vararg, format);
-#if defined(ANGLE_ENABLE_PERF)
-    output(traceFileDebugOnly, D3DPERF_SetMarker, format, vararg);
-#else
-    output(traceFileDebugOnly, NULL, format, vararg);
-#endif
-    va_end(vararg);
-}
+} // namespace
 
-bool perfActive()
+bool DebugAnnotationsActive()
 {
-#if defined(ANGLE_ENABLE_PERF)
-    static bool active = D3DPERF_GetStatus() != 0;
-    return active;
+#if defined(ANGLE_ENABLE_DEBUG_ANNOTATIONS)
+    return g_debugAnnotator != nullptr && g_debugAnnotator->getStatus();
 #else
     return false;
 #endif
 }
 
+void InitializeDebugAnnotations(DebugAnnotator *debugAnnotator)
+{
+    UninitializeDebugAnnotations();
+    g_debugAnnotator = debugAnnotator;
+}
+
+void UninitializeDebugAnnotations()
+{
+    // Pointer is not managed.
+    g_debugAnnotator = nullptr;
+}
+
+void trace(bool traceInDebugOnly, MessageType messageType, const char *format, ...)
+{
+    va_list vararg;
+    va_start(vararg, format);
+    output(traceInDebugOnly, messageType, DebugTraceOutputTypeSetMarker, format, vararg);
+    va_end(vararg);
+}
+
 ScopedPerfEventHelper::ScopedPerfEventHelper(const char* format, ...)
 {
-#if defined(ANGLE_ENABLE_PERF)
-#if !defined(ANGLE_ENABLE_TRACE)
-    if (!perfActive())
+#if !defined(ANGLE_ENABLE_DEBUG_TRACE)
+    if (!DebugAnnotationsActive())
     {
         return;
     }
-#endif // !ANGLE_ENABLE_TRACE
+#endif // !ANGLE_ENABLE_DEBUG_TRACE
     va_list vararg;
     va_start(vararg, format);
-    output(true, reinterpret_cast<PerfOutputFunction>(D3DPERF_BeginEvent), format, vararg);
+    output(true, MESSAGE_EVENT, DebugTraceOutputTypeBeginEvent, format, vararg);
     va_end(vararg);
-#endif // ANGLE_ENABLE_PERF
 }
 
 ScopedPerfEventHelper::~ScopedPerfEventHelper()
 {
-#if defined(ANGLE_ENABLE_PERF)
-    if (perfActive())
+    if (DebugAnnotationsActive())
     {
-        D3DPERF_EndEvent();
+        g_debugAnnotator->endEvent();
     }
-#endif
 }
+
 }

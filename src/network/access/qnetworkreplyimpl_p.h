@@ -1,39 +1,31 @@
 /****************************************************************************
 **
-** Copyright (C) 2013 Digia Plc and/or its subsidiary(-ies).
-** Contact: http://www.qt-project.org/legal
+** Copyright (C) 2015 The Qt Company Ltd.
+** Contact: http://www.qt.io/licensing/
 **
 ** This file is part of the QtNetwork module of the Qt Toolkit.
 **
-** $QT_BEGIN_LICENSE:LGPL$
+** $QT_BEGIN_LICENSE:LGPL21$
 ** Commercial License Usage
 ** Licensees holding valid commercial Qt licenses may use this file in
 ** accordance with the commercial license agreement provided with the
 ** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and Digia.  For licensing terms and
-** conditions see http://qt.digia.com/licensing.  For further information
-** use the contact form at http://qt.digia.com/contact-us.
+** a written agreement between you and The Qt Company. For licensing terms
+** and conditions see http://www.qt.io/terms-conditions. For further
+** information use the contact form at http://www.qt.io/contact-us.
 **
 ** GNU Lesser General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 2.1 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU Lesser General Public License version 2.1 requirements
-** will be met: http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
+** General Public License version 2.1 or version 3 as published by the Free
+** Software Foundation and appearing in the file LICENSE.LGPLv21 and
+** LICENSE.LGPLv3 included in the packaging of this file. Please review the
+** following information to ensure the GNU Lesser General Public License
+** requirements will be met: https://www.gnu.org/licenses/lgpl.html and
+** http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
 **
-** In addition, as a special exception, Digia gives you certain additional
-** rights.  These rights are described in the Digia Qt LGPL Exception
+** As a special exception, The Qt Company gives you certain additional
+** rights. These rights are described in The Qt Company LGPL Exception
 ** version 1.1, included in the file LGPL_EXCEPTION.txt in this package.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3.0 as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU General Public License version 3.0 requirements will be
-** met: http://www.gnu.org/copyleft/gpl.html.
-**
 **
 ** $QT_END_LICENSE$
 **
@@ -77,16 +69,16 @@ class QNetworkReplyImpl: public QNetworkReply
 public:
     QNetworkReplyImpl(QObject *parent = 0);
     ~QNetworkReplyImpl();
-    virtual void abort();
+    virtual void abort() Q_DECL_OVERRIDE;
 
     // reimplemented from QNetworkReply / QIODevice
-    virtual void close();
-    virtual qint64 bytesAvailable() const;
-    virtual void setReadBufferSize(qint64 size);
-    virtual bool canReadLine () const;
+    virtual void close() Q_DECL_OVERRIDE;
+    virtual qint64 bytesAvailable() const Q_DECL_OVERRIDE;
+    virtual void setReadBufferSize(qint64 size) Q_DECL_OVERRIDE;
+    virtual bool canReadLine () const Q_DECL_OVERRIDE;
 
-    virtual qint64 readData(char *data, qint64 maxlen);
-    virtual bool event(QEvent *);
+    virtual qint64 readData(char *data, qint64 maxlen) Q_DECL_OVERRIDE;
+    virtual bool event(QEvent *) Q_DECL_OVERRIDE;
 
     Q_DECLARE_PRIVATE(QNetworkReplyImpl)
     Q_PRIVATE_SLOT(d_func(), void _q_startOperation())
@@ -97,15 +89,16 @@ public:
 #ifndef QT_NO_BEARERMANAGEMENT
     Q_PRIVATE_SLOT(d_func(), void _q_networkSessionConnected())
     Q_PRIVATE_SLOT(d_func(), void _q_networkSessionFailed())
+    Q_PRIVATE_SLOT(d_func(), void _q_networkSessionStateChanged(QNetworkSession::State))
     Q_PRIVATE_SLOT(d_func(), void _q_networkSessionUsagePoliciesChanged(QNetworkSession::UsagePolicies))
 #endif
 
 #ifndef QT_NO_SSL
 protected:
-    void sslConfigurationImplementation(QSslConfiguration &configuration) const;
-    void setSslConfigurationImplementation(const QSslConfiguration &configuration);
-    virtual void ignoreSslErrors();
-    virtual void ignoreSslErrorsImplementation(const QList<QSslError> &errors);
+    void sslConfigurationImplementation(QSslConfiguration &configuration) const Q_DECL_OVERRIDE;
+    void setSslConfigurationImplementation(const QSslConfiguration &configuration) Q_DECL_OVERRIDE;
+    virtual void ignoreSslErrors() Q_DECL_OVERRIDE;
+    virtual void ignoreSslErrorsImplementation(const QList<QSslError> &errors) Q_DECL_OVERRIDE;
 #endif
 };
 
@@ -116,16 +109,6 @@ public:
         NotifyDownstreamReadyWrite,
         NotifyCloseDownstreamChannel,
         NotifyCopyFinished
-    };
-
-    enum State {
-        Idle,               // The reply is idle.
-        Buffering,          // The reply is buffering outgoing data.
-        Working,            // The reply is uploading/downloading data.
-        Finished,           // The reply has finished.
-        Aborted,            // The reply has been aborted.
-        WaitingForSession,  // The reply is waiting for the session to open before connecting.
-        Reconnecting        // The reply will reconnect to once roaming has completed.
     };
 
     typedef QQueue<InternalNotifications> NotificationQueue;
@@ -142,6 +125,7 @@ public:
 #ifndef QT_NO_BEARERMANAGEMENT
     void _q_networkSessionConnected();
     void _q_networkSessionFailed();
+    void _q_networkSessionStateChanged(QNetworkSession::State);
     void _q_networkSessionUsagePoliciesChanged(QNetworkSession::UsagePolicies);
 #endif
 
@@ -232,9 +216,9 @@ public:
                           QNetworkAccessManager::Operation op);
     ~QDisabledNetworkReply();
 
-    void abort() { }
+    void abort() Q_DECL_OVERRIDE { }
 protected:
-    qint64 readData(char *, qint64) { return -1; }
+    qint64 readData(char *, qint64) Q_DECL_OVERRIDE { return -1; }
 };
 #endif
 
