@@ -1,0 +1,615 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup Label="ProjectConfigurations">
+    <ProjectConfiguration Include="Debug|Win32">
+      <Configuration>Debug</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release|Win32">
+      <Configuration>Release</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release|x64">
+      <Configuration>Release</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Debug|x64">
+      <Configuration>Debug</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+  </ItemGroup>
+  <PropertyGroup Label="Globals">
+    <ProjectGuid>{496CDA6C-62F7-3DA1-AFF1-A5347799120A}</ProjectGuid>
+    <RootNamespace>qmake</RootNamespace>
+    <Keyword>Qt4VSv1.0</Keyword>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="Configuration">
+    <OutputDirectory>..\bin\</OutputDirectory>
+    <ATLMinimizesCRunTimeLibraryUsage>false</ATLMinimizesCRunTimeLibraryUsage>
+    <CharacterSet>NotSet</CharacterSet>
+    <ConfigurationType>Application</ConfigurationType>
+    <IntermediateDirectory>.obj\release\</IntermediateDirectory>
+    <PrimaryOutput>qmake</PrimaryOutput>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'" Label="Configuration">
+    <OutputDirectory>..\bin\</OutputDirectory>
+    <ATLMinimizesCRunTimeLibraryUsage>false</ATLMinimizesCRunTimeLibraryUsage>
+    <CharacterSet>NotSet</CharacterSet>
+    <ConfigurationType>Application</ConfigurationType>
+    <IntermediateDirectory>.obj\release\</IntermediateDirectory>
+    <PrimaryOutput>qmake</PrimaryOutput>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="Configuration">
+    <OutputDirectory>..\bin\</OutputDirectory>
+    <ATLMinimizesCRunTimeLibraryUsage>false</ATLMinimizesCRunTimeLibraryUsage>
+    <CharacterSet>NotSet</CharacterSet>
+    <ConfigurationType>Application</ConfigurationType>
+    <IntermediateDirectory>.obj\debug\</IntermediateDirectory>
+    <PrimaryOutput>qmake</PrimaryOutput>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="Configuration">
+    <OutputDirectory>..\bin\</OutputDirectory>
+    <ATLMinimizesCRunTimeLibraryUsage>false</ATLMinimizesCRunTimeLibraryUsage>
+    <CharacterSet>NotSet</CharacterSet>
+    <ConfigurationType>Application</ConfigurationType>
+    <IntermediateDirectory>.obj\debug\</IntermediateDirectory>
+    <PrimaryOutput>qmake</PrimaryOutput>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+  <ImportGroup Label="ExtensionSettings" />
+  <ImportGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="PropertySheets">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" />
+  </ImportGroup>
+  <ImportGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'" Label="PropertySheets">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" />
+  </ImportGroup>
+  <ImportGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="PropertySheets">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" />
+  </ImportGroup>
+  <ImportGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="PropertySheets">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" />
+  </ImportGroup>
+  <PropertyGroup Label="UserMacros" />
+  <PropertyGroup>
+    <OutDir Condition="'$(Configuration)|$(Platform)'=='Release|x64'">..\bin\</OutDir>
+    <OutDir Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">..\bin\</OutDir>
+    <IntDir Condition="'$(Configuration)|$(Platform)'=='Release|x64'">.obj\release\</IntDir>
+    <IntDir Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">.obj\release\</IntDir>
+    <TargetName Condition="'$(Configuration)|$(Platform)'=='Release|x64'">qmake</TargetName>
+    <TargetName Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">qmake</TargetName>
+    <IgnoreImportLibrary Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</IgnoreImportLibrary>
+    <IgnoreImportLibrary Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">true</IgnoreImportLibrary>
+    <LinkIncremental Condition="'$(Configuration)|$(Platform)'=='Release|x64'">false</LinkIncremental>
+    <LinkIncremental Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">false</LinkIncremental>
+    <OutDir Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">..\bin\</OutDir>
+    <OutDir Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">..\bin\</OutDir>
+    <IntDir Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">.obj\debug\</IntDir>
+    <IntDir Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">.obj\debug\</IntDir>
+    <TargetName Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">qmake</TargetName>
+    <TargetName Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">qmake</TargetName>
+    <IgnoreImportLibrary Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</IgnoreImportLibrary>
+    <IgnoreImportLibrary Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">true</IgnoreImportLibrary>
+  </PropertyGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <ClCompile>
+      <AdditionalIncludeDirectories>.;library;generators;generators\unix;generators\win32;generators\mac;generators/integrity;..\tools\shared;C:\Qt\Qt5.5.1\5.5\msvc2010\include;C:\Qt\Qt5.5.1\5.5\msvc2010\include\QtCore;C:\Qt\Qt5.5.1\5.5\msvc2010\include\QtCore\5.5.1;C:\Qt\Qt5.5.1\5.5\msvc2010\include\QtCore\5.5.1\QtCore;..\src\corelib\global;..\mkspecs\win32-msvc2010;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalOptions>-w34100 -w34189 -w44996 %(AdditionalOptions)</AdditionalOptions>
+      <AssemblerListingLocation>.obj\release\</AssemblerListingLocation>
+      <BrowseInformation>false</BrowseInformation>
+      <ExceptionHandling>false</ExceptionHandling>
+      <ForcedIncludeFiles>qmake_pch.h;%(ForcedIncludeFiles)</ForcedIncludeFiles>
+      <ObjectFileName>.obj\release\</ObjectFileName>
+      <Optimization>MaxSpeed</Optimization>
+      <PrecompiledHeader>Use</PrecompiledHeader>
+      <PrecompiledHeaderFile>qmake_pch.h</PrecompiledHeaderFile>
+      <PrecompiledHeaderOutputFile>$(IntDir)\qmake.pch</PrecompiledHeaderOutputFile>
+      <PreprocessorDefinitions>_CONSOLE;UNICODE;WIN32;WIN64;QT_BUILD_QMAKE;PROEVALUATOR_FULL;QT_BOOTSTRAPPED;QT_NO_TEXTCODEC;QT_NO_UNICODETABLES;QT_NO_COMPONENT;QT_NO_COMPRESS;QT_NO_THREAD;QT_NO_QOBJECT;QT_NO_GEOM_VARIANT;QT_NO_DATASTREAM;QT_CRYPTOGRAPHICHASH_ONLY_SHA1;QT_JSON_READONLY;QT_NO_STANDARDPATHS;QT_NO_EXCEPTIONS;NDEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessToFile>false</PreprocessToFile>
+      <RuntimeLibrary>MultiThreadedDLL</RuntimeLibrary>
+      <RuntimeTypeInfo>true</RuntimeTypeInfo>
+      <SuppressStartupBanner>true</SuppressStartupBanner>
+      <TreatWChar_tAsBuiltInType>true</TreatWChar_tAsBuiltInType>
+      <WarningLevel>Level3</WarningLevel>
+    </ClCompile>
+    <Link>
+      <AdditionalDependencies>ole32.lib;advapi32.lib;qt5core.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalOptions>"/MANIFESTDEPENDENCY:type='win32' name='Microsoft.Windows.Common-Controls' version='6.0.0.0' publicKeyToken='6595b64144ccf1df' language='*' processorArchitecture='*'" %(AdditionalOptions)</AdditionalOptions>
+      <DataExecutionPrevention>true</DataExecutionPrevention>
+      <GenerateDebugInformation>false</GenerateDebugInformation>
+      <IgnoreImportLibrary>true</IgnoreImportLibrary>
+      <LinkIncremental>false</LinkIncremental>
+      <OutputFile>$(OutDir)\qmakemp.exe</OutputFile>
+      <RandomizedBaseAddress>true</RandomizedBaseAddress>
+      <SubSystem>Console</SubSystem>
+      <SuppressStartupBanner>true</SuppressStartupBanner>
+      <AdditionalLibraryDirectories>C:\Qt\Qt5.5.1\5.5\msvc2010_opengl64\lib</AdditionalLibraryDirectories>
+    </Link>
+    <Midl>
+      <DefaultCharType>Unsigned</DefaultCharType>
+      <EnableErrorChecks>None</EnableErrorChecks>
+      <WarningLevel>0</WarningLevel>
+    </Midl>
+    <ResourceCompile>
+      <PreprocessorDefinitions>_CONSOLE;UNICODE;WIN32;WIN64;QT_BUILD_QMAKE;PROEVALUATOR_FULL;QT_BOOTSTRAPPED;QT_NO_TEXTCODEC;QT_NO_UNICODETABLES;QT_NO_COMPONENT;QT_NO_COMPRESS;QT_NO_THREAD;QT_NO_QOBJECT;QT_NO_GEOM_VARIANT;QT_NO_DATASTREAM;QT_CRYPTOGRAPHICHASH_ONLY_SHA1;QT_JSON_READONLY;QT_NO_STANDARDPATHS;QT_NO_EXCEPTIONS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+    </ResourceCompile>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+    <ClCompile>
+      <AdditionalIncludeDirectories>.;library;generators;generators\unix;generators\win32;generators\mac;generators/integrity;..\tools\shared;C:\Qt\Qt5.5.1\5.5\msvc2010\include;C:\Qt\Qt5.5.1\5.5\msvc2010\include\QtCore;C:\Qt\Qt5.5.1\5.5\msvc2010\include\QtCore\5.5.1;C:\Qt\Qt5.5.1\5.5\msvc2010\include\QtCore\5.5.1\QtCore;..\src\corelib\global;..\mkspecs\win32-msvc2010;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalOptions>-w34100 -w34189 -w44996 %(AdditionalOptions)</AdditionalOptions>
+      <AssemblerListingLocation>.obj\release\</AssemblerListingLocation>
+      <BrowseInformation>false</BrowseInformation>
+      <ExceptionHandling>false</ExceptionHandling>
+      <ForcedIncludeFiles>qmake_pch.h;%(ForcedIncludeFiles)</ForcedIncludeFiles>
+      <ObjectFileName>.obj\release\</ObjectFileName>
+      <Optimization>MaxSpeed</Optimization>
+      <PrecompiledHeader>Use</PrecompiledHeader>
+      <PrecompiledHeaderFile>qmake_pch.h</PrecompiledHeaderFile>
+      <PrecompiledHeaderOutputFile>$(IntDir)\qmake.pch</PrecompiledHeaderOutputFile>
+      <PreprocessorDefinitions>_CONSOLE;UNICODE;WIN32;WIN64;QT_BUILD_QMAKE;PROEVALUATOR_FULL;QT_BOOTSTRAPPED;QT_NO_TEXTCODEC;QT_NO_UNICODETABLES;QT_NO_COMPONENT;QT_NO_COMPRESS;QT_NO_THREAD;QT_NO_QOBJECT;QT_NO_GEOM_VARIANT;QT_NO_DATASTREAM;QT_CRYPTOGRAPHICHASH_ONLY_SHA1;QT_JSON_READONLY;QT_NO_STANDARDPATHS;QT_NO_EXCEPTIONS;NDEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessToFile>false</PreprocessToFile>
+      <RuntimeLibrary>MultiThreadedDLL</RuntimeLibrary>
+      <RuntimeTypeInfo>true</RuntimeTypeInfo>
+      <SuppressStartupBanner>true</SuppressStartupBanner>
+      <TreatWChar_tAsBuiltInType>true</TreatWChar_tAsBuiltInType>
+      <WarningLevel>Level3</WarningLevel>
+    </ClCompile>
+    <Link>
+      <AdditionalDependencies>ole32.lib;advapi32.lib;qt5core.lib;qtpcre.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalOptions>"/MANIFESTDEPENDENCY:type='win32' name='Microsoft.Windows.Common-Controls' version='6.0.0.0' publicKeyToken='6595b64144ccf1df' language='*' processorArchitecture='*'" %(AdditionalOptions)</AdditionalOptions>
+      <DataExecutionPrevention>true</DataExecutionPrevention>
+      <GenerateDebugInformation>false</GenerateDebugInformation>
+      <IgnoreImportLibrary>true</IgnoreImportLibrary>
+      <LinkIncremental>false</LinkIncremental>
+      <OutputFile>$(OutDir)\qmakemp.exe</OutputFile>
+      <RandomizedBaseAddress>true</RandomizedBaseAddress>
+      <SubSystem>Console</SubSystem>
+      <SuppressStartupBanner>true</SuppressStartupBanner>
+      <AdditionalLibraryDirectories>D:\opensource\qtbase\x86</AdditionalLibraryDirectories>
+    </Link>
+    <Midl>
+      <DefaultCharType>Unsigned</DefaultCharType>
+      <EnableErrorChecks>None</EnableErrorChecks>
+      <WarningLevel>0</WarningLevel>
+    </Midl>
+    <ResourceCompile>
+      <PreprocessorDefinitions>_CONSOLE;UNICODE;WIN32;WIN64;QT_BUILD_QMAKE;PROEVALUATOR_FULL;QT_BOOTSTRAPPED;QT_NO_TEXTCODEC;QT_NO_UNICODETABLES;QT_NO_COMPONENT;QT_NO_COMPRESS;QT_NO_THREAD;QT_NO_QOBJECT;QT_NO_GEOM_VARIANT;QT_NO_DATASTREAM;QT_CRYPTOGRAPHICHASH_ONLY_SHA1;QT_JSON_READONLY;QT_NO_STANDARDPATHS;QT_NO_EXCEPTIONS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+    </ResourceCompile>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <ClCompile>
+      <AdditionalIncludeDirectories>.;.;library;generators;generators\unix;generators\win32;generators\mac;generators/integrity;..\tools\shared;C:\Qt\Qt5.5.1\5.5\msvc2010\include;C:\Qt\Qt5.5.1\5.5\msvc2010\include\QtCore;C:\Qt\Qt5.5.1\5.5\msvc2010\include\QtCore\5.5.1;C:\Qt\Qt5.5.1\5.5\msvc2010\include\QtCore\5.5.1\QtCore;..\src\corelib\global;..\mkspecs\win32-msvc2010;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalOptions>-w34100 -w34189 -w44996 %(AdditionalOptions)</AdditionalOptions>
+      <AssemblerListingLocation>.obj\debug\</AssemblerListingLocation>
+      <BrowseInformation>false</BrowseInformation>
+      <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
+      <ExceptionHandling>false</ExceptionHandling>
+      <ForcedIncludeFiles>qmake_pch.h;%(ForcedIncludeFiles)</ForcedIncludeFiles>
+      <ObjectFileName>.obj\debug\</ObjectFileName>
+      <Optimization>Disabled</Optimization>
+      <PrecompiledHeader>Use</PrecompiledHeader>
+      <PrecompiledHeaderFile>qmake_pch.h</PrecompiledHeaderFile>
+      <PrecompiledHeaderOutputFile>$(IntDir)\qmake.pch</PrecompiledHeaderOutputFile>
+      <PreprocessorDefinitions>_CONSOLE;UNICODE;WIN32;WIN64;QT_BUILD_QMAKE;PROEVALUATOR_FULL;QT_BOOTSTRAPPED;QT_NO_TEXTCODEC;QT_NO_UNICODETABLES;QT_NO_COMPONENT;QT_NO_COMPRESS;QT_NO_THREAD;QT_NO_QOBJECT;QT_NO_GEOM_VARIANT;QT_NO_DATASTREAM;QT_CRYPTOGRAPHICHASH_ONLY_SHA1;QT_JSON_READONLY;QT_NO_STANDARDPATHS;QT_NO_EXCEPTIONS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessToFile>false</PreprocessToFile>
+      <RuntimeLibrary>MultiThreadedDebugDLL</RuntimeLibrary>
+      <RuntimeTypeInfo>true</RuntimeTypeInfo>
+      <SuppressStartupBanner>true</SuppressStartupBanner>
+      <TreatWChar_tAsBuiltInType>true</TreatWChar_tAsBuiltInType>
+      <WarningLevel>Level3</WarningLevel>
+    </ClCompile>
+    <Link>
+      <AdditionalDependencies>ole32.lib;advapi32.lib;qt5cored.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalOptions>"/MANIFESTDEPENDENCY:type='win32' name='Microsoft.Windows.Common-Controls' version='6.0.0.0' publicKeyToken='6595b64144ccf1df' language='*' processorArchitecture='*'" %(AdditionalOptions)</AdditionalOptions>
+      <DataExecutionPrevention>true</DataExecutionPrevention>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <IgnoreImportLibrary>true</IgnoreImportLibrary>
+      <OutputFile>$(OutDir)\qmakemp.exe</OutputFile>
+      <RandomizedBaseAddress>true</RandomizedBaseAddress>
+      <SubSystem>Console</SubSystem>
+      <SuppressStartupBanner>true</SuppressStartupBanner>
+      <AdditionalLibraryDirectories>C:\Qt\Qt5.5.1\5.5\msvc2010_opengl64\lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+    </Link>
+    <Midl>
+      <DefaultCharType>Unsigned</DefaultCharType>
+      <EnableErrorChecks>None</EnableErrorChecks>
+      <WarningLevel>0</WarningLevel>
+    </Midl>
+    <ResourceCompile>
+      <PreprocessorDefinitions>_CONSOLE;UNICODE;WIN32;WIN64;QT_BUILD_QMAKE;PROEVALUATOR_FULL;QT_BOOTSTRAPPED;QT_NO_TEXTCODEC;QT_NO_UNICODETABLES;QT_NO_COMPONENT;QT_NO_COMPRESS;QT_NO_THREAD;QT_NO_QOBJECT;QT_NO_GEOM_VARIANT;QT_NO_DATASTREAM;QT_CRYPTOGRAPHICHASH_ONLY_SHA1;QT_JSON_READONLY;QT_NO_STANDARDPATHS;QT_NO_EXCEPTIONS;_DEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+    </ResourceCompile>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+    <ClCompile>
+      <AdditionalIncludeDirectories>.;.;library;generators;generators\unix;generators\win32;generators\mac;generators/integrity;..\tools\shared;C:\Qt\Qt5.5.1\5.5\msvc2010\include;C:\Qt\Qt5.5.1\5.5\msvc2010\include\QtCore;C:\Qt\Qt5.5.1\5.5\msvc2010\include\QtCore\5.5.1;C:\Qt\Qt5.5.1\5.5\msvc2010\include\QtCore\5.5.1\QtCore;..\src\corelib\global;..\mkspecs\win32-msvc2010;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalOptions>-w34100 -w34189 -w44996 %(AdditionalOptions)</AdditionalOptions>
+      <AssemblerListingLocation>.obj\debug\</AssemblerListingLocation>
+      <BrowseInformation>false</BrowseInformation>
+      <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
+      <ExceptionHandling>false</ExceptionHandling>
+      <ForcedIncludeFiles>qmake_pch.h;%(ForcedIncludeFiles)</ForcedIncludeFiles>
+      <ObjectFileName>.obj\debug\</ObjectFileName>
+      <Optimization>Disabled</Optimization>
+      <PrecompiledHeader>Use</PrecompiledHeader>
+      <PrecompiledHeaderFile>qmake_pch.h</PrecompiledHeaderFile>
+      <PrecompiledHeaderOutputFile>$(IntDir)\qmake.pch</PrecompiledHeaderOutputFile>
+      <PreprocessorDefinitions>_CONSOLE;UNICODE;WIN32;WIN64;QT_BUILD_QMAKE;PROEVALUATOR_FULL;QT_BOOTSTRAPPED;QT_NO_TEXTCODEC;QT_NO_UNICODETABLES;QT_NO_COMPONENT;QT_NO_COMPRESS;QT_NO_THREAD;QT_NO_QOBJECT;QT_NO_GEOM_VARIANT;QT_NO_DATASTREAM;QT_CRYPTOGRAPHICHASH_ONLY_SHA1;QT_JSON_READONLY;QT_NO_STANDARDPATHS;QT_NO_EXCEPTIONS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessToFile>false</PreprocessToFile>
+      <RuntimeLibrary>MultiThreadedDebugDLL</RuntimeLibrary>
+      <RuntimeTypeInfo>true</RuntimeTypeInfo>
+      <SuppressStartupBanner>true</SuppressStartupBanner>
+      <TreatWChar_tAsBuiltInType>true</TreatWChar_tAsBuiltInType>
+      <WarningLevel>Level3</WarningLevel>
+    </ClCompile>
+    <Link>
+      <AdditionalDependencies>ole32.lib;advapi32.lib;qt5cored.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalOptions>"/MANIFESTDEPENDENCY:type='win32' name='Microsoft.Windows.Common-Controls' version='6.0.0.0' publicKeyToken='6595b64144ccf1df' language='*' processorArchitecture='*'" %(AdditionalOptions)</AdditionalOptions>
+      <DataExecutionPrevention>true</DataExecutionPrevention>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <IgnoreImportLibrary>true</IgnoreImportLibrary>
+      <OutputFile>$(OutDir)\qmakemp.exe</OutputFile>
+      <RandomizedBaseAddress>true</RandomizedBaseAddress>
+      <SubSystem>Console</SubSystem>
+      <SuppressStartupBanner>true</SuppressStartupBanner>
+      <AdditionalLibraryDirectories>C:\Qt\Qt5.5.1\5.5\msvc2010_opengl64\lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+    </Link>
+    <Midl>
+      <DefaultCharType>Unsigned</DefaultCharType>
+      <EnableErrorChecks>None</EnableErrorChecks>
+      <WarningLevel>0</WarningLevel>
+    </Midl>
+    <ResourceCompile>
+      <PreprocessorDefinitions>_CONSOLE;UNICODE;WIN32;WIN64;QT_BUILD_QMAKE;PROEVALUATOR_FULL;QT_BOOTSTRAPPED;QT_NO_TEXTCODEC;QT_NO_UNICODETABLES;QT_NO_COMPONENT;QT_NO_COMPRESS;QT_NO_THREAD;QT_NO_QOBJECT;QT_NO_GEOM_VARIANT;QT_NO_DATASTREAM;QT_CRYPTOGRAPHICHASH_ONLY_SHA1;QT_JSON_READONLY;QT_NO_STANDARDPATHS;QT_NO_EXCEPTIONS;_DEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+    </ResourceCompile>
+  </ItemDefinitionGroup>
+  <ItemGroup>
+    <ClCompile Include="..\src\corelib\io\qdebug.cpp" />
+    <ClCompile Include="generators\win32\cesdkhandler.cpp" />
+    <ClCompile Include="library\ioutils.cpp" />
+    <ClCompile Include="main.cpp" />
+    <ClCompile Include="generators\makefile.cpp" />
+    <ClCompile Include="generators\makefiledeps.cpp" />
+    <ClCompile Include="meta.cpp" />
+    <ClCompile Include="generators\metamakefile.cpp" />
+    <ClCompile Include="generators\win32\mingw_make.cpp" />
+    <ClCompile Include="generators\win32\msbuild_objectmodel.cpp" />
+    <ClCompile Include="generators\win32\msvc_nmake.cpp" />
+    <ClCompile Include="generators\win32\msvc_objectmodel.cpp" />
+    <ClCompile Include="generators\win32\msvc_vcproj.cpp" />
+    <ClCompile Include="generators\win32\msvc_vcxproj.cpp" />
+    <ClCompile Include="option.cpp" />
+    <ClCompile Include="generators\mac\pbuilder_pbx.cpp" />
+    <ClCompile Include="library\proitems.cpp" />
+    <ClCompile Include="project.cpp" />
+    <ClCompile Include="generators\projectgenerator.cpp" />
+    <ClCompile Include="property.cpp" />
+    <ClCompile Include="..\src\corelib\io\qabstractfileengine.cpp" />
+    <ClCompile Include="..\src\corelib\tools\qarraydata.cpp" />
+    <ClCompile Include="..\src\corelib\tools\qbitarray.cpp" />
+    <ClCompile Include="..\src\corelib\io\qbuffer.cpp" />
+    <ClCompile Include="..\src\corelib\tools\qbytearray.cpp" />
+    <ClCompile Include="..\src\corelib\tools\qbytearraymatcher.cpp" />
+    <ClCompile Include="..\src\corelib\tools\qcryptographichash.cpp" />
+    <ClCompile Include="..\src\corelib\tools\qdatetime.cpp" />
+    <ClCompile Include="..\src\corelib\io\qdir.cpp" />
+    <ClCompile Include="..\src\corelib\io\qdiriterator.cpp" />
+    <ClCompile Include="..\src\corelib\io\qfile.cpp" />
+    <ClCompile Include="..\src\corelib\io\qfiledevice.cpp" />
+    <ClCompile Include="..\src\corelib\io\qfileinfo.cpp" />
+    <ClCompile Include="..\src\corelib\io\qfilesystemengine.cpp" />
+    <ClCompile Include="..\src\corelib\io\qfilesystemengine_win.cpp" />
+    <ClCompile Include="..\src\corelib\io\qfilesystementry.cpp" />
+    <ClCompile Include="..\src\corelib\io\qfilesystemiterator_win.cpp" />
+    <ClCompile Include="..\src\corelib\io\qfsfileengine.cpp" />
+    <ClCompile Include="..\src\corelib\io\qfsfileengine_iterator.cpp" />
+    <ClCompile Include="..\src\corelib\io\qfsfileengine_win.cpp" />
+    <ClCompile Include="..\src\corelib\global\qglobal.cpp" />
+    <ClCompile Include="..\src\corelib\tools\qhash.cpp" />
+    <ClCompile Include="..\src\corelib\io\qiodevice.cpp" />
+    <ClCompile Include="..\src\corelib\json\qjson.cpp" />
+    <ClCompile Include="..\src\corelib\json\qjsonarray.cpp" />
+    <ClCompile Include="..\src\corelib\json\qjsondocument.cpp" />
+    <ClCompile Include="..\src\corelib\json\qjsonobject.cpp" />
+    <ClCompile Include="..\src\corelib\json\qjsonparser.cpp" />
+    <ClCompile Include="..\src\corelib\json\qjsonvalue.cpp" />
+    <ClCompile Include="..\src\corelib\global\qlibraryinfo.cpp" />
+    <ClCompile Include="..\src\corelib\tools\qlinkedlist.cpp" />
+    <ClCompile Include="..\src\corelib\tools\qlist.cpp" />
+    <ClCompile Include="..\src\corelib\tools\qlocale.cpp" />
+    <ClCompile Include="..\src\corelib\tools\qlocale_tools.cpp" />
+    <ClCompile Include="..\src\corelib\tools\qlocale_win.cpp" />
+    <ClCompile Include="..\src\corelib\global\qlogging.cpp" />
+    <ClCompile Include="library\qmakebuiltins.cpp" />
+    <ClCompile Include="library\qmakeevaluator.cpp" />
+    <ClCompile Include="library\qmakeglobals.cpp" />
+    <ClCompile Include="library\qmakeparser.cpp" />
+    <ClCompile Include="library\qmakevfs.cpp" />
+    <ClCompile Include="..\src\corelib\global\qmalloc.cpp" />
+    <ClCompile Include="..\src\corelib\tools\qmap.cpp" />
+    <ClCompile Include="..\src\corelib\kernel\qmetatype.cpp" />
+    <ClCompile Include="..\src\corelib\global\qnumeric.cpp" />
+    <ClCompile Include="..\src\corelib\tools\qregexp.cpp" />
+    <ClCompile Include="..\src\corelib\io\qsettings.cpp" />
+    <ClCompile Include="..\src\corelib\io\qsettings_win.cpp" />
+    <ClCompile Include="..\src\corelib\tools\qstring.cpp" />
+    <ClCompile Include="..\src\corelib\tools\qstring_compat.cpp">
+      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">NotUsing</PrecompiledHeader>
+      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">NotUsing</PrecompiledHeader>
+      <PrecompiledHeaderFile Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+      </PrecompiledHeaderFile>
+      <PrecompiledHeaderFile Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+      </PrecompiledHeaderFile>
+      <PrecompiledHeaderOutputFile Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+      </PrecompiledHeaderOutputFile>
+      <PrecompiledHeaderOutputFile Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+      </PrecompiledHeaderOutputFile>
+      <ForcedIncludeFiles Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+      </ForcedIncludeFiles>
+      <ForcedIncludeFiles Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+      </ForcedIncludeFiles>
+      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|x64'">NotUsing</PrecompiledHeader>
+      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">NotUsing</PrecompiledHeader>
+      <PrecompiledHeaderFile Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+      </PrecompiledHeaderFile>
+      <PrecompiledHeaderFile Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+      </PrecompiledHeaderFile>
+      <PrecompiledHeaderOutputFile Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+      </PrecompiledHeaderOutputFile>
+      <PrecompiledHeaderOutputFile Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+      </PrecompiledHeaderOutputFile>
+      <ForcedIncludeFiles Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+      </ForcedIncludeFiles>
+      <ForcedIncludeFiles Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+      </ForcedIncludeFiles>
+    </ClCompile>
+    <ClCompile Include="..\src\corelib\tools\qstringlist.cpp" />
+    <ClCompile Include="..\src\corelib\kernel\qsystemerror.cpp" />
+    <ClCompile Include="..\src\corelib\plugin\qsystemlibrary.cpp" />
+    <ClCompile Include="..\src\corelib\io\qtemporaryfile.cpp" />
+    <ClCompile Include="..\src\corelib\codecs\qtextcodec.cpp" />
+    <ClCompile Include="..\src\corelib\io\qtextstream.cpp" />
+    <ClCompile Include="..\src\corelib\codecs\qutfcodec.cpp" />
+    <ClCompile Include="..\src\corelib\plugin\quuid.cpp" />
+    <ClCompile Include="..\src\corelib\kernel\qvariant.cpp" />
+    <ClCompile Include="..\src\corelib\tools\qvector.cpp" />
+    <ClCompile Include="..\src\corelib\tools\qvsnprintf.cpp" />
+    <ClCompile Include="..\src\corelib\xml\qxmlstream.cpp" />
+    <ClCompile Include="..\src\corelib\xml\qxmlutils.cpp" />
+    <ClCompile Include="..\tools\shared\windows\registry.cpp" />
+    <ClCompile Include="generators\unix\unixmake.cpp" />
+    <ClCompile Include="generators\unix\unixmake2.cpp" />
+    <ClCompile Include="generators\win32\winmakefile.cpp" />
+    <ClCompile Include="generators\xmloutput.cpp" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="cachekeys.h" />
+    <ClInclude Include="generators\win32\cesdkhandler.h" />
+    <ClInclude Include="library\ioutils.h" />
+    <ClInclude Include="generators\makefile.h" />
+    <ClInclude Include="generators\makefiledeps.h" />
+    <ClInclude Include="meta.h" />
+    <ClInclude Include="generators\metamakefile.h" />
+    <ClInclude Include="generators\win32\mingw_make.h" />
+    <ClInclude Include="generators\win32\msbuild_objectmodel.h" />
+    <ClInclude Include="generators\win32\msvc_nmake.h" />
+    <ClInclude Include="generators\win32\msvc_objectmodel.h" />
+    <ClInclude Include="generators\win32\msvc_vcproj.h" />
+    <ClInclude Include="generators\win32\msvc_vcxproj.h" />
+    <ClInclude Include="option.h" />
+    <ClInclude Include="generators\mac\pbuilder_pbx.h" />
+    <ClInclude Include="library\proitems.h" />
+    <ClInclude Include="project.h" />
+    <ClInclude Include="generators\projectgenerator.h" />
+    <ClInclude Include="property.h" />
+    <ClInclude Include="qabstractfileengine_p.h" />
+    <ClInclude Include="qarraydata.h" />
+    <ClInclude Include="qarraydataops.h" />
+    <ClInclude Include="qarraydatapointer.h" />
+    <ClInclude Include="qbitarray.h" />
+    <ClInclude Include="qbuffer.h" />
+    <ClInclude Include="qbytearray.h" />
+    <ClInclude Include="qbytearraymatcher.h" />
+    <ClInclude Include="qchar.h" />
+    <ClInclude Include="qcryptographichash.h" />
+    <ClInclude Include="qdatetime.h" />
+    <ClInclude Include="qdatetime_p.h" />
+    <ClInclude Include="qdir.h" />
+    <ClInclude Include="qdir_p.h" />
+    <ClInclude Include="qdiriterator.h" />
+    <ClInclude Include="qfile.h" />
+    <ClInclude Include="qfileinfo.h" />
+    <ClInclude Include="qglobal.h" />
+    <ClInclude Include="qhash.h" />
+    <ClInclude Include="qiodevice.h" />
+    <ClInclude Include="qjson.h" />
+    <ClInclude Include="qjsonarray.h" />
+    <ClInclude Include="qjsondocument.h" />
+    <ClInclude Include="qjsonobject.h" />
+    <ClInclude Include="qjsonparser.h" />
+    <ClInclude Include="qjsonvalue.h" />
+    <ClInclude Include="qjsonwriter.h" />
+    <ClInclude Include="qlinkedlist.h" />
+    <ClInclude Include="qlist.h" />
+    <ClInclude Include="qlocale.h" />
+    <ClInclude Include="qlocale_tools_p.h" />
+    <ClInclude Include="library\qmake_global.h" />
+    <CustomBuild Include="qmake_pch.h">
+      <Command Condition="'$(Configuration)|$(Platform)'=='Release|x64'">echo /*-------------------------------------------------------------------- &gt;qmake_pch.h.cpp
+if errorlevel 1 goto VCEnd
+echo * Precompiled header source file used by Visual Studio.NET to generate&gt;&gt;qmake_pch.h.cpp
+if errorlevel 1 goto VCEnd
+echo * the .pch file.&gt;&gt;qmake_pch.h.cpp
+if errorlevel 1 goto VCEnd
+echo *&gt;&gt;qmake_pch.h.cpp
+if errorlevel 1 goto VCEnd
+echo * Due to issues with the dependencies checker within the IDE, it&gt;&gt;qmake_pch.h.cpp
+if errorlevel 1 goto VCEnd
+echo * sometimes fails to recompile the PCH file, if we force the IDE to&gt;&gt;qmake_pch.h.cpp
+if errorlevel 1 goto VCEnd
+echo * create the PCH file directly from the header file.&gt;&gt;qmake_pch.h.cpp
+if errorlevel 1 goto VCEnd
+echo *&gt;&gt;qmake_pch.h.cpp
+if errorlevel 1 goto VCEnd
+echo * This file is auto-generated by qmake since no PRECOMPILED_SOURCE was&gt;&gt;qmake_pch.h.cpp
+if errorlevel 1 goto VCEnd
+echo * specified, and is used as the common stdafx.cpp. The file is only&gt;&gt;qmake_pch.h.cpp
+if errorlevel 1 goto VCEnd
+echo * generated when creating .vcxproj project files, and is not used for&gt;&gt;qmake_pch.h.cpp
+if errorlevel 1 goto VCEnd
+echo * command line compilations by nmake.&gt;&gt;qmake_pch.h.cpp
+if errorlevel 1 goto VCEnd
+echo *&gt;&gt;qmake_pch.h.cpp
+if errorlevel 1 goto VCEnd
+echo * WARNING: All changes made in this file will be lost.&gt;&gt;qmake_pch.h.cpp
+if errorlevel 1 goto VCEnd
+echo --------------------------------------------------------------------*/&gt;&gt;qmake_pch.h.cpp
+if errorlevel 1 goto VCEnd
+echo #include "qmake_pch.h"&gt;&gt;qmake_pch.h.cpp</Command>
+      <Command Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">echo /*-------------------------------------------------------------------- &gt;qmake_pch.h.cpp
+if errorlevel 1 goto VCEnd
+echo * Precompiled header source file used by Visual Studio.NET to generate&gt;&gt;qmake_pch.h.cpp
+if errorlevel 1 goto VCEnd
+echo * the .pch file.&gt;&gt;qmake_pch.h.cpp
+if errorlevel 1 goto VCEnd
+echo *&gt;&gt;qmake_pch.h.cpp
+if errorlevel 1 goto VCEnd
+echo * Due to issues with the dependencies checker within the IDE, it&gt;&gt;qmake_pch.h.cpp
+if errorlevel 1 goto VCEnd
+echo * sometimes fails to recompile the PCH file, if we force the IDE to&gt;&gt;qmake_pch.h.cpp
+if errorlevel 1 goto VCEnd
+echo * create the PCH file directly from the header file.&gt;&gt;qmake_pch.h.cpp
+if errorlevel 1 goto VCEnd
+echo *&gt;&gt;qmake_pch.h.cpp
+if errorlevel 1 goto VCEnd
+echo * This file is auto-generated by qmake since no PRECOMPILED_SOURCE was&gt;&gt;qmake_pch.h.cpp
+if errorlevel 1 goto VCEnd
+echo * specified, and is used as the common stdafx.cpp. The file is only&gt;&gt;qmake_pch.h.cpp
+if errorlevel 1 goto VCEnd
+echo * generated when creating .vcxproj project files, and is not used for&gt;&gt;qmake_pch.h.cpp
+if errorlevel 1 goto VCEnd
+echo * command line compilations by nmake.&gt;&gt;qmake_pch.h.cpp
+if errorlevel 1 goto VCEnd
+echo *&gt;&gt;qmake_pch.h.cpp
+if errorlevel 1 goto VCEnd
+echo * WARNING: All changes made in this file will be lost.&gt;&gt;qmake_pch.h.cpp
+if errorlevel 1 goto VCEnd
+echo --------------------------------------------------------------------*/&gt;&gt;qmake_pch.h.cpp
+if errorlevel 1 goto VCEnd
+echo #include "qmake_pch.h"&gt;&gt;qmake_pch.h.cpp</Command>
+      <Message Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Generating precompiled header source file 'qmake_pch.h.cpp' ...</Message>
+      <Message Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">Generating precompiled header source file 'qmake_pch.h.cpp' ...</Message>
+      <Outputs Condition="'$(Configuration)|$(Platform)'=='Release|x64'">qmake_pch.h.cpp;%(Outputs)</Outputs>
+      <Outputs Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">qmake_pch.h.cpp;%(Outputs)</Outputs>
+      <Command Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">echo /*-------------------------------------------------------------------- &gt;qmake_pch.h.cpp
+if errorlevel 1 goto VCEnd
+echo * Precompiled header source file used by Visual Studio.NET to generate&gt;&gt;qmake_pch.h.cpp
+if errorlevel 1 goto VCEnd
+echo * the .pch file.&gt;&gt;qmake_pch.h.cpp
+if errorlevel 1 goto VCEnd
+echo *&gt;&gt;qmake_pch.h.cpp
+if errorlevel 1 goto VCEnd
+echo * Due to issues with the dependencies checker within the IDE, it&gt;&gt;qmake_pch.h.cpp
+if errorlevel 1 goto VCEnd
+echo * sometimes fails to recompile the PCH file, if we force the IDE to&gt;&gt;qmake_pch.h.cpp
+if errorlevel 1 goto VCEnd
+echo * create the PCH file directly from the header file.&gt;&gt;qmake_pch.h.cpp
+if errorlevel 1 goto VCEnd
+echo *&gt;&gt;qmake_pch.h.cpp
+if errorlevel 1 goto VCEnd
+echo * This file is auto-generated by qmake since no PRECOMPILED_SOURCE was&gt;&gt;qmake_pch.h.cpp
+if errorlevel 1 goto VCEnd
+echo * specified, and is used as the common stdafx.cpp. The file is only&gt;&gt;qmake_pch.h.cpp
+if errorlevel 1 goto VCEnd
+echo * generated when creating .vcxproj project files, and is not used for&gt;&gt;qmake_pch.h.cpp
+if errorlevel 1 goto VCEnd
+echo * command line compilations by nmake.&gt;&gt;qmake_pch.h.cpp
+if errorlevel 1 goto VCEnd
+echo *&gt;&gt;qmake_pch.h.cpp
+if errorlevel 1 goto VCEnd
+echo * WARNING: All changes made in this file will be lost.&gt;&gt;qmake_pch.h.cpp
+if errorlevel 1 goto VCEnd
+echo --------------------------------------------------------------------*/&gt;&gt;qmake_pch.h.cpp
+if errorlevel 1 goto VCEnd
+echo #include "qmake_pch.h"&gt;&gt;qmake_pch.h.cpp</Command>
+      <Command Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">echo /*-------------------------------------------------------------------- &gt;qmake_pch.h.cpp
+if errorlevel 1 goto VCEnd
+echo * Precompiled header source file used by Visual Studio.NET to generate&gt;&gt;qmake_pch.h.cpp
+if errorlevel 1 goto VCEnd
+echo * the .pch file.&gt;&gt;qmake_pch.h.cpp
+if errorlevel 1 goto VCEnd
+echo *&gt;&gt;qmake_pch.h.cpp
+if errorlevel 1 goto VCEnd
+echo * Due to issues with the dependencies checker within the IDE, it&gt;&gt;qmake_pch.h.cpp
+if errorlevel 1 goto VCEnd
+echo * sometimes fails to recompile the PCH file, if we force the IDE to&gt;&gt;qmake_pch.h.cpp
+if errorlevel 1 goto VCEnd
+echo * create the PCH file directly from the header file.&gt;&gt;qmake_pch.h.cpp
+if errorlevel 1 goto VCEnd
+echo *&gt;&gt;qmake_pch.h.cpp
+if errorlevel 1 goto VCEnd
+echo * This file is auto-generated by qmake since no PRECOMPILED_SOURCE was&gt;&gt;qmake_pch.h.cpp
+if errorlevel 1 goto VCEnd
+echo * specified, and is used as the common stdafx.cpp. The file is only&gt;&gt;qmake_pch.h.cpp
+if errorlevel 1 goto VCEnd
+echo * generated when creating .vcxproj project files, and is not used for&gt;&gt;qmake_pch.h.cpp
+if errorlevel 1 goto VCEnd
+echo * command line compilations by nmake.&gt;&gt;qmake_pch.h.cpp
+if errorlevel 1 goto VCEnd
+echo *&gt;&gt;qmake_pch.h.cpp
+if errorlevel 1 goto VCEnd
+echo * WARNING: All changes made in this file will be lost.&gt;&gt;qmake_pch.h.cpp
+if errorlevel 1 goto VCEnd
+echo --------------------------------------------------------------------*/&gt;&gt;qmake_pch.h.cpp
+if errorlevel 1 goto VCEnd
+echo #include "qmake_pch.h"&gt;&gt;qmake_pch.h.cpp</Command>
+      <Message Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Generating precompiled header source file 'qmake_pch.h.cpp' ...</Message>
+      <Message Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">Generating precompiled header source file 'qmake_pch.h.cpp' ...</Message>
+      <Outputs Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">qmake_pch.h.cpp;%(Outputs)</Outputs>
+      <Outputs Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">qmake_pch.h.cpp;%(Outputs)</Outputs>
+    </CustomBuild>
+    <ClInclude Include="library\qmakeevaluator.h" />
+    <ClInclude Include="library\qmakeevaluator_p.h" />
+    <ClInclude Include="library\qmakeglobals.h" />
+    <ClInclude Include="library\qmakeparser.h" />
+    <ClInclude Include="library\qmakevfs.h" />
+    <ClInclude Include="qmalloc.h" />
+    <ClInclude Include="qmap.h" />
+    <ClInclude Include="qmetatype.h" />
+    <ClInclude Include="qnumeric.h" />
+    <ClInclude Include="qregexp.h" />
+    <ClInclude Include="qstring.h" />
+    <ClInclude Include="qstringlist.h" />
+    <ClInclude Include="qstringmatcher.h" />
+    <ClInclude Include="qsystemerror_p.h" />
+    <ClInclude Include="qtemporaryfile.h" />
+    <ClInclude Include="qtextcodec.h" />
+    <ClInclude Include="qtextstream.h" />
+    <ClInclude Include="qutfcodec.h" />
+    <ClInclude Include="quuid.h" />
+    <ClInclude Include="qvector.h" />
+    <ClInclude Include="qxmlstream.h" />
+    <ClInclude Include="qxmlutils.h" />
+    <ClInclude Include="generators\unix\unixmake.h" />
+    <ClInclude Include="generators\win32\winmakefile.h" />
+    <ClInclude Include="generators\xmloutput.h" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="qmake_pch.h.cpp">
+      <ForcedIncludeFiles Condition="'$(Configuration)|$(Platform)'=='Release|x64'">$(NOINHERIT)</ForcedIncludeFiles>
+      <ForcedIncludeFiles Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">$(NOINHERIT)</ForcedIncludeFiles>
+      <PrecompiledHeaderFile Condition="'$(Configuration)|$(Platform)'=='Release|x64'">qmake_pch.h</PrecompiledHeaderFile>
+      <PrecompiledHeaderFile Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">qmake_pch.h</PrecompiledHeaderFile>
+      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Create</PrecompiledHeader>
+      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">Create</PrecompiledHeader>
+      <ForcedIncludeFiles Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">$(NOINHERIT)</ForcedIncludeFiles>
+      <ForcedIncludeFiles Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">$(NOINHERIT)</ForcedIncludeFiles>
+      <PrecompiledHeaderFile Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">qmake_pch.h</PrecompiledHeaderFile>
+      <PrecompiledHeaderFile Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">qmake_pch.h</PrecompiledHeaderFile>
+      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Create</PrecompiledHeader>
+      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">Create</PrecompiledHeader>
+    </ClCompile>
+  </ItemGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+  <ImportGroup Label="ExtensionTargets" />
+</Project>

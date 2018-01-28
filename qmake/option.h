@@ -102,7 +102,7 @@ struct Option
     static QString pro_ext;
     static QString res_ext;
     static char field_sep;
-
+	static bool multi_process;
     enum CmdLineFlags {
         QMAKE_CMDLINE_SUCCESS       = 0x00,
         QMAKE_CMDLINE_SHOW_USAGE    = 0x01,

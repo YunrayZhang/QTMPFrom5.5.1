@@ -69,6 +69,7 @@ QString Option::yacc_mod;
 QString Option::lex_mod;
 QString Option::res_ext;
 char Option::field_sep;
+bool Option::multi_process = false;
 
 //mode
 Option::QMAKE_MODE Option::qmake_mode = Option::QMAKE_GENERATE_NOTHING;
@@ -176,6 +177,7 @@ bool usage(const char *a0)
             "  -nodepend      Don't generate dependencies [makefile mode only]\n"
             "  -nomoc         Don't generate moc targets  [makefile mode only]\n"
             "  -nopwd         Don't look for files in pwd [project mode only]\n"
+			"  -m             Generate project files via multiple qmake process,only works with -tp vc\n"
             ,a0,
             default_mode(a0) == Option::QMAKE_GENERATE_PROJECT  ? " (default)" : "", project_builtin_regx().toLatin1().constData(),
             default_mode(a0) == Option::QMAKE_GENERATE_MAKEFILE ? " (default)" : ""
@@ -208,7 +210,10 @@ Option::parseCommandLine(QStringList &args, QMakeCmdLineParserState &state)
             if (arg.startsWith(QLatin1Char('-'))) {
                 if (arg == "-d") {
                     Option::debug_level++;
-                } else if (arg == "-v" || arg == "-version" || arg == "--version") {
+                }else if (arg == "-m"){
+					Option::multi_process = true;
+				}
+				else if (arg == "-v" || arg == "-version" || arg == "--version") {
                     fprintf(stdout,
                             "QMake version %s\n"
                             "Using Qt version %s in %s\n",

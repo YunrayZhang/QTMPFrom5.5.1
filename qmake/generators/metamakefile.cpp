@@ -38,9 +38,12 @@
 #include "makefile.h"
 #include "project.h"
 #include "cachekeys.h"
+#include "qprocess.h"
+#include <windows.h>
 
 #define BUILDSMETATYPE 1
 #define SUBDIRSMETATYPE 2
+#define MULTIPROCESSMETATYPE 3
 
 QT_BEGIN_NAMESPACE
 
@@ -403,6 +406,135 @@ SubdirsMetaMakefileGenerator::~SubdirsMetaMakefileGenerator()
     subs.clear();
 }
 
+class MultiProcessMetaMakefileGenerator: public SubdirsMetaMakefileGenerator
+{
+public:
+	MultiProcessMetaMakefileGenerator(QMakeProject * p , const QString n , bool op): SubdirsMetaMakefileGenerator(p, n, op){};
+
+	QList<QProcess *> m_processes;
+
+	~MultiProcessMetaMakefileGenerator(){
+		for(int n = 0; n < m_processes.size(); n++)
+		{
+			delete m_processes.at(n);
+		}
+		m_processes.clear();
+	};
+	virtual bool init()
+	{
+		if(init_flag)
+			return false;
+		init_flag = true;
+		bool hasError = false;
+		wchar_t wpath[255] = {0,};
+		memset(wpath, 0, 255);
+		GetModuleFileNameW(NULL, wpath, 255);
+		QString qmakepath = QString::fromWCharArray(wpath);
+
+		bool recurse = Option::recursive;
+		if (recurse && project->isActiveConfig("dont_recurse"))
+			recurse = false;
+		if(recurse) {
+			QString old_output_dir = Option::output_dir;
+			QString old_output = Option::output.fileName();
+			QString oldpwd = qmake_getpwd();
+			QString thispwd = oldpwd;
+			if(!thispwd.endsWith('/'))
+				thispwd += '/';
+			const ProStringList &subdirs = project->values("SUBDIRS");
+
+			for(int i = 0; i < subdirs.size(); ++i) {
+				Subdir *sub = new Subdir;
+
+				QFileInfo subdir(subdirs.at(i).toQString());
+				const ProKey fkey(subdirs.at(i) + ".file");
+				if (!project->isEmpty(fkey)) {
+					subdir = project->first(fkey).toQString();
+				} else {
+					const ProKey skey(subdirs.at(i) + ".subdir");
+					if (!project->isEmpty(skey))
+						subdir = project->first(skey).toQString();
+				}
+				QString sub_name;
+				if(subdir.isDir())
+					subdir = QFileInfo(subdir.filePath() + "/" + subdir.fileName() + Option::pro_ext);
+				else
+					sub_name = subdir.baseName();
+				if(!subdir.isRelative()) { //we can try to make it relative
+					QString subdir_path = subdir.filePath();
+					if(subdir_path.startsWith(thispwd))
+						subdir = QFileInfo(subdir_path.mid(thispwd.length()));
+				}
+
+				sub->input_dir = subdir.absolutePath();
+				if(subdir.isRelative() && old_output_dir != oldpwd) {
+					sub->output_dir = old_output_dir + (subdir.path() != "." ? "/" + subdir.path() : QString());
+					printf("Reading %s [%s]\n", subdir.absoluteFilePath().toLatin1().constData(), sub->output_dir.toLatin1().constData());
+				} else { //what about shadow builds?
+					sub->output_dir = sub->input_dir;
+					printf("Reading %s\n", subdir.absoluteFilePath().toLatin1().constData());
+				}
+
+				QProcess * pQmakeProcess = new QProcess();
+				//pQmakeProcess->setWorkingDirectory(sub->input_dir);
+				qmakepath.replace("qmakemp.exe", "qmake.exe");
+				QDir cwd(sub->output_dir);
+				if( !cwd.exists())
+					cwd.mkpath(sub->output_dir);
+				pQmakeProcess->setWorkingDirectory(sub->output_dir);
+				pQmakeProcess->setProgram(qmakepath);
+				QStringList cmdline;
+				cmdline += sub->input_dir + '/'+ subdir.fileName();
+				cmdline += "-r";
+				cmdline += "-tp";
+				cmdline += "vc";
+				cmdline += "-spec";
+				cmdline += "win32-msvc2010";
+				if(!Option::globals->precmds.isEmpty())
+					cmdline += Option::globals->precmds;
+				if(!Option::globals->postcmds.isEmpty())
+					cmdline += Option::globals->postcmds;
+				pQmakeProcess->setArguments( cmdline);
+				m_processes += pQmakeProcess;
+				delete sub;
+				sub = nullptr;
+
+			}
+		}
+		
+		Subdir *self = new Subdir;
+		self->input_dir = qmake_getpwd();
+		self->output_dir = Option::output_dir;
+		if(!recurse || (!Option::output.fileName().endsWith(Option::dir_sep) && !QFileInfo(Option::output).isDir()))
+			self->output_file = Option::output.fileName();
+		self->makefile = new BuildsMetaMakefileGenerator(project, name, false);
+		self->makefile->init();
+		subs.append(self);
+
+		return true;
+	}
+	virtual int type() const { return MULTIPROCESSMETATYPE; }
+	virtual bool write()
+	{
+		int numOfProc = m_processes.size();
+		for(int n = 0; n < numOfProc; n++)
+		{
+			m_processes.at(n)->start();
+
+		}
+		while(1)
+		{
+			int n = m_processes.size();
+			if( n == 0)
+				break;
+			bool state = m_processes.at(0)->waitForFinished();
+			if( state )
+				m_processes.removeFirst();
+		}
+		return SubdirsMetaMakefileGenerator::write();
+	}
+};
+
 //Factory things
 QT_BEGIN_INCLUDE_NAMESPACE
 #include "unixmake.h"
@@ -469,8 +601,14 @@ MetaMakefileGenerator::createMetaGenerator(QMakeProject *proj, const QString &na
     MetaMakefileGenerator *ret = 0;
     if ((Option::qmake_mode == Option::QMAKE_GENERATE_MAKEFILE ||
          Option::qmake_mode == Option::QMAKE_GENERATE_PRL)) {
-        if (proj->first("TEMPLATE").endsWith("subdirs"))
+        if (proj->first("TEMPLATE").endsWith("subdirs") && Option::multi_process)
+		{
+			ret = new MultiProcessMetaMakefileGenerator(proj, name, op);
+		}
+		else if( proj->first("TEMPLATE").endsWith("subdirs") && !Option::multi_process)
+		{
             ret = new SubdirsMetaMakefileGenerator(proj, name, op);
+		}
     }
     if (!ret)
         ret = new BuildsMetaMakefileGenerator(proj, name, op);
